@@ -4,7 +4,9 @@
     <meta charset="utf-8" />
     <script>
       sessionStorage.redirect = location.pathname + location.search + location.hash;
-      location.replace("/");
+      const parts = location.pathname.split("/").filter(Boolean);
+      const base = parts[0] === "ugyfelszolg" ? "/ugyfelszolg/" : "/";
+      location.replace(base);
     </script>
   </head>
   <body></body>

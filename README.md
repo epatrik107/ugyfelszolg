@@ -57,9 +57,10 @@ A GitHub Pages statikus hosting. Nem alkalmas szerveroldali API-kulcsok, Stripe 
 ## 4. GitHub Pages frontend deploy
 
 1. A repository `Settings > Pages` részében engedélyezze a GitHub Actions alapú deployt.
-2. Állítsa be a saját domaint: `xn--gyfelszolgalat-fsb.hu`.
-3. A `.github/workflows/deploy-frontend.yml` buildeli a `frontend` workspace-et és publikálja a `frontend/dist` könyvtárat.
-4. Állítsa be GitHub secretként:
+2. Demó alatt saját domain nélkül a GitHub Pages cím: `https://epatrik107.github.io/ugyfelszolg/`.
+3. Ha a domain delegálása elkészült, állítsa be a saját domaint: `xn--gyfelszolgalat-fsb.hu`, és a GitHub Variable értéket módosítsa `VITE_BASE_PATH=/` értékre.
+4. A `.github/workflows/deploy-frontend.yml` buildeli a `frontend` workspace-et és publikálja a `frontend/dist` könyvtárat.
+5. Állítsa be GitHub secretként:
    - `VITE_TURNSTILE_SITE_KEY`
 
 ## 5. Cloudflare Worker backend deploy
@@ -380,13 +381,15 @@ GitHub repositoryban:
 
 1. `Settings > Pages`
 2. Source: GitHub Actions
-3. Custom domain: `xn--gyfelszolgalat-fsb.hu`
-4. HTTPS bekapcsolása
+3. Demó alatt hagyja üresen a Custom domain mezőt, így az oldal itt fut: `https://epatrik107.github.io/ugyfelszolg/`
+4. Ha a domain már aktív Cloudflare-ben, Custom domain: `xn--gyfelszolgalat-fsb.hu`
+5. HTTPS bekapcsolása
 
 GitHub repository secrets/vars:
 
 - Secret: `VITE_TURNSTILE_SITE_KEY` üresen is maradhat demó alatt, ha nem használ Turnstile-t.
 - Variable: `VITE_DEMO_MODE=true`
+- Variable: `VITE_BASE_PATH=/ugyfelszolg/` demó alatt; saját domainnél `VITE_BASE_PATH=/`
 - Variable: `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`, amíg az `api.xn--gyfelszolgalat-fsb.hu` nincs Cloudflare-re kötve.
 
 A `.github/workflows/deploy-frontend.yml` alapból a workers.dev API címet használja, de `VITE_API_BASE_URL` GitHub Variable értékkel átállítható `https://api.xn--gyfelszolgalat-fsb.hu` címre.
