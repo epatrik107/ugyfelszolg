@@ -1,0 +1,196 @@
+import { constantTimeEqual } from "./hash";
+import type { Env, PackageId } from "./types";
+
+interface StripeCheckoutSession {
+  id: string;
+  url: string | null;
+  mode: "payment" | "subscription";
+  payment_status: string;
+  amount_total: number | null;
+  currency: string | null;
+  customer: string | null;
+  payment_intent: string | null;
+  subscription: string | null;
+  metadata: Record<string, string>;
+}
+
+interface StripeSubscription {
+  id: string;
+  customer: string;
+  status: string;
+  current_period_start: number;
+  current_period_end: number;
+}
+
+interface StripeInvoice {
+  subscription: string | null;
+  customer: string | null;
+  status: string | null;
+}
+
+export interface StripeEvent<T = unknown> {
+  id: string;
+  type: string;
+  data: {
+    object: T;
+  };
+}
+
+async function stripeRequest<T>(
+  env: Env,
+  path: string,
+  init: RequestInit = {},
+) {
+  if (!env.STRIPE_SECRET_KEY) {
+    throw new Error("Stripe is not configured.");
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      ...(init.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`Stripe API error (${response.status}): ${payload}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+export async function createCheckoutSession(
+  env: Env,
+  input: {
+    packageId: PackageId;
+    packageName: string;
+    amount: number;
+    currency: string;
+    email: string;
+    orderId: string;
+    publicId: string;
+    resultToken: string;
+  },
+) {
+  const params = new URLSearchParams();
+  params.set("mode", input.packageId === "business" ? "subscription" : "payment");
+  params.set("success_url", `${env.SITE_URL}/sikeres-fizetes?order=${input.publicId}&token=${input.resultToken}`);
+  params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}`);
+  params.set("customer_email", input.email);
+  params.set("metadata[orderId]", input.orderId);
+  params.set("metadata[publicId]", input.publicId);
+  params.set("metadata[selectedPackage]", input.packageId);
+  params.set("line_items[0][quantity]", "1");
+  params.set("line_items[0][price_data][currency]", input.currency);
+  params.set("line_items[0][price_data][unit_amount]", String(input.amount));
+  params.set("line_items[0][price_data][product_data][name]", input.packageName);
+
+  if (input.packageId === "business") {
+    params.set("line_items[0][price_data][recurring][interval]", "month");
+    params.set("subscription_data[metadata][orderId]", input.orderId);
+    params.set("subscription_data[metadata][selectedPackage]", input.packageId);
+  } else {
+    params.set("payment_intent_data[metadata][orderId]", input.orderId);
+    params.set("payment_intent_data[metadata][selectedPackage]", input.packageId);
+  }
+
+  return stripeRequest<StripeCheckoutSession>(env, "/checkout/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+}
+
+export async function retrieveCheckoutSession(env: Env, sessionId: string) {
+  return stripeRequest<StripeCheckoutSession>(
+    env,
+    `/checkout/sessions/${sessionId}`,
+  );
+}
+
+export async function retrieveSubscription(env: Env, subscriptionId: string) {
+  return stripeRequest<StripeSubscription>(env, `/subscriptions/${subscriptionId}`);
+}
+
+export async function createCustomerPortalSession(
+  env: Env,
+  stripeCustomerId: string,
+) {
+  const params = new URLSearchParams({
+    customer: stripeCustomerId,
+    return_url: `${env.SITE_URL}/ceges`,
+  });
+
+  return stripeRequest<{ url: string }>(env, "/billing_portal/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+}
+
+function parseStripeSignature(signatureHeader: string) {
+  const parts = signatureHeader.split(",");
+  const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);
+  const signatures = parts
+    .filter((part) => part.startsWith("v1="))
+    .map((part) => part.slice(3));
+  return { timestamp, signatures };
+}
+
+async function computeSignature(secret: string, payload: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const bytes = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)),
+  );
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function verifyStripeWebhook(
+  rawBody: string,
+  signatureHeader: string | undefined,
+  secret: string,
+  toleranceSeconds = 300,
+) {
+  if (!signatureHeader) {
+    return null;
+  }
+
+  const { timestamp, signatures } = parseStripeSignature(signatureHeader);
+  if (!timestamp || signatures.length === 0) {
+    return null;
+  }
+
+  const timestampSeconds = Number(timestamp);
+  if (
+    !Number.isFinite(timestampSeconds) ||
+    Math.abs(Date.now() / 1000 - timestampSeconds) > toleranceSeconds
+  ) {
+    return null;
+  }
+
+  const expected = await computeSignature(secret, `${timestamp}.${rawBody}`);
+  const isValid = signatures.some((signature) =>
+    constantTimeEqual(signature, expected),
+  );
+  if (!isValid) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawBody) as StripeEvent<
+      StripeCheckoutSession | StripeSubscription | StripeInvoice
+    >;
+  } catch {
+    return null;
+  }
+}

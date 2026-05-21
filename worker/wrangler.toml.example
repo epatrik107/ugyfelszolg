@@ -1,0 +1,24 @@
+name = "ugyfelkozpont-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-18"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ugyfelkozpont"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+OPENAI_MODEL = "gpt-5-nano"
+OPENAI_REVIEW_MODEL = "gpt-5-nano"
+SITE_URL = "https://ugyfelszolgalat.hu"
+ALLOWED_ORIGINS = "https://ugyfelszolgalat.hu,https://epatrik107.github.io"
+EMAIL_FROM = "Ügyfélközpont <noreply@ugyfelszolgalat.hu>"
+DEMO_MODE = "false"
+PAYMENTS_ENABLED = "false"
+
+[triggers]
+crons = [ "17 2 * * *" ]
