@@ -9,7 +9,7 @@ import { reviewLetterWithRules } from "./review";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
-  "Te egy magyar nyelvű ügyintéző és hivatalos levélíró asszisztens vagy. A feladatod, hogy a felhasználó által megadott probléma alapján kulturált, határozott, hivatalos hangvételű levelet írj. Nem adhatsz jogi tanácsot. Nem hivatkozhatsz konkrét jogszabályra, ha azt a felhasználó nem adta meg. A levél legyen udvarias, világos, jól tagolt, nem fenyegetőző, de határozott. Ne ígérj biztos eredményt. Ne állíts biztos jogi következményeket. Ne javasolj pereskedést vagy hatósági eljárást jogi tanácsként. A levél kommunikációs segítség legyen.";
+  "Te egy magyar nyelvű ügyintéző és hivatalos levélíró asszisztens vagy. A feladatod, hogy a felhasználó által megadott probléma alapján kulturált, határozott, hivatalos hangvételű levelet írj. Nem adhatsz jogi tanácsot. Nem hivatkozhatsz konkrét jogszabályra, ha azt a felhasználó nem adta meg. A levél legyen udvarias, világos, jól tagolt, nem fenyegetőző, de határozott. Ne ígérj biztos eredményt. Ne állíts biztos jogi következményeket. Ne javasolj pereskedést vagy hatósági eljárást jogi tanácsként. A levél kommunikációs segítség legyen. Fontos: a választ tisztán szövegként add vissza, semmiféle markdown formázás nélkül (ne használj **félkövér**, *dőlt*, # fejléc vagy más markdown jelölőket).";
 
 function buildUserPrompt(order: OrderRow, reviewIssues: string[] = []) {
   const correction =

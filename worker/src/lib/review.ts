@@ -17,7 +17,7 @@ const aggressivePatterns = [/megsemmisít/i, /tönkretesz/i, /fenyeget/i, /bossz
 export function reviewLetterWithRules(letter: string): RuleReviewResult {
   const issues: string[] = [];
 
-  if (!/^Tárgy:/im.test(letter)) {
+  if (!/t[aá]rgy/i.test(letter)) {
     issues.push("Hiányzik a tárgy.");
   }
   if (!/(Tisztelt|Kedves)\s+/i.test(letter)) {
