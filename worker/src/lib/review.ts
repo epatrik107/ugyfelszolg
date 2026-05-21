@@ -23,10 +23,10 @@ export function reviewLetterWithRules(letter: string): RuleReviewResult {
   if (!/(Tisztelt|Kedves)\s+/i.test(letter)) {
     issues.push("Hiányzik a megszólítás.");
   }
-  if (!/(Kérem|kérem|szeretném kérni)/.test(letter)) {
+  if (!/kér(em|jük|ném|ésem|ésünk|i|lek|dek)?|kéréssel fordulok|szeretném kérni/i.test(letter)) {
     issues.push("Nem elég világos a kérés.");
   }
-  if (!/(Tisztelettel|Üdvözlettel)/i.test(letter)) {
+  if (!/(Tisztelettel|Üdvözlettel|Köszönettel|köszönöm|Előre is köszön)/i.test(letter)) {
     issues.push("Hiányzik az udvarias lezárás.");
   }
   if (!/[áéíóöőúüű]/i.test(letter)) {
