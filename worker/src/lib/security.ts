@@ -18,11 +18,14 @@ export function isAllowedOrigin(origin: string | null, env: Env) {
 export function addSecurityHeaders(response: Response) {
   const headers = new Headers(response.headers);
   headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=(self)",
   );
+  headers.set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -88,4 +91,29 @@ export function noStoreJson(
 ) {
   c.header("Cache-Control", "no-store");
   return c.json(payload, status);
+}
+
+/**
+ * Enforces `Content-Type: application/json` on all mutating API requests
+ * except the Stripe webhook (which is handled separately with a raw body
+ * read and its own signature verification).
+ */
+export async function requireJsonContentType(
+  c: Context<{ Bindings: Env }>,
+  next: Next,
+) {
+  const method = c.req.method;
+  const path = new URL(c.req.url).pathname;
+
+  if (
+    (method === "POST" || method === "PUT" || method === "PATCH") &&
+    path !== "/api/stripe/webhook"
+  ) {
+    const contentType = c.req.header("Content-Type") ?? "";
+    if (!contentType.includes("application/json")) {
+      return noStoreJson(c, { error: "Hibás Content-Type. application/json szükséges." }, 400);
+    }
+  }
+
+  await next();
 }

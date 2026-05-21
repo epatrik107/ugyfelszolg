@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { attachStripeSession, beginGeneration, getOrderById, insertOrder } from "../lib/db";
-import { generateOpaqueToken, hashToken } from "../lib/hash";
+import { constantTimeEqual, generateOpaqueToken, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/openai";
 import { getPackage } from "../lib/packages";
@@ -24,7 +24,7 @@ function isValidDemoAccess(env: Env, demoAccessCode: string) {
     isDemoMode(env) &&
     Boolean(env.DEMO_ACCESS_CODE) &&
     demoAccessCode.length > 0 &&
-    demoAccessCode === env.DEMO_ACCESS_CODE
+    constantTimeEqual(demoAccessCode, env.DEMO_ACCESS_CODE ?? "")
   );
 }
 

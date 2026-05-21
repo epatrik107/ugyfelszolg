@@ -54,8 +54,10 @@ async function stripeRequest<T>(
   });
 
   if (!response.ok) {
-    const payload = await response.text();
-    throw new Error(`Stripe API error (${response.status}): ${payload}`);
+    // Deliberately omit the Stripe response body from the error to avoid
+    // leaking internal Stripe data (customer IDs, partial card numbers, etc.)
+    // into application logs.
+    throw new Error(`Stripe API error (${response.status})`);
   }
 
   return (await response.json()) as T;

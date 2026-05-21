@@ -122,6 +122,11 @@ export async function exchangeBusinessMagicLinkRoute(c: Context<{ Bindings: Env 
 }
 
 export async function getBusinessSessionRoute(c: Context<{ Bindings: Env }>) {
+  const ip = getClientIp(c);
+  if (await isRateLimited(c.env, "business-session-ip", ip)) {
+    return noStoreJson(c, { error: "Túl sok lekérdezés." }, 429);
+  }
+
   const session = await getSessionFromAuthHeader(c);
   if (!session) {
     return noStoreJson(c, { error: "Nincs érvényes céges munkamenet." }, 401);
@@ -207,6 +212,11 @@ export async function createBusinessOrderRoute(c: Context<{ Bindings: Env }>) {
 }
 
 export async function createBusinessPortalSessionRoute(c: Context<{ Bindings: Env }>) {
+  const ip = getClientIp(c);
+  if (await isRateLimited(c.env, "business-session-ip", ip)) {
+    return noStoreJson(c, { error: "Túl sok lekérdezés." }, 429);
+  }
+
   const session = await getSessionFromAuthHeader(c);
   if (!session) {
     return noStoreJson(c, { error: "Nincs érvényes munkamenet." }, 401);

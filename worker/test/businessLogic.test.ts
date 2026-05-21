@@ -4,9 +4,11 @@ import { constantTimeEqual, hashToken } from "../src/lib/hash";
 import { canStartGeneration, canTransitionPaymentStatus } from "../src/lib/orderState";
 import { getPackage } from "../src/lib/packages";
 import { hasAvailableQuota } from "../src/lib/db";
+import { RATE_LIMITS } from "../src/lib/rateLimit";
 import { reviewLetterWithRules } from "../src/lib/review";
 import { verifyStripeWebhook } from "../src/lib/stripe";
 import type { Env } from "../src/lib/types";
+import { validateAiOutput } from "../src/lib/openai";
 
 async function hmacSha256Hex(secret: string, payload: string) {
   const key = await crypto.subtle.importKey(
@@ -190,5 +192,97 @@ describe("business magic link consumption", () => {
 
     await expect(consumeMagicLink(fakeEnv, "magic_1")).resolves.toBe(true);
     await expect(consumeMagicLink(fakeEnv, "magic_1")).resolves.toBe(false);
+  });
+});
+
+describe("AI output validation", () => {
+  it("accepts a well-formed short letter", () => {
+    const letter =
+      "Tárgy: Reklamáció\n\nTisztelt Ügyfélszolgálat!\n\nKérem az ügy megoldását.\n\nTisztelettél:\nPéter";
+    expect(() => validateAiOutput(letter)).not.toThrow();
+    expect(validateAiOutput(letter)).toBe(letter);
+  });
+
+  it("rejects output that exceeds the character limit", () => {
+    const oversized = "a".repeat(12_001);
+    expect(() => validateAiOutput(oversized)).toThrow(/túl hosszú/);
+  });
+
+  it("accepts output exactly at the character limit", () => {
+    const atLimit = "a".repeat(12_000);
+    expect(() => validateAiOutput(atLimit)).not.toThrow();
+  });
+
+  it("strips null bytes and non-printable ASCII control characters but keeps newlines", () => {
+    const withControlChars =
+      "Tárgy: Test\x00\x01\x07\x0e\x1f Tisztelt Cím!\n\nKérem.\n\nTisztelettél";
+    const sanitized = validateAiOutput(withControlChars);
+    expect(sanitized).not.toContain("\x00");
+    expect(sanitized).not.toContain("\x01");
+    expect(sanitized).toContain("\n");
+  });
+});
+
+describe("prompt injection resistance in review pipeline", () => {
+  it("flags a letter that contains aggressive patterns (injection side-effect)", () => {
+    const injectedLetter = `Tárgy: Panasz
+
+Tisztelt Cím!
+
+Kérem a megoldást. Fenyeget és megsemmisít mindent.
+
+Tisztelettel`;
+    const result = reviewLetterWithRules(injectedLetter);
+    expect(result.ok).toBe(false);
+    expect(result.issues.length).toBeGreaterThan(0);
+  });
+
+  it("accepts a clean letter that contains no injected content", () => {
+    const clean = `Tárgy: Reklamáció
+
+Tisztelt Ügyfélszolgálat!
+
+Kérem vizsgálják ki az ügyet.
+
+Tisztelettel:
+Felhasználó`;
+    expect(reviewLetterWithRules(clean).ok).toBe(true);
+  });
+});
+
+describe("constant-time comparison", () => {
+  it("returns false for strings of different lengths", () => {
+    expect(constantTimeEqual("short", "much-longer-string")).toBe(false);
+    expect(constantTimeEqual("much-longer-string", "short")).toBe(false);
+  });
+
+  it("returns true only for identical strings", () => {
+    expect(constantTimeEqual("demo-code-xyz", "demo-code-xyz")).toBe(true);
+    expect(constantTimeEqual("demo-code-xyz", "demo-code-XYZ")).toBe(false);
+  });
+});
+
+describe("rate limit scopes", () => {
+  it("defines all required scopes including business-session-ip", () => {
+    const expectedScopes: (keyof typeof RATE_LIMITS)[] = [
+      "create-checkout-ip",
+      "create-checkout-email",
+      "result-ip",
+      "contact-ip",
+      "contact-email",
+      "business-access-ip",
+      "business-magic-ip",
+      "business-session-ip",
+    ];
+    for (const scope of expectedScopes) {
+      expect(RATE_LIMITS[scope].limit).toBeGreaterThan(0);
+      expect(RATE_LIMITS[scope].windowSeconds).toBeGreaterThan(0);
+    }
+  });
+
+  it("applies tighter limits on order creation than on read endpoints", () => {
+    expect(RATE_LIMITS["create-checkout-ip"].limit).toBeLessThan(
+      RATE_LIMITS["result-ip"].limit,
+    );
   });
 });

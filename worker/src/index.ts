@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { addSecurityHeaders, bodySizeGuard, corsGuard, noStoreJson } from "./lib/security";
+import { addSecurityHeaders, bodySizeGuard, corsGuard, noStoreJson, requireJsonContentType } from "./lib/security";
 import { cleanupExpiredData } from "./lib/db";
 import { logEvent } from "./lib/logger";
 import type { Env } from "./lib/types";
@@ -19,6 +19,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", corsGuard);
 app.use("/api/*", bodySizeGuard);
+app.use("/api/*", requireJsonContentType);
 app.post("/api/create-checkout-session", createCheckoutSessionRoute);
 app.post("/api/stripe/webhook", stripeWebhookRoute);
 app.get("/api/orders/:publicId/result", getOrderResultRoute);
