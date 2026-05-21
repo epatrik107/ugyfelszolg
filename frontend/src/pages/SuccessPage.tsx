@@ -1,5 +1,5 @@
 import { Copy, Download, LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 import { getOrderResult } from "../lib/api";
@@ -16,6 +16,7 @@ export function SuccessPage() {
   const [result, setResult] = useState<OrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (queryToken) {
@@ -37,9 +38,15 @@ export function SuccessPage() {
     async function poll() {
       try {
         const payload = await getOrderResult(activePublicId, activeToken);
-        if (active) {
-          setResult(payload);
-          setError(null);
+        if (!active) return;
+        setResult(payload);
+        setError(null);
+        const isTerminal =
+          payload.aiStatus === "completed" ||
+          payload.aiStatus === "failed" ||
+          payload.aiStatus === "failed_review";
+        if (isTerminal) {
+          window.clearInterval(intervalRef.current);
         }
       } catch (pollError) {
         if (active) {
@@ -49,10 +56,10 @@ export function SuccessPage() {
     }
 
     void poll();
-    const interval = window.setInterval(poll, 4000);
+    intervalRef.current = window.setInterval(poll, 4000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      window.clearInterval(intervalRef.current);
     };
   }, [publicId, token]);
 
@@ -91,9 +98,13 @@ export function SuccessPage() {
       "Technikai hiba történt a generálás során. Kérjük, vegye fel velünk a kapcsolatot.";
   }
 
+  const isError =
+    result?.aiStatus === "failed" || result?.aiStatus === "failed_review";
+  const pageTitle = isError ? "Hiba a levélgenerálás során" : "Sikeres fizetés";
+
   return (
     <section className="mx-auto max-w-4xl space-y-6 px-4 py-10">
-      <h1 className="text-3xl font-semibold">Sikeres fizetés</h1>
+      <h1 className="text-3xl font-semibold">{pageTitle}</h1>
       <LegalNotice />
 
       {!publicId || !token ? (

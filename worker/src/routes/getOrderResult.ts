@@ -9,7 +9,7 @@ import type { Env } from "../lib/types";
 export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
   const publicId = c.req.param("publicId") ?? "";
   const authHeader = c.req.header("Authorization");
-  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const bearerToken = authHeader?.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
   const token = bearerToken || c.req.query("token") || "";
   const ip = getClientIp(c);
 

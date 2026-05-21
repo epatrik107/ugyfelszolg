@@ -23,6 +23,8 @@ import {
 } from "../lib/stripe";
 import type { Env } from "../lib/types";
 
+const MAGIC_LINK_EXPIRY_MS = 30 * 60 * 1000;
+
 async function createMagicLinkForSubscription(
   c: Context<{ Bindings: Env }>,
   subscriptionId: string,
@@ -59,7 +61,7 @@ async function createMagicLinkForSubscription(
       crypto.randomUUID(),
       subscription.id,
       await hashToken(token, c.env.TOKEN_HASH_SECRET),
-      new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      new Date(Date.now() + MAGIC_LINK_EXPIRY_MS).toISOString(),
       new Date().toISOString(),
     )
     .run();

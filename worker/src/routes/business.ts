@@ -29,9 +29,11 @@ import {
 import { beginGeneration, getOrderById } from "../lib/db";
 import { generateLetterForPaidOrder } from "../lib/openai";
 
+const MAGIC_LINK_EXPIRY_MS = 30 * 60 * 1000;
+
 async function getSessionFromAuthHeader(c: Context<{ Bindings: Env }>) {
   const header = c.req.header("Authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  const token = header?.toLowerCase().startsWith("bearer ") ? header.slice(7) : null;
   if (!token) {
     return null;
   }
@@ -75,7 +77,7 @@ export async function sendBusinessAccessLinkRoute(c: Context<{ Bindings: Env }>)
       id: crypto.randomUUID(),
       subscriptionId: subscription.id,
       tokenHash: await hashToken(token, c.env.TOKEN_HASH_SECRET),
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + MAGIC_LINK_EXPIRY_MS).toISOString(),
     });
     await sendBusinessMagicLink(c.env, subscription, token);
   }

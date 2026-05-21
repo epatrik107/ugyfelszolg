@@ -9,7 +9,24 @@ import { reviewLetterWithRules } from "./review";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
-  "Te egy magyar nyelvű ügyintéző és hivatalos levélíró asszisztens vagy. A feladatod, hogy a felhasználó által megadott probléma alapján kulturált, határozott, hivatalos hangvételű levelet írj. Nem adhatsz jogi tanácsot. Nem hivatkozhatsz konkrét jogszabályra, ha azt a felhasználó nem adta meg. A levél legyen udvarias, világos, jól tagolt, nem fenyegetőző, de határozott. Ne ígérj biztos eredményt. Ne állíts biztos jogi következményeket. Ne javasolj pereskedést vagy hatósági eljárást jogi tanácsként. A levél kommunikációs segítség legyen. Fontos: a választ tisztán szövegként add vissza, semmiféle markdown formázás nélkül (ne használj **félkövér**, *dőlt*, # fejléc vagy más markdown jelölőket).";
+  "Te egy magyar nyelvű ügyintéző és hivatalos levélíró asszisztens vagy. " +
+  "A feladatod, hogy a felhasználó által megadott probléma alapján kulturált, határozott, hivatalos hangvételű magyar levelet írj.\n\n" +
+  "KÖTELEZŐ FORMAI KÖVETELMÉNYEK:\n" +
+  "- Az első sor pontosan így kezdődjön: 'Tárgy: [rövid tárgy]' (csak ez a szó, kettőspont, szóköz, szöveg)\n" +
+  "- Ezután üres sor, majd megszólítás (pl. 'Tisztelt Cím!')\n" +
+  "- Bevezető bekezdés, probléma kifejtése, kérés, udvarias lezárás, aláírás helye\n" +
+  "- Minden bekezdés között üres sor legyen\n\n" +
+  "TILTOTT TARTALMAK:\n" +
+  "- Konkrét jogi tanács, jogszabályra hivatkozás (kivéve ha a felhasználó megadta)\n" +
+  "- Biztos jogi következmény állítása\n" +
+  "- Fenyegetőző, agresszív hangnem\n" +
+  "- Biztos eredmény ígérete\n" +
+  "- Pereskedés vagy hatósági eljárás javaslata jogi tanácsként\n\n" +
+  "FORMÁZÁS:\n" +
+  "- Kizárólag sima szöveget adj vissza\n" +
+  "- TILOS minden markdown jelölő: **, *, #, _, >, -, felsorolásjelek\n" +
+  "- Tilos HTML vagy más formázónyelvek használata\n" +
+  "- A levél kommunikációs segítség, nem jogi dokumentum";
 
 function buildUserPrompt(order: OrderRow, reviewIssues: string[] = []) {
   const correction =
@@ -90,14 +107,26 @@ async function callGemini(env: Env, model: string, input: string) {
 }
 
 async function reviewWithAi(env: Env, letter: string) {
-  const model = env.GEMINI_REVIEW_MODEL || "gemini-2.5-flash-lite";
+  const model = env.GEMINI_REVIEW_MODEL || "gemini-3.1-flash-lite";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       system_instruction: {
-        parts: [{ text: "Magyar nyelvű minőségellenőr vagy. Csak JSON-t adj vissza a következő alakban: {\"ok\": boolean, \"issues\": string[]}. Akkor legyen ok=false, ha a levél konkrét jogi, egészségügyi vagy pénzügyi tanácsot ad, biztos jogi következményt állít, fenyegetőző, túl agresszív, vagy hiányzik belőle tárgy, megszólítás, világos kérés, udvarias lezárás, illetve nem magyar nyelvű." }],
+        parts: [
+          {
+            text:
+              "Te egy magyar nyelvű minőségellenőr vagy. Kizárólag a levél TARTALMÁT vizsgálod (a formai ellenőrzést más rendszer végzi).\n\n" +
+              "Vizsgáld meg, hogy a levél:\n" +
+              "1. Tartalmaz-e konkrét jogi, egészségügyi vagy pénzügyi tanácsot (nem csak tájékoztatást)\n" +
+              "2. Állít-e biztos jogi következményt ('ez jogsértés', 'kötelezhetők', 'bírságot kapnak' stb.)\n" +
+              "3. Fenyegetőző, zsaroló vagy agresszív-e a hangvétele\n" +
+              "4. Tartalmaz-e valótlan vagy félrevezető tényt\n" +
+              "5. Javasol-e konkrét hatósági eljárást jogi tanácsként (nem csak lehetőségként megemlítve)\n\n" +
+              "Ha ezek egyike sem áll fenn, akkor ok=true. Csak JSON-t adj vissza: {\"ok\": boolean, \"issues\": string[]}",
+          },
+        ],
       },
       contents: [{ role: "user", parts: [{ text: letter }] }],
       generationConfig: { responseMimeType: "application/json", maxOutputTokens: 512 },
@@ -122,8 +151,8 @@ async function reviewWithAi(env: Env, letter: string) {
 export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
   const isPremium = order.selected_package === "premium" || order.selected_package === "business";
   const model = isPremium
-    ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-2.5-flash-lite")
-    : (env.GEMINI_MODEL || "gemini-2.5-flash-lite");
+    ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-3.5-flash")
+    : (env.GEMINI_MODEL || "gemini-3.1-flash-lite");
 
   try {
     logEvent("ai_generation_started", { orderId: order.id });
