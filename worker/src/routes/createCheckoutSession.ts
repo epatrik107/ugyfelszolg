@@ -83,7 +83,6 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     desiredResult: input.desiredResult,
     tone: input.tone,
     previousMessages: input.previousMessages,
-    attachedLetter: input.attachedLetter || null,
     selectedPackage: input.selectedPackage,
     price: selectedPackage.price,
     currency: selectedPackage.currency,

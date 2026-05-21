@@ -33,7 +33,6 @@ export const checkoutSchema = z.object({
   desiredResult: trimmed(10, 1200),
   tone: z.enum(toneValues),
   previousMessages: z.string().trim().max(3000).optional().default(""),
-  attachedLetter: z.string().trim().max(6000).optional().default(""),
   selectedPackage: z.enum(selectedPackageValues),
   legalAccepted: z.literal(true),
   turnstileToken: z.string().trim().max(2048).optional().default(""),

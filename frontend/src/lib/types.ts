@@ -9,7 +9,6 @@ export interface LetterFormValues {
   desiredResult: string;
   tone: string;
   previousMessages: string;
-  attachedLetter?: string;
   selectedPackage: PackageId;
   legalAccepted: boolean;
   turnstileToken: string;

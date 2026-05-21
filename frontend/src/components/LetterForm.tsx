@@ -16,7 +16,6 @@ export const initialLetterValues: LetterFormValues = {
   desiredResult: "",
   tone: "Udvarias",
   previousMessages: "",
-  attachedLetter: "",
   selectedPackage: "basic",
   legalAccepted: false,
   turnstileToken: "",
@@ -158,25 +157,6 @@ export function LetterForm({
             onChange={(event) => update("previousMessages", event.target.value)}
           />
         </Field>
-      </div>
-
-      <div className="grid gap-2 text-sm font-medium text-slate-700">
-        <span>
-          Beérkezett levél szövege{" "}
-          <span className="font-normal text-slate-400">(opcionális – másolja be, ha erre szeretné a választ)</span>
-        </span>
-        <textarea
-          className="input min-h-40"
-          maxLength={5000}
-          placeholder="Ide másolja be a beérkezett levelet..."
-          value={values.attachedLetter ?? ""}
-          onChange={(event) => update("attachedLetter", event.target.value)}
-        />
-        {(values.attachedLetter?.length ?? 0) > 0 && (
-          <p className="text-xs font-normal text-slate-500">
-            {values.attachedLetter!.length.toLocaleString("hu-HU")} / 5 000 karakter
-          </p>
-        )}
       </div>
 
       {mode === "checkout" && (

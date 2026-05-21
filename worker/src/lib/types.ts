@@ -39,7 +39,6 @@ export interface OrderRow {
   desired_result: string;
   tone: string;
   previous_messages: string | null;
-  attached_letter: string | null;
   selected_package: PackageId;
   server_calculated_price: number;
   currency: string;

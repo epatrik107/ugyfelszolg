@@ -34,15 +34,7 @@ function buildUserPrompt(order: OrderRow, reviewIssues: string[] = []) {
       ? `\n\nAz előző változat javítandó pontjai:\n- ${reviewIssues.join("\n- ")}\nKészíts új, javított változatot.`
       : "";
 
-  const taskLine = order.attached_letter
-    ? "Készíts választ az alábbi beérkezett levélre a megadott szempontok alapján."
-    : "Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.";
-
-  const attachedSection = order.attached_letter
-    ? `\nBeérkezett levél (amelyre válaszolni kell):\n${order.attached_letter}\n`
-    : "";
-
-  return `${taskLine}${attachedSection}
+  return `Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.
 Levél típusa:
 ${order.letter_type}
 
