@@ -369,8 +369,9 @@ GitHub repository secrets/vars:
 
 - Secret: `VITE_TURNSTILE_SITE_KEY` üresen is maradhat demó alatt, ha nem használ Turnstile-t.
 - Variable: `VITE_DEMO_MODE=true`
+- Variable: `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`, amíg az `api.ugyfelszolgalat.hu` nincs Cloudflare-re kötve.
 
-A `.github/workflows/deploy-frontend.yml` a frontend API címét `https://api.ugyfelszolgalat.hu` értékre buildeli.
+A `.github/workflows/deploy-frontend.yml` alapból a workers.dev API címet használja, de `VITE_API_BASE_URL` GitHub Variable értékkel átállítható `https://api.ugyfelszolgalat.hu` címre.
 
 ### 9. Domain DNS
 
@@ -401,6 +402,7 @@ Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
 
 - `CLOUDFLARE_D1_DATABASE_ID`
 - `CLOUDFLARE_KV_NAMESPACE_ID`
+- `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`
 - `VITE_DEMO_MODE=true`
 - `DEMO_MODE=true`
 - `PAYMENTS_ENABLED=false`

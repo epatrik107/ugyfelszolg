@@ -3,6 +3,8 @@ dist
 .wrangler
 .dev.vars
 .env
+worker/wrangler.toml
+wrangler.toml
 .DS_Store
 coverage
 frontend/dist

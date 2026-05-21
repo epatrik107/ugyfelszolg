@@ -33,6 +33,8 @@ jobs:
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
           compatibility_date = "2026-05-18"
+          workers_dev = true
+          preview_urls = false
 
           [[d1_databases]]
           binding = "DB"
