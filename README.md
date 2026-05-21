@@ -46,8 +46,8 @@ A GitHub Pages statikus hosting. Nem alkalmas szerveroldali API-kulcsok, Stripe 
 
 ## 5. Cloudflare Worker backend deploy
 
-1. Másolja a `worker/wrangler.toml.example` fájlt `worker/wrangler.toml` néven.
-2. Töltse ki a D1 és KV azonosítókat.
+1. Lokális fejlesztéshez másolja a `worker/wrangler.toml.example` fájlt `worker/wrangler.toml` néven.
+2. GitHub Actions deploynál a workflow a GitHub Variables alapján generálja a `worker/wrangler.toml` fájlt, ezért D1/KV azonosítót nem kell a repositoryba commitolni.
 3. Állítsa be a Worker secretjeit Wranglerrel vagy GitHub Actionsből.
 4. A `.github/workflows/deploy-worker.yml` typechecket, teszteket és deployt futtat.
 
@@ -386,12 +386,28 @@ Ne tegye nyilvánossá a demó hozzáférési kódot. Attól, hogy valaki nem tu
 - **OpenAI API key:** OpenAI Platform projektből kell létrehozni. Csak Worker secretbe kerülhet: `OPENAI_API_KEY`.
 - **Cloudflare API token:** GitHub Actions deployhoz kell. Jogosultság: Workers deploy, D1/KV hozzáférés az adott accounton.
 - **Cloudflare Account ID:** Cloudflare dashboardból másolható.
+- **CLOUDFLARE_D1_DATABASE_ID:** GitHub Variable, a `npx wrangler d1 create ugyfelkozpont` parancs kimenetéből.
+- **CLOUDFLARE_KV_NAMESPACE_ID:** GitHub Variable, a `npx wrangler kv namespace create RATE_LIMIT_KV` parancs kimenetéből.
 - **Turnstile site key:** publikus frontend kulcs, `VITE_TURNSTILE_SITE_KEY`.
 - **Turnstile secret key:** backend ellenőrzéshez, `TURNSTILE_SECRET_KEY`.
 - **Stripe secret key:** test vagy live mód szerint, `STRIPE_SECRET_KEY`.
 - **Stripe webhook secret:** a webhook endpoint signing secretje, `STRIPE_WEBHOOK_SECRET`.
 - **TOKEN_HASH_SECRET:** saját, hosszú random titok a result tokenek és magic linkek HMAC hash-eléséhez.
 - **Resend API key:** csak céges magic link emailhez kell, `RESEND_API_KEY`.
+
+## GitHub Actions demó változók
+
+Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
+
+- `CLOUDFLARE_D1_DATABASE_ID`
+- `CLOUDFLARE_KV_NAMESPACE_ID`
+- `VITE_DEMO_MODE=true`
+- `DEMO_MODE=true`
+- `PAYMENTS_ENABLED=false`
+- `SITE_URL=https://ugyfelszolgalat.hu`
+- `ALLOWED_ORIGINS=https://ugyfelszolgalat.hu,https://epatrik107.github.io`
+
+A workflow a hiányzó `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező.
 
 ## 19. Tesztfizetés Stripe test módban
 

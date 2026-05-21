@@ -34,7 +34,7 @@ jobs:
           VITE_API_BASE_URL: https://api.ugyfelszolgalat.hu
           VITE_SITE_URL: https://ugyfelszolgalat.hu
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
-          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'false' }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'true' }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -22,6 +22,58 @@ jobs:
       - run: npm ci
       - run: npm run typecheck --workspace worker
       - run: npm run test --workspace worker
+      - name: Create Worker config
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const value = (name, fallback) => process.env[name] || fallback;
+          const tomlString = (input) => JSON.stringify(input);
+
+          const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
+          main = "src/index.ts"
+          compatibility_date = "2026-05-18"
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = ${tomlString(value("D1_DATABASE_NAME", "ugyfelkozpont"))}
+          database_id = ${tomlString(value("D1_DATABASE_ID", ""))}
+
+          [[kv_namespaces]]
+          binding = "RATE_LIMIT_KV"
+          id = ${tomlString(value("KV_NAMESPACE_ID", ""))}
+
+          [vars]
+          OPENAI_MODEL = ${tomlString(value("OPENAI_MODEL", "gpt-5-nano"))}
+          OPENAI_REVIEW_MODEL = ${tomlString(value("OPENAI_REVIEW_MODEL", "gpt-5-nano"))}
+          SITE_URL = ${tomlString(value("SITE_URL", "https://ugyfelszolgalat.hu"))}
+          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", "https://ugyfelszolgalat.hu,https://epatrik107.github.io"))}
+          EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@ugyfelszolgalat.hu>"))}
+          DEMO_MODE = ${tomlString(value("DEMO_MODE", "true"))}
+          PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "false"))}
+
+          [triggers]
+          crons = [ "17 2 * * *" ]
+          `;
+
+          if (!process.env.D1_DATABASE_ID || !process.env.KV_NAMESPACE_ID) {
+            throw new Error("Missing D1_DATABASE_ID or KV_NAMESPACE_ID GitHub variable.");
+          }
+
+          fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
+          NODE
+        env:
+          WORKER_NAME: ${{ vars.WORKER_NAME }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+          D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          DEMO_MODE: ${{ vars.DEMO_MODE }}
+          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
       - name: Sync Worker secrets
         run: |
           node <<'NODE'

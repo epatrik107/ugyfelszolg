@@ -17,7 +17,7 @@ OPENAI_REVIEW_MODEL = "gpt-5-nano"
 SITE_URL = "https://ugyfelszolgalat.hu"
 ALLOWED_ORIGINS = "https://ugyfelszolgalat.hu,https://epatrik107.github.io"
 EMAIL_FROM = "Ügyfélközpont <noreply@ugyfelszolgalat.hu>"
-DEMO_MODE = "false"
+DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 
 [triggers]
