@@ -16,7 +16,7 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 [vars]
 OPENAI_MODEL = "gpt-5-nano"
 OPENAI_REVIEW_MODEL = "gpt-5-nano"
-SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
+SITE_URL = "https://epatrik107.github.io/ugyfelszolg"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
 EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"

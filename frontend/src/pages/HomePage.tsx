@@ -14,6 +14,8 @@ const categories = [
 ];
 
 export function HomePage() {
+  const heroImageSrc = `${import.meta.env.BASE_URL}images/hero-letter-desk.png`;
+
   return (
     <>
       <section className="relative overflow-hidden border-b border-slate-200">
@@ -21,7 +23,7 @@ export function HomePage() {
           <img
             alt=""
             className="h-full w-full object-cover"
-            src="/images/hero-letter-desk.png"
+            src={heroImageSrc}
           />
           <div className="absolute inset-0 bg-gradient-to-r from-white via-white/95 to-white/30" />
         </div>
