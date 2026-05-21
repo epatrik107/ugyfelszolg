@@ -19,14 +19,32 @@ Az **Ügyfélközpont** egy magyar nyelvű, fizetős levélíró MVP. A felhaszn
 
 ```mermaid
 flowchart LR
-  U["Felhasználó"] --> F["GitHub Pages frontend<br/>ugyfelszolgalat.hu"]
-  F --> W["Cloudflare Worker API<br/>api.ugyfelszolgalat.hu"]
+  U["Felhasználó"] --> F["GitHub Pages frontend<br/>xn--gyfelszolgalat-fsb.hu"]
+  F --> W["Cloudflare Worker API<br/>api.xn--gyfelszolgalat-fsb.hu"]
   W --> D1["Cloudflare D1"]
   W --> KV["Cloudflare KV"]
   W --> S["Stripe Checkout + Webhook"]
   W --> O["OpenAI API"]
   W --> R["Resend"]
 ```
+
+### Ékezetes domain technikai alakja
+
+A megvett domain ékezetes formában: `ügyfelszolgalat.hu`.
+
+DNS-ben, GitHub Pages custom domain mezőben, Worker custom domainnél, CORS-ban és environment változókban a Punycode alakot használjuk:
+
+```text
+xn--gyfelszolgalat-fsb.hu
+```
+
+Az API technikai domainje:
+
+```text
+api.xn--gyfelszolgalat-fsb.hu
+```
+
+A böngészők ezt a felhasználónak megjeleníthetik ékezetes formában, de a konfigurációkban a Punycode alak stabilabb és a GitHub Pages IDN domainhez is ezt kéri.
 
 ## 3. Miért nem fut backend GitHub Pages-en?
 
@@ -39,7 +57,7 @@ A GitHub Pages statikus hosting. Nem alkalmas szerveroldali API-kulcsok, Stripe 
 ## 4. GitHub Pages frontend deploy
 
 1. A repository `Settings > Pages` részében engedélyezze a GitHub Actions alapú deployt.
-2. Állítsa be a saját domaint: `ugyfelszolgalat.hu`.
+2. Állítsa be a saját domaint: `xn--gyfelszolgalat-fsb.hu`.
 3. A `.github/workflows/deploy-frontend.yml` buildeli a `frontend` workspace-et és publikálja a `frontend/dist` könyvtárat.
 4. Állítsa be GitHub secretként:
    - `VITE_TURNSTILE_SITE_KEY`
@@ -91,7 +109,7 @@ A létrejött namespace ID kerüljön a `worker/wrangler.toml` megfelelő bindin
 Webhook endpoint:
 
 ```text
-https://api.ugyfelszolgalat.hu/api/stripe/webhook
+https://api.xn--gyfelszolgalat-fsb.hu/api/stripe/webhook
 ```
 
 Kezelt események:
@@ -147,15 +165,15 @@ OPENAI_REVIEW_MODEL=gpt-5-nano
 
 ## 15. Saját domain beállítás GitHub Pageshez
 
-- frontend domain: `ugyfelszolgalat.hu`
+- frontend domain: `xn--gyfelszolgalat-fsb.hu`
 - DNS-ben a GitHub Pages által kért rekordokat kell beállítani
 - a Pages felületen kapcsolja be a HTTPS-t
 
 ## 16. API subdomain beállítás Cloudflare Workerhöz
 
-- API domain: `api.ugyfelszolgalat.hu`
+- API domain: `api.xn--gyfelszolgalat-fsb.hu`
 - a Worker route vagy custom domain erre mutasson
-- a `SITE_URL` értéke `https://ugyfelszolgalat.hu`
+- a `SITE_URL` értéke `https://xn--gyfelszolgalat-fsb.hu`
 
 ## 17. GitHub Actions secret beállítás
 
@@ -267,8 +285,8 @@ Ha `PAYMENTS_ENABLED=false`, akkor a Stripe Checkout és a Stripe webhook útvon
 
 Ebben az állapotban a cél:
 
-- frontend: GitHub Pages, például `https://ugyfelszolgalat.hu`
-- backend: Cloudflare Worker, például `https://api.ugyfelszolgalat.hu`
+- frontend: GitHub Pages, például `https://xn--gyfelszolgalat-fsb.hu`
+- backend: Cloudflare Worker, például `https://api.xn--gyfelszolgalat-fsb.hu`
 - adatbázis: Cloudflare D1
 - fizetés: kikapcsolva
 - levélgenerálás: demó kóddal működik
@@ -317,9 +335,9 @@ A demóhoz ezek legyenek benne:
 [vars]
 OPENAI_MODEL = "gpt-5-nano"
 OPENAI_REVIEW_MODEL = "gpt-5-nano"
-SITE_URL = "https://ugyfelszolgalat.hu"
-ALLOWED_ORIGINS = "https://ugyfelszolgalat.hu,https://epatrik107.github.io"
-EMAIL_FROM = "Ügyfélközpont <noreply@ugyfelszolgalat.hu>"
+SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
+ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
+EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 ```
@@ -353,7 +371,7 @@ npx wrangler deploy --config worker/wrangler.toml
 Ezután állítsa be a Cloudflare Worker custom domaint:
 
 ```text
-api.ugyfelszolgalat.hu
+api.xn--gyfelszolgalat-fsb.hu
 ```
 
 ### 8. GitHub Pages frontend
@@ -362,23 +380,23 @@ GitHub repositoryban:
 
 1. `Settings > Pages`
 2. Source: GitHub Actions
-3. Custom domain: `ugyfelszolgalat.hu`
+3. Custom domain: `xn--gyfelszolgalat-fsb.hu`
 4. HTTPS bekapcsolása
 
 GitHub repository secrets/vars:
 
 - Secret: `VITE_TURNSTILE_SITE_KEY` üresen is maradhat demó alatt, ha nem használ Turnstile-t.
 - Variable: `VITE_DEMO_MODE=true`
-- Variable: `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`, amíg az `api.ugyfelszolgalat.hu` nincs Cloudflare-re kötve.
+- Variable: `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`, amíg az `api.xn--gyfelszolgalat-fsb.hu` nincs Cloudflare-re kötve.
 
-A `.github/workflows/deploy-frontend.yml` alapból a workers.dev API címet használja, de `VITE_API_BASE_URL` GitHub Variable értékkel átállítható `https://api.ugyfelszolgalat.hu` címre.
+A `.github/workflows/deploy-frontend.yml` alapból a workers.dev API címet használja, de `VITE_API_BASE_URL` GitHub Variable értékkel átállítható `https://api.xn--gyfelszolgalat-fsb.hu` címre.
 
 ### 9. Domain DNS
 
 Cloudflare DNS-ben:
 
-- `ugyfelszolgalat.hu` mutasson GitHub Pages-re a GitHub által kért rekordokkal.
-- `api.ugyfelszolgalat.hu` Cloudflare Worker custom domain legyen.
+- `xn--gyfelszolgalat-fsb.hu` mutasson GitHub Pages-re a GitHub által kért rekordokkal.
+- `api.xn--gyfelszolgalat-fsb.hu` Cloudflare Worker custom domain legyen.
 
 Ne tegye nyilvánossá a demó hozzáférési kódot. Attól, hogy valaki nem tudja a domaint, az még nem valódi védelem; a tényleges védelem a szerveroldali `DEMO_ACCESS_CODE`.
 
@@ -406,8 +424,8 @@ Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
 - `VITE_DEMO_MODE=true`
 - `DEMO_MODE=true`
 - `PAYMENTS_ENABLED=false`
-- `SITE_URL=https://ugyfelszolgalat.hu`
-- `ALLOWED_ORIGINS=https://ugyfelszolgalat.hu,https://epatrik107.github.io`
+- `SITE_URL=https://xn--gyfelszolgalat-fsb.hu`
+- `ALLOWED_ORIGINS=https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io`
 
 A workflow a hiányzó `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező.
 
@@ -463,7 +481,7 @@ default-src 'self';
 script-src 'self' https://challenges.cloudflare.com;
 style-src 'self';
 img-src 'self' data:;
-connect-src 'self' https://api.ugyfelszolgalat.hu https://challenges.cloudflare.com;
+connect-src 'self' https://api.xn--gyfelszolgalat-fsb.hu https://challenges.cloudflare.com;
 frame-src https://challenges.cloudflare.com;
 base-uri 'self';
 form-action 'self' https://checkout.stripe.com;
