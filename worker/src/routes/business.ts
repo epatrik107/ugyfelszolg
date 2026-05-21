@@ -187,6 +187,7 @@ export async function createBusinessOrderRoute(c: Context<{ Bindings: Env }>) {
     desiredResult: parsed.data.desiredResult,
     tone: parsed.data.tone,
     previousMessages: parsed.data.previousMessages,
+    attachedLetter: parsed.data.attachedLetter || null,
     selectedPackage: "business",
     price: businessPackage.price,
     currency: businessPackage.currency,

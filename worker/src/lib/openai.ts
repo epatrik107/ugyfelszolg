@@ -34,15 +34,22 @@ function buildUserPrompt(order: OrderRow, reviewIssues: string[] = []) {
       ? `\n\nAz előző változat javítandó pontjai:\n- ${reviewIssues.join("\n- ")}\nKészíts új, javított változatot.`
       : "";
 
-  return `Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.
+  const taskLine = order.attached_letter
+    ? "Készíts választ az alábbi beérkezett levélre a megadott szempontok alapján."
+    : "Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.";
 
+  const attachedSection = order.attached_letter
+    ? `\nBeérkezett levél (amelyre válaszolni kell):\n${order.attached_letter}\n`
+    : "";
+
+  return `${taskLine}${attachedSection}
 Levél típusa:
 ${order.letter_type}
 
 Címzett:
 ${order.recipient}
 
-Probléma leírása:
+Probléma leírása / szempontok:
 ${order.problem_description}
 
 Elérni kívánt eredmény:
@@ -61,7 +68,7 @@ A levél tartalmazza:
 - Tárgy
 - Megszólítás
 - Bevezetés
-- A probléma világos leírása
+- A probléma / válasz világos kifejtése
 - Kérés / elvárt megoldás
 - Udvarias, de határozott lezárás
 - Aláírás helye

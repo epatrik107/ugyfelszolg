@@ -20,6 +20,7 @@ export async function insertOrder(
     desiredResult: string;
     tone: string;
     previousMessages: string;
+    attachedLetter?: string | null;
     selectedPackage: PackageId;
     price: number;
     currency: string;
@@ -34,8 +35,8 @@ export async function insertOrder(
       id, public_id, result_token_hash, email, name, letter_type, recipient,
       problem_description, desired_result, tone, previous_messages, selected_package,
       server_calculated_price, currency, payment_status, ai_status, created_at,
-      updated_at, subscription_id, billing_source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      updated_at, subscription_id, billing_source, attached_letter
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       input.id,
@@ -58,6 +59,7 @@ export async function insertOrder(
       now,
       input.subscriptionId ?? null,
       input.billingSource ?? "checkout",
+      input.attachedLetter || null,
     )
     .run();
 }

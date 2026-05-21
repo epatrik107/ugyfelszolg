@@ -16,6 +16,7 @@ export const initialLetterValues: LetterFormValues = {
   desiredResult: "",
   tone: "Udvarias",
   previousMessages: "",
+  attachedLetter: "",
   selectedPackage: "basic",
   legalAccepted: false,
   turnstileToken: "",
@@ -37,12 +38,31 @@ export function LetterForm({
 }: LetterFormProps) {
   const [values, setValues] = useState<LetterFormValues>(initialLetterValues);
   const [error, setError] = useState<string | null>(null);
+  const [attachedFileName, setAttachedFileName] = useState<string>("");
 
   function update<K extends keyof LetterFormValues>(
     key: K,
     value: LetterFormValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = (e.target?.result as string) ?? "";
+      if (content.length > 5000) {
+        setError("A csatolt levél túl hosszú (max. 5 000 karakter).");
+        return;
+      }
+      setError(null);
+      update("attachedLetter", content);
+      setAttachedFileName(file.name);
+    };
+    reader.readAsText(file, "UTF-8");
+    event.target.value = "";
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -157,6 +177,43 @@ export function LetterForm({
             onChange={(event) => update("previousMessages", event.target.value)}
           />
         </Field>
+      </div>
+
+      <div className="grid gap-2 text-sm font-medium text-slate-700">
+        <span>
+          Beérkezett levél csatolása{" "}
+          <span className="font-normal text-slate-400">(opcionális, .txt)</span>
+        </span>
+        {!values.attachedLetter ? (
+          <label className="cursor-pointer">
+            <input
+              accept=".txt"
+              className="hidden"
+              type="file"
+              onChange={handleFileUpload}
+            />
+            <span className="button-secondary text-sm">Fájl kiválasztása</span>
+          </label>
+        ) : (
+          <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <span className="flex-1 text-slate-700">
+              {attachedFileName} ({values.attachedLetter.length.toLocaleString("hu-HU")} karakter)
+            </span>
+            <button
+              className="text-slate-400 hover:text-rose-600"
+              type="button"
+              onClick={() => {
+                update("attachedLetter", "");
+                setAttachedFileName("");
+              }}
+            >
+              Törlés
+            </button>
+          </div>
+        )}
+        <p className="text-xs font-normal text-slate-500">
+          Ha csatol levelet, az AI azt fogja megválaszolni.
+        </p>
       </div>
 
       {mode === "checkout" && (
