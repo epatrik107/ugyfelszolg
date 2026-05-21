@@ -132,10 +132,20 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const letter = await callGemini(env, model, buildUserPrompt(order, reviewIssues));
       const ruleReview = reviewLetterWithRules(letter);
-      const aiReview = await reviewWithAi(env, letter);
-      const allIssues = [...ruleReview.issues, ...aiReview.issues];
 
-      if (ruleReview.ok && aiReview.ok) {
+      // AI review is advisory: log issues but do not block on them
+      try {
+        const aiReview = await reviewWithAi(env, letter);
+        if (!aiReview.ok) {
+          logEvent("ai_review_advisory_issues", { orderId: order.id, attempt, issues: aiReview.issues });
+        }
+        reviewIssues = [...ruleReview.issues, ...aiReview.issues];
+      } catch (reviewErr) {
+        logEvent("ai_review_error", { orderId: order.id, reason: reviewErr instanceof Error ? reviewErr.message : "unknown" });
+        reviewIssues = ruleReview.issues;
+      }
+
+      if (ruleReview.ok) {
         await completeGeneration(env, order.id, letter);
         if (order.subscription_id) {
           await commitReservedQuota(env, order.subscription_id);
@@ -144,7 +154,7 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
         return;
       }
 
-      reviewIssues = allIssues;
+      logEvent("ai_rule_review_failed", { orderId: order.id, attempt, issues: ruleReview.issues });
     }
 
     await failGeneration(
