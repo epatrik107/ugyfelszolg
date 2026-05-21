@@ -12,9 +12,10 @@ export interface Env {
   RATE_LIMIT_KV?: KVNamespace;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
-  OPENAI_API_KEY: string;
-  OPENAI_MODEL?: string;
-  OPENAI_REVIEW_MODEL?: string;
+  GEMINI_API_KEY: string;
+  GEMINI_MODEL?: string;
+  GEMINI_MODEL_PREMIUM?: string;
+  GEMINI_REVIEW_MODEL?: string;
   TURNSTILE_SECRET_KEY: string;
   SITE_URL: string;
   ALLOWED_ORIGINS: string;

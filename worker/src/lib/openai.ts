@@ -58,67 +58,61 @@ Ne adj jogi tanácsot.
 Ne hivatkozz jogszabályra, ha azt a felhasználó nem adta meg.${correction}`;
 }
 
-async function callOpenAi(env: Env, model: string, input: string) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+async function callGemini(env: Env, model: string, input: string) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const response = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model,
-      instructions: systemPrompt,
-      input,
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: input }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI API error (${response.status})`);
+    throw new Error(`Gemini API error (${response.status})`);
   }
 
   const payload = (await response.json()) as {
-    output_text?: string;
-    output?: Array<{ content?: Array<{ text?: string }> }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
 
-  const nestedText = payload.output
-    ?.flatMap((item) => item.content ?? [])
-    .map((content) => content.text ?? "")
+  const text = payload.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? "")
     .join("")
     .trim();
 
-  const text = payload.output_text?.trim() || nestedText;
   if (!text) {
-    throw new Error("OpenAI empty response.");
+    throw new Error("Gemini empty response.");
   }
   return text;
 }
 
 async function reviewWithAi(env: Env, letter: string) {
-  const model = env.OPENAI_REVIEW_MODEL || env.OPENAI_MODEL || "gpt-5-nano";
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const model = env.GEMINI_REVIEW_MODEL || "gemini-2.5-flash-lite";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const response = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model,
-      instructions:
-        "Magyar nyelvű minőségellenőr vagy. Csak JSON-t adj vissza a következő alakban: {\"ok\": boolean, \"issues\": string[]}. Akkor legyen ok=false, ha a levél konkrét jogi, egészségügyi vagy pénzügyi tanácsot ad, biztos jogi következményt állít, fenyegetőző, túl agresszív, vagy hiányzik belőle tárgy, megszólítás, világos kérés, udvarias lezárás, illetve nem magyar nyelvű.",
-      input: letter,
+      system_instruction: {
+        parts: [{ text: "Magyar nyelvű minőségellenőr vagy. Csak JSON-t adj vissza a következő alakban: {\"ok\": boolean, \"issues\": string[]}. Akkor legyen ok=false, ha a levél konkrét jogi, egészségügyi vagy pénzügyi tanácsot ad, biztos jogi következményt állít, fenyegetőző, túl agresszív, vagy hiányzik belőle tárgy, megszólítás, világos kérés, udvarias lezárás, illetve nem magyar nyelvű." }],
+      },
+      contents: [{ role: "user", parts: [{ text: letter }] }],
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 512 },
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI review error (${response.status})`);
+    throw new Error(`Gemini review error (${response.status})`);
   }
 
-  const payload = (await response.json()) as { output_text?: string };
-  const parsed = JSON.parse(payload.output_text ?? "{}") as {
-    ok?: boolean;
-    issues?: string[];
+  const payload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
+  const raw = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "{}";
+  const parsed = JSON.parse(raw) as { ok?: boolean; issues?: string[] };
   return {
     ok: parsed.ok === true,
     issues: Array.isArray(parsed.issues) ? parsed.issues : [],
@@ -126,14 +120,17 @@ async function reviewWithAi(env: Env, letter: string) {
 }
 
 export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
-  const model = env.OPENAI_MODEL || "gpt-5-nano";
+  const isPremium = order.selected_package === "premium" || order.selected_package === "business";
+  const model = isPremium
+    ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-2.5-flash-lite")
+    : (env.GEMINI_MODEL || "gemini-2.5-flash-lite");
 
   try {
     logEvent("ai_generation_started", { orderId: order.id });
     let reviewIssues: string[] = [];
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const letter = await callOpenAi(env, model, buildUserPrompt(order, reviewIssues));
+      const letter = await callGemini(env, model, buildUserPrompt(order, reviewIssues));
       const ruleReview = reviewLetterWithRules(letter);
       const aiReview = await reviewWithAi(env, letter);
       const allIssues = [...ruleReview.issues, ...aiReview.issues];

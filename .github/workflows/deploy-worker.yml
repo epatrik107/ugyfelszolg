@@ -46,8 +46,9 @@ jobs:
           id = ${tomlString(value("KV_NAMESPACE_ID", ""))}
 
           [vars]
-          OPENAI_MODEL = ${tomlString(value("OPENAI_MODEL", "gpt-5-nano"))}
-          OPENAI_REVIEW_MODEL = ${tomlString(value("OPENAI_REVIEW_MODEL", "gpt-5-nano"))}
+          GEMINI_MODEL = ${tomlString(value("GEMINI_MODEL", "gemini-3.1-flash-lite"))}
+          GEMINI_MODEL_PREMIUM = ${tomlString(value("GEMINI_MODEL_PREMIUM", "gemini-3.5-flash"))}
+          GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
           SITE_URL = ${tomlString(value("SITE_URL", "https://epatrik107.github.io/ugyfelszolg"))}
           ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"))}
           EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"))}
@@ -69,8 +70,9 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
           KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}
           SITE_URL: ${{ vars.SITE_URL }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
@@ -83,7 +85,7 @@ jobs:
           const keys = [
             "STRIPE_SECRET_KEY",
             "STRIPE_WEBHOOK_SECRET",
-            "OPENAI_API_KEY",
+            "GEMINI_API_KEY",
             "TURNSTILE_SECRET_KEY",
             "TOKEN_HASH_SECRET",
             "RESEND_API_KEY",
@@ -102,7 +104,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
