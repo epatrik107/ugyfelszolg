@@ -82,7 +82,7 @@ export async function corsGuard(c: Context<{ Bindings: Env }>, next: Next) {
   }
 }
 
-type JsonStatus = 200 | 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500;
+type JsonStatus = 200 | 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 503;
 
 export function noStoreJson(
   c: Context,

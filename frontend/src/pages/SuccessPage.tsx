@@ -91,25 +91,44 @@ export function SuccessPage() {
   }
   if (result?.aiStatus === "failed_review") {
     statusMessage =
-      "A levél automatikus minőségellenőrzése nem sikerült. Kérjük, vegye fel velünk a kapcsolatot.";
+      "A levél automatikus minőségellenőrzése nem sikerült. Amennyiben fizetett, a visszatérítés 5–10 munkanapon belül megjelenik kártyáján.";
   }
   if (result?.aiStatus === "failed") {
     statusMessage =
-      "Technikai hiba történt a generálás során. Kérjük, vegye fel velünk a kapcsolatot.";
+      "Technikai hiba történt a generálás során. Amennyiben fizetett, a visszatérítés 5–10 munkanapon belül megjelenik kártyáján.";
   }
 
+  const isRefunded = result?.paymentStatus === "refunded";
   const isError =
     result?.aiStatus === "failed" || result?.aiStatus === "failed_review";
   const pageTitle = isError ? "Hiba a levélgenerálás során" : "Sikeres fizetés";
 
   return (
-    <section className="mx-auto max-w-4xl space-y-6 px-4 py-10">
+    <section className="mx-auto max-w-3xl space-y-6 px-4 py-10">
       <h1 className="text-3xl font-semibold">{pageTitle}</h1>
       <LegalNotice />
 
       {!publicId || !token ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-700">
           Hiányzik a rendelés azonosítója vagy a hozzáférési token.
+        </div>
+      ) : isRefunded ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+            <p className="font-semibold text-amber-900">A megrendelés visszatérítve</p>
+            <p className="mt-1 text-sm text-amber-700">
+              A fizetett összeg visszatérítésre kerül bankszámlájára — ez általában 5–10 munkanapon belül megtörténik.
+              Küldtünk egy visszaigazoló emailt is.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link className="button-primary" to="/level-keszites">
+              Újra megrendelem
+            </Link>
+            <Link className="button-secondary" to="/kapcsolat">
+              Kapcsolatfelvétel
+            </Link>
+          </div>
         </div>
       ) : result?.aiStatus === "completed" && result.generatedLetter ? (
         <div className="space-y-5">
@@ -119,10 +138,12 @@ export function SuccessPage() {
               Az alábbi szöveget kimásolhatja vagy letöltheti.
             </p>
           </div>
-          <pre className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm leading-7">
-            {result.generatedLetter}
-          </pre>
-          <div className="flex flex-wrap gap-3">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50">
+            <pre className="whitespace-pre-wrap p-5 text-sm leading-7">
+              {result.generatedLetter}
+            </pre>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <button className="button-primary" onClick={copyLetter}>
               <Copy size={18} />
               {copied ? "Kimásolva" : "Másolás"}
@@ -140,10 +161,20 @@ export function SuccessPage() {
         <div className="rounded-lg border border-slate-200 p-5">
           <div className="flex items-center gap-3">
             {!result || result.aiStatus === "generating" ? (
-              <LoaderCircle className="animate-spin text-azure-600" size={20} />
+              <LoaderCircle className="shrink-0 animate-spin text-azure-600" size={20} />
             ) : null}
             <p>{statusMessage}</p>
           </div>
+          {isError && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <Link className="button-primary" to="/level-keszites">
+                Újra megrendelem
+              </Link>
+              <Link className="button-secondary" to="/kapcsolat">
+                Kapcsolatfelvétel
+              </Link>
+            </div>
+          )}
           {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
         </div>
       )}

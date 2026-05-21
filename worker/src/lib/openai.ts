@@ -4,8 +4,12 @@ import {
   failGeneration,
   releaseReservedQuota,
 } from "./db";
+import { sendRefundEmail } from "./email";
+import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
 import { reviewLetterWithRules } from "./review";
+import { createRefund } from "./stripe";
+import { markOrderPaymentStatus } from "./db";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
@@ -190,6 +194,35 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
     ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-3.5-flash")
     : (env.GEMINI_MODEL || "gemini-3.1-flash-lite");
 
+  async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
+    await failGeneration(env, order.id, status, message);
+    if (order.subscription_id) {
+      await releaseReservedQuota(env, order.subscription_id);
+    }
+    logEvent("ai_generation_failed", { orderId: order.id, reason });
+
+    // Auto-refund for one-time checkout payments only
+    if (order.stripe_payment_intent_id && order.billing_source === "checkout") {
+      try {
+        await createRefund(env, order.stripe_payment_intent_id);
+        await markOrderPaymentStatus(env, order.id, "refunded");
+        logEvent("auto_refund_issued", { orderId: order.id });
+
+        const invoice = await getInvoiceByOrderId(env, order.id);
+        const userReason =
+          status === "failed_review"
+            ? "Az elkészült levél nem ment át az automatikus minőségellenőrzésen, ezért a rendelést visszatérítettük."
+            : "A levélgeneráló szolgáltatás átmeneti hibája miatt a rendelést nem tudtuk teljesíteni.";
+        await sendRefundEmail(env, order, invoice?.invoice_number ?? null, userReason);
+      } catch (refundError) {
+        logEvent("auto_refund_failed", {
+          orderId: order.id,
+          reason: refundError instanceof Error ? refundError.message : "unknown",
+        });
+      }
+    }
+  }
+
   try {
     logEvent("ai_generation_started", { orderId: order.id });
     let reviewIssues: string[] = [];
@@ -223,27 +256,12 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
       logEvent("ai_rule_review_failed", { orderId: order.id, attempt, issues: ruleReview.issues });
     }
 
-    await failGeneration(
-      env,
-      order.id,
-      "failed_review",
-      "Automatikus minőségellenőrzés sikertelen.",
-    );
-    if (order.subscription_id) {
-      await releaseReservedQuota(env, order.subscription_id);
-    }
-    logEvent("ai_generation_failed", {
-      orderId: order.id,
-      reason: "review_failed",
-    });
+    await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");
   } catch (error) {
-    await failGeneration(env, order.id, "failed", "Generálási hiba.");
-    if (order.subscription_id) {
-      await releaseReservedQuota(env, order.subscription_id);
-    }
-    logEvent("ai_generation_failed", {
-      orderId: order.id,
-      reason: error instanceof Error ? error.message : "unknown",
-    });
+    await handleFailure(
+      "failed",
+      "Generálási hiba.",
+      error instanceof Error ? error.message : "unknown",
+    );
   }
 }

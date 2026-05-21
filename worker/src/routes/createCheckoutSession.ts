@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { attachStripeSession, beginGeneration, getOrderById, insertOrder } from "../lib/db";
 import { constantTimeEqual, generateOpaqueToken, hashToken } from "../lib/hash";
+import { checkAiServiceAvailable } from "../lib/health";
 import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/openai";
 import { getPackage } from "../lib/packages";
@@ -71,26 +72,25 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   const resultToken = generateOpaqueToken();
   const resultTokenHash = await hashToken(resultToken, c.env.TOKEN_HASH_SECRET);
 
-  await insertOrder(c.env, {
-    id: orderId,
-    publicId,
-    resultTokenHash,
-    email: input.email.toLowerCase(),
-    name: input.name,
-    letterType: input.letterType,
-    recipient: input.recipient,
-    problemDescription: input.problemDescription,
-    desiredResult: input.desiredResult,
-    tone: input.tone,
-    previousMessages: input.previousMessages,
-    selectedPackage: input.selectedPackage,
-    price: selectedPackage.price,
-    currency: selectedPackage.currency,
-    paymentStatus: demoAccessGranted ? "paid" : "pending",
-  });
-  logEvent("order_created", { orderId, publicId, packageId: input.selectedPackage });
-
   if (demoAccessGranted) {
+    await insertOrder(c.env, {
+      id: orderId,
+      publicId,
+      resultTokenHash,
+      email: input.email.toLowerCase(),
+      name: input.name,
+      letterType: input.letterType,
+      recipient: input.recipient,
+      problemDescription: input.problemDescription,
+      desiredResult: input.desiredResult,
+      tone: input.tone,
+      previousMessages: input.previousMessages,
+      selectedPackage: input.selectedPackage,
+      price: selectedPackage.price,
+      currency: selectedPackage.currency,
+      paymentStatus: "paid",
+    });
+    logEvent("order_created", { orderId, publicId, packageId: input.selectedPackage });
     logEvent("demo_order_created", { orderId, publicId, packageId: input.selectedPackage });
     const started = await beginGeneration(c.env, orderId);
     if (started) {
@@ -106,6 +106,36 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
       demo: true,
     });
   }
+
+  // Check AI service availability before creating the order and payment session
+  const aiAvailable = await checkAiServiceAvailable(c.env);
+  if (!aiAvailable) {
+    logEvent("checkout_blocked_ai_unavailable", {});
+    return noStoreJson(
+      c,
+      { error: "A levélgeneráló szolgáltatás átmenetileg nem elérhető. Kérjük, próbálja újra néhány perc múlva." },
+      503,
+    );
+  }
+
+  await insertOrder(c.env, {
+    id: orderId,
+    publicId,
+    resultTokenHash,
+    email: input.email.toLowerCase(),
+    name: input.name,
+    letterType: input.letterType,
+    recipient: input.recipient,
+    problemDescription: input.problemDescription,
+    desiredResult: input.desiredResult,
+    tone: input.tone,
+    previousMessages: input.previousMessages,
+    selectedPackage: input.selectedPackage,
+    price: selectedPackage.price,
+    currency: selectedPackage.currency,
+    paymentStatus: "pending",
+  });
+  logEvent("order_created", { orderId, publicId, packageId: input.selectedPackage });
 
   const session = await createCheckoutSession(c.env, {
     packageId: input.selectedPackage,

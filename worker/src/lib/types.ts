@@ -25,6 +25,10 @@ export interface Env {
   DEMO_MODE?: string;
   DEMO_ACCESS_CODE?: string;
   PAYMENTS_ENABLED?: string;
+  /** Seller information for invoice generation */
+  SELLER_NAME?: string;
+  SELLER_ADDRESS?: string;
+  SELLER_TAX_NUMBER?: string;
 }
 
 export interface OrderRow {
@@ -81,4 +85,16 @@ export interface UsageRow {
   reserved_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface InvoiceRow {
+  id: string;
+  order_id: string;
+  invoice_number: string;
+  amount: number;
+  currency: string;
+  customer_name: string;
+  customer_email: string;
+  issued_at: string;
+  created_at: string;
 }

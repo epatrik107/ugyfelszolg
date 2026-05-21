@@ -9,8 +9,9 @@ import {
   reserveQuota,
   upsertSubscription,
 } from "../lib/db";
-import { sendBusinessMagicLink } from "../lib/email";
+import { sendBusinessMagicLink, sendInvoiceEmail, sendPaymentFailedEmail } from "../lib/email";
 import { generateOpaqueToken, hashToken } from "../lib/hash";
+import { createInvoice } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/openai";
 import { canStartGeneration } from "../lib/orderState";
@@ -157,7 +158,22 @@ async function handleCheckoutCompleted(
   });
   logEvent("payment_paid", { orderId: order.id, stripeSessionId: session.id });
 
+  // Issue invoice and send it by email (non-fatal – errors are logged but don't block generation)
   const paidOrder = await getOrderById(c.env, order.id);
+  if (paidOrder && c.env.RESEND_API_KEY) {
+    try {
+      const invoice = await createInvoice(c.env, paidOrder);
+      logEvent("invoice_created", { orderId: paidOrder.id, invoiceNumber: invoice.invoice_number });
+      await sendInvoiceEmail(c.env, paidOrder, invoice);
+      logEvent("invoice_email_sent", { orderId: paidOrder.id });
+    } catch (invoiceError) {
+      logEvent("invoice_error", {
+        orderId: paidOrder.id,
+        reason: invoiceError instanceof Error ? invoiceError.message : "unknown",
+      });
+    }
+  }
+
   if (paidOrder && canStartGeneration(paidOrder) && (await beginGeneration(c.env, paidOrder.id))) {
     c.executionCtx.waitUntil(generateLetterForPaidOrder(c.env, paidOrder));
   }
@@ -271,6 +287,17 @@ export async function stripeWebhookRoute(c: Context<{ Bindings: Env }>) {
       const paymentIntent = event.data.object as { metadata?: Record<string, string> };
       if (paymentIntent.metadata?.orderId) {
         await markOrderPaymentStatus(c.env, paymentIntent.metadata.orderId, "failed");
+        // Notify customer so they can retry with a different card
+        if (c.env.RESEND_API_KEY) {
+          try {
+            const failedOrder = await getOrderById(c.env, paymentIntent.metadata.orderId);
+            if (failedOrder) {
+              await sendPaymentFailedEmail(c.env, failedOrder);
+            }
+          } catch {
+            // non-fatal
+          }
+        }
       }
       break;
     }
