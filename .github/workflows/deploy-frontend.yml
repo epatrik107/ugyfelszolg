@@ -31,7 +31,7 @@ jobs:
       - run: npm ci
       - run: npm run build --workspace frontend
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.ügyfelszolgalat.hu' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ugyfelkozpont-api.epatrik107.workers.dev' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL || 'https://ügyfelszolgalat.hu' }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADUXwSqJjEYq4JaR' }}
