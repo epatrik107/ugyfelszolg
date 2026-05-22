@@ -50,7 +50,7 @@ jobs:
           GEMINI_MODEL_PREMIUM = ${tomlString(value("GEMINI_MODEL_PREMIUM", "gemini-3.5-flash"))}
           GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
           SITE_URL = ${tomlString(value("SITE_URL", "https://ügyfelszolgalat.hu"))}
-          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", "https://ügyfelszolgalat.hu"))}
+          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", "https://ügyfelszolgalat.hu,https://epatrik107.github.io"))}
           EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@ügyfelszolgalat.hu>"))}
           DEMO_MODE = ${tomlString(value("DEMO_MODE", "true"))}
           PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "false"))}
