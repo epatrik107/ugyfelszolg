@@ -114,11 +114,14 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           DEMO_ACCESS_CODE: ${{ secrets.DEMO_ACCESS_CODE }}
       - name: Apply D1 migrations
+        continue-on-error: true
         run: |
-          cd worker
-          npx wrangler d1 execute ugyfelkozpont --remote --command "ALTER TABLE orders ADD COLUMN IF NOT EXISTS attached_letter TEXT;"
-          npx wrangler d1 execute ugyfelkozpont --remote --command "ALTER TABLE orders ADD COLUMN IF NOT EXISTS result_token TEXT;"
-          npx wrangler d1 execute ugyfelkozpont --remote --file migrations/0003_invoices.sql
+          npx wrangler d1 execute ugyfelkozpont --remote --config worker/wrangler.toml \
+            --command "ALTER TABLE orders ADD COLUMN IF NOT EXISTS attached_letter TEXT;"
+          npx wrangler d1 execute ugyfelkozpont --remote --config worker/wrangler.toml \
+            --command "ALTER TABLE orders ADD COLUMN IF NOT EXISTS result_token TEXT;"
+          npx wrangler d1 execute ugyfelkozpont --remote --config worker/wrangler.toml \
+            --file worker/migrations/0003_invoices.sql
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

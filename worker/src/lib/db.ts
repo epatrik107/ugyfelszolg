@@ -30,39 +30,76 @@ export async function insertOrder(
   },
 ) {
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO orders (
-      id, public_id, result_token_hash, result_token, email, name, letter_type, recipient,
-      problem_description, desired_result, tone, previous_messages, selected_package,
-      server_calculated_price, currency, payment_status, ai_status, created_at,
-      updated_at, subscription_id, billing_source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-
-  )
-    .bind(
-      input.id,
-      input.publicId,
-      input.resultTokenHash,
-      input.resultToken,
-      input.email,
-      input.name,
-      input.letterType,
-      input.recipient,
-      input.problemDescription,
-      input.desiredResult,
-      input.tone,
-      input.previousMessages || null,
-      input.selectedPackage,
-      input.price,
-      input.currency,
-      input.paymentStatus ?? "pending",
-      "not_started",
-      now,
-      now,
-      input.subscriptionId ?? null,
-      input.billingSource ?? "checkout",
+  // Try with result_token column first; fall back to without it if column doesn't exist yet
+  try {
+    await env.DB.prepare(
+      `INSERT INTO orders (
+        id, public_id, result_token_hash, result_token, email, name, letter_type, recipient,
+        problem_description, desired_result, tone, previous_messages, selected_package,
+        server_calculated_price, currency, payment_status, ai_status, created_at,
+        updated_at, subscription_id, billing_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run();
+      .bind(
+        input.id,
+        input.publicId,
+        input.resultTokenHash,
+        input.resultToken,
+        input.email,
+        input.name,
+        input.letterType,
+        input.recipient,
+        input.problemDescription,
+        input.desiredResult,
+        input.tone,
+        input.previousMessages || null,
+        input.selectedPackage,
+        input.price,
+        input.currency,
+        input.paymentStatus ?? "pending",
+        "not_started",
+        now,
+        now,
+        input.subscriptionId ?? null,
+        input.billingSource ?? "checkout",
+      )
+      .run();
+  } catch (e: unknown) {
+    // If result_token column doesn't exist yet (migration pending), insert without it
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes("result_token")) throw e;
+    await env.DB.prepare(
+      `INSERT INTO orders (
+        id, public_id, result_token_hash, email, name, letter_type, recipient,
+        problem_description, desired_result, tone, previous_messages, selected_package,
+        server_calculated_price, currency, payment_status, ai_status, created_at,
+        updated_at, subscription_id, billing_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        input.id,
+        input.publicId,
+        input.resultTokenHash,
+        input.email,
+        input.name,
+        input.letterType,
+        input.recipient,
+        input.problemDescription,
+        input.desiredResult,
+        input.tone,
+        input.previousMessages || null,
+        input.selectedPackage,
+        input.price,
+        input.currency,
+        input.paymentStatus ?? "pending",
+        "not_started",
+        now,
+        now,
+        input.subscriptionId ?? null,
+        input.billingSource ?? "checkout",
+      )
+      .run();
+  }
 }
 
 export async function getOrderById(env: Env, orderId: string) {
