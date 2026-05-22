@@ -30,3 +30,4 @@ export async function verifyTurnstileToken(
   const payload = (await response.json()) as { success?: boolean };
   return payload.success === true;
 }
+
