@@ -160,7 +160,11 @@ export async function markOrderPaymentStatus(
     .run();
 }
 
-export async function beginRegeneration(env: Env, orderId: string) {
+export async function beginRegeneration(
+  env: Env,
+  orderId: string,
+  maxRegenerations: number,
+) {
   const now = new Date().toISOString();
   const result = await env.DB.prepare(
     `UPDATE orders
@@ -170,9 +174,10 @@ export async function beginRegeneration(env: Env, orderId: string) {
      WHERE id = ?
        AND payment_status = 'paid'
        AND ai_status = 'completed'
-       AND generation_count > 0`,
+       AND generation_count > 0
+       AND generation_count <= ?`,
   )
-    .bind(now, orderId)
+    .bind(now, orderId, maxRegenerations)
     .run();
   return result.meta.changes === 1;
 }

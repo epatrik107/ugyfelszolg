@@ -8,8 +8,9 @@ import { hasAvailableQuota } from "../src/lib/db";
 import { RATE_LIMITS } from "../src/lib/rateLimit";
 import { reviewLetterWithRules } from "../src/lib/review";
 import { verifyStripeWebhook } from "../src/lib/stripe";
-import type { Env } from "../src/lib/types";
-import { validateAiOutput } from "../src/lib/openai";
+import type { Env, OrderRow } from "../src/lib/types";
+import { regenerationSchema } from "../src/lib/validation";
+import { buildUserPrompt, validateAiOutput } from "../src/lib/openai";
 
 async function hmacSha256Hex(secret: string, payload: string) {
   const key = await crypto.subtle.importKey(
@@ -176,6 +177,56 @@ describe("regeneration gating", () => {
     expect(
       canRequestRegeneration({ payment_status: "paid", ai_status: "not_started", generation_count: 0 }),
     ).toBe(false);
+  });
+});
+
+describe("regeneration feedback", () => {
+  it("rejects empty feedback in the regeneration payload", () => {
+    expect(regenerationSchema.safeParse({ feedback: "   " }).success).toBe(false);
+  });
+
+  it("accepts meaningful feedback in the regeneration payload", () => {
+    const parsed = regenerationSchema.safeParse({ feedback: "Legyen rövidebb és közvetlenebb." });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("includes user feedback in the AI prompt for targeted regeneration", () => {
+    const order = {
+      id: "order_1",
+      public_id: "public_1",
+      result_token_hash: "hash",
+      email: "teszt@example.com",
+      name: "Teszt Elek",
+      letter_type: "Panaszlevél",
+      recipient: "Ügyfélszolgálat",
+      problem_description: "Hosszú a válaszidő.",
+      desired_result: "Gyorsabb ügyintézés",
+      tone: "Udvarias",
+      previous_messages: null,
+      selected_package: "basic",
+      server_calculated_price: 1990,
+      currency: "HUF",
+      payment_status: "paid",
+      ai_status: "completed",
+      stripe_session_id: null,
+      stripe_payment_intent_id: null,
+      generated_letter: null,
+      generation_count: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      paid_at: new Date().toISOString(),
+      generated_at: null,
+      error_message: null,
+      subscription_id: null,
+      billing_source: "checkout",
+      result_token: "token",
+    } satisfies OrderRow;
+
+    const feedback = "Legyen rövidebb és barátságosabb.";
+    const prompt = buildUserPrompt(order, [], feedback);
+
+    expect(prompt).toContain("Felhasználói módosítási kérés:");
+    expect(prompt).toContain(feedback);
   });
 });
 

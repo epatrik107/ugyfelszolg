@@ -64,3 +64,7 @@ export const accessLinkSchema = z.object({
 export const exchangeMagicLinkSchema = z.object({
   token: trimmed(20, 512),
 });
+
+export const regenerationSchema = z.object({
+  feedback: trimmed(5, 1200),
+});

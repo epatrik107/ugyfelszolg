@@ -4,6 +4,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 import { getOrderResult, requestRegeneration } from "../lib/api";
 import { MAX_REGENERATIONS } from "../lib/constants";
+import {
+  getRemainingRegenerationMessage,
+  getRemainingRegenerations,
+} from "../lib/regeneration";
 import type { OrderResult } from "../lib/types";
 
 export function SuccessPage() {
@@ -18,6 +22,7 @@ export function SuccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [regenBusy, setRegenBusy] = useState(false);
+  const [regenFeedback, setRegenFeedback] = useState("");
   const [regenError, setRegenError] = useState<string | null>(null);
   const intervalRef = useRef<number | undefined>(undefined);
 
@@ -101,12 +106,19 @@ export function SuccessPage() {
 
   async function handleRegenerate() {
     if (!publicId || !token) return;
+    const feedback = regenFeedback.trim();
+    if (!feedback) {
+      setRegenError("Kérlek, írd le röviden, mit szeretnél megváltoztatni.");
+      return;
+    }
+
     setRegenBusy(true);
     setRegenError(null);
     try {
-      await requestRegeneration(publicId, token);
+      await requestRegeneration(publicId, token, feedback);
       // Reset result so polling restarts cleanly
       setResult((prev) => prev ? { ...prev, aiStatus: "generating" } : prev);
+      setRegenFeedback("");
       pollCountRef.current = 0;
       window.clearInterval(intervalRef.current);
       intervalRef.current = window.setInterval(async () => {
@@ -134,8 +146,10 @@ export function SuccessPage() {
   }
 
   const remainingRegenerations = result
-    ? Math.max(0, MAX_REGENERATIONS - (result.generationCount ?? 0))
+    ? getRemainingRegenerations(result.generationCount ?? 0, MAX_REGENERATIONS)
     : 0;
+
+  const regenerationMessage = getRemainingRegenerationMessage(remainingRegenerations);
 
   let statusMessage = "A fizetés ellenőrzése folyamatban...";
   if (result?.paymentStatus === "paid" && result.aiStatus === "generating") {
@@ -214,11 +228,17 @@ export function SuccessPage() {
             <p className="text-sm font-medium text-slate-700">Nem tetszik a levél?</p>
             {remainingRegenerations > 0 ? (
               <>
-                <p className="text-sm text-slate-600">
-                  Még{" "}
-                  <strong>{remainingRegenerations}</strong>{" "}
-                  módosítási lehetősége van — kattintson az újragenerálásra és mi készítünk egy újabb változatot.
-                </p>
+                <p className="text-sm text-slate-600">{regenerationMessage}</p>
+                <label className="block text-sm font-medium text-slate-700" htmlFor="regen-feedback">
+                  Mi nem tetszik az emailben?
+                </label>
+                <textarea
+                  id="regen-feedback"
+                  className="min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 shadow-sm focus:border-azure-500 focus:outline-none focus:ring-2 focus:ring-azure-200"
+                  value={regenFeedback}
+                  onChange={(event) => setRegenFeedback(event.target.value)}
+                  placeholder="Írd le, mit változtassunk az emailen… Például: legyen rövidebb, barátságosabb, hivatalosabb, kevésbé hosszú."
+                />
                 <button
                   className="button-secondary"
                   disabled={regenBusy}
@@ -229,12 +249,12 @@ export function SuccessPage() {
                   ) : (
                     <RefreshCw size={18} />
                   )}
-                  {regenBusy ? "Levél készül..." : "Újragenerálás"}
+                  {regenBusy ? "Email készül..." : "Email módosítása"}
                 </button>
               </>
             ) : (
               <p className="text-sm text-slate-600">
-                Elhasználta az összes módosítási lehetőségét. Ha további segítségre van szüksége, vegye fel velünk a kapcsolatot.
+                {regenerationMessage} Ha további segítségre van szükséged, írj nekünk és segítünk.
               </p>
             )}
             {regenError && (

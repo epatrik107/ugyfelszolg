@@ -3,10 +3,11 @@ import { beginRegeneration, getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/openai";
-import { canRequestRegeneration } from "../lib/orderState";
+import { canRequestRegeneration, MAX_REGENERATIONS } from "../lib/orderState";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { noStoreJson } from "../lib/security";
 import type { Env } from "../lib/types";
+import { regenerationSchema } from "../lib/validation";
 
 export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
   const publicId = c.req.param("publicId") ?? "";
@@ -20,6 +21,18 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
 
   if (!bearerToken) {
     return noStoreJson(c, { error: "Hiányzó azonosító." }, 401);
+  }
+
+  let feedback = "";
+  try {
+    const body = await c.req.json();
+    const parsed = regenerationSchema.safeParse(body);
+    if (!parsed.success) {
+      return noStoreJson(c, { error: "Kérlek, írd le röviden, mit szeretnél megváltoztatni." }, 400);
+    }
+    feedback = parsed.data.feedback;
+  } catch {
+    return noStoreJson(c, { error: "Kérlek, írd le röviden, mit szeretnél megváltoztatni." }, 400);
   }
 
   const order = await getOrderByPublicId(c.env, publicId);
@@ -40,7 +53,7 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
     );
   }
 
-  const started = await beginRegeneration(c.env, order.id);
+  const started = await beginRegeneration(c.env, order.id, MAX_REGENERATIONS);
   if (!started) {
     return noStoreJson(
       c,
@@ -56,7 +69,7 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
   }
 
   logEvent("regeneration_started", { orderId: order.id, generationCount: freshOrder.generation_count });
-  c.executionCtx.waitUntil(generateLetterForPaidOrder(c.env, freshOrder));
+  c.executionCtx.waitUntil(generateLetterForPaidOrder(c.env, freshOrder, feedback));
 
   return noStoreJson(c, { ok: true });
 }

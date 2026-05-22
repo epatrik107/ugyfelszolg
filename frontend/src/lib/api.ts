@@ -39,8 +39,15 @@ export function getOrderResult(publicId: string, token: string) {
   return request<OrderResult>(`/api/orders/${publicId}/result`, {}, token);
 }
 
-export function requestRegeneration(publicId: string, token: string) {
-  return request<{ ok: true }>(`/api/orders/${publicId}/regenerate`, { method: "POST" }, token);
+export function requestRegeneration(publicId: string, token: string, feedback: string) {
+  return request<{ ok: true }>(
+    `/api/orders/${publicId}/regenerate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ feedback }),
+    },
+    token,
+  );
 }
 
 export function sendContactMessage(values: {

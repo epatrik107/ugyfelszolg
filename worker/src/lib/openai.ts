@@ -68,11 +68,18 @@ export function validateAiOutput(text: string): string {
   return text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
 }
 
-function buildUserPrompt(order: OrderRow, reviewIssues: string[] = []) {
+export function buildUserPrompt(
+  order: OrderRow,
+  reviewIssues: string[] = [],
+  regenerationFeedback?: string,
+) {
   const correction =
     reviewIssues.length > 0
       ? `\n\nAz előző változat javítandó pontjai:\n- ${reviewIssues.join("\n- ")}\nKészíts új, javított változatot.`
       : "";
+  const userFeedback = regenerationFeedback
+    ? `\n\nFelhasználói módosítási kérés:\n${wrapUserField("modositasi_keres", regenerationFeedback)}`
+    : "";
 
   return `Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.
 
@@ -112,7 +119,7 @@ Ha prémium csomag, akkor a levél után adj:
 - Rövid használati javaslatot
 
 Ne adj jogi tanácsot.
-Ne hivatkozz jogszabályra, ha azt a felhasználó nem adta meg.${correction}`;
+Ne hivatkozz jogszabályra, ha azt a felhasználó nem adta meg.${userFeedback}${correction}`;
 }
 
 async function callGemini(env: Env, model: string, input: string) {
@@ -188,7 +195,11 @@ async function reviewWithAi(env: Env, letter: string) {
   };
 }
 
-export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
+export async function generateLetterForPaidOrder(
+  env: Env,
+  order: OrderRow,
+  regenerationFeedback?: string,
+) {
   const isPremium = order.selected_package === "premium" || order.selected_package === "business";
   const model = isPremium
     ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-3.5-flash")
@@ -229,7 +240,11 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
     let reviewIssues: string[] = [];
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const letter = await callGemini(env, model, buildUserPrompt(order, reviewIssues));
+      const letter = await callGemini(
+        env,
+        model,
+        buildUserPrompt(order, reviewIssues, regenerationFeedback),
+      );
       const ruleReview = reviewLetterWithRules(letter);
 
       // AI review is advisory: log issues but do not block on them
