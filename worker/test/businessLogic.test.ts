@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { claimStripeEvent, consumeMagicLink } from "../src/lib/db";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { claimStripeEvent, consumeMagicLink, insertOrder } from "../src/lib/db";
 import { constantTimeEqual, hashToken } from "../src/lib/hash";
+import { createInvoice, selectInvoiceProvider } from "../src/lib/invoice";
 import { canStartGeneration, canTransitionPaymentStatus } from "../src/lib/orderState";
 import { getPackage } from "../src/lib/packages";
 import { hasAvailableQuota } from "../src/lib/db";
@@ -58,6 +59,56 @@ describe("token comparison", () => {
     await expect(hashToken("token", "secret-a")).resolves.not.toBe(
       await hashToken("token", "secret-b"),
     );
+  });
+});
+
+describe("order persistence compatibility", () => {
+  it("falls back cleanly when the result_token migration is not applied yet", async () => {
+    const boundArgs: unknown[][] = [];
+    const fakeEnv = {
+      DB: {
+        prepare(sql: string) {
+          return {
+            bind(...args: unknown[]) {
+              boundArgs.push(args);
+              return {
+                async run() {
+                  if (sql.includes("result_token, email")) {
+                    throw new Error("table orders has no column named result_token");
+                  }
+                  return { meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown as Env;
+
+    await expect(
+      insertOrder(fakeEnv, {
+        id: "order_1",
+        publicId: "public_1",
+        resultTokenHash: "hash",
+        resultToken: "token",
+        email: "patrik@example.com",
+        name: "Patrik",
+        letterType: "Panaszlevél",
+        recipient: "Ügyfélszolgálat",
+        problemDescription: "A szolgáltatás nem megfelelően működött.",
+        desiredResult: "Kérem a hiba javítását.",
+        tone: "Udvarias",
+        previousMessages: "",
+        selectedPackage: "basic",
+        price: 1990,
+        currency: "HUF",
+        paymentStatus: "paid",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(boundArgs).toHaveLength(2);
+    expect(boundArgs[0]).toHaveLength(21);
+    expect(boundArgs[1]).toHaveLength(20);
   });
 });
 
@@ -283,6 +334,204 @@ describe("rate limit scopes", () => {
   it("applies tighter limits on order creation than on read endpoints", () => {
     expect(RATE_LIMITS["create-checkout-ip"].limit).toBeLessThan(
       RATE_LIMITS["result-ip"].limit,
+    );
+  });
+});
+
+// ─── Invoice provider selection ──────────────────────────────────────────────
+
+describe("invoice provider selection", () => {
+  it("uses the internal provider in test/development mode (no SZAMLAZZ_AGENT_KEY)", () => {
+    expect(selectInvoiceProvider({} as Env)).toBe("internal");
+    expect(selectInvoiceProvider({ SZAMLAZZ_AGENT_KEY: "" } as unknown as Env)).toBe("internal");
+    expect(selectInvoiceProvider({ SZAMLAZZ_AGENT_KEY: undefined } as unknown as Env)).toBe(
+      "internal",
+    );
+  });
+
+  it("uses the szamlazz provider in production (SZAMLAZZ_AGENT_KEY is set)", () => {
+    expect(
+      selectInvoiceProvider({ SZAMLAZZ_AGENT_KEY: "live-agent-key-123" } as unknown as Env),
+    ).toBe("szamlazz");
+  });
+});
+
+// ─── createInvoice – internal path (test/development) ────────────────────────
+
+describe("createInvoice internal path", () => {
+  it("creates an internal SZ-YYYY-NNNN invoice without calling fetch when no agent key is set", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const sqlCalls: string[] = [];
+    let seqValue = 0;
+
+    const fakeEnv = {
+      // No SZAMLAZZ_AGENT_KEY → internal path
+      DB: {
+        prepare(sql: string) {
+          sqlCalls.push(sql);
+          return {
+            bind(..._args: unknown[]) {
+              return {
+                async run() {
+                  return { meta: { changes: 1 } };
+                },
+                async first() {
+                  return null;
+                },
+              };
+            },
+            async batch() {
+              seqValue += 1;
+              return [
+                { results: [] },
+                { results: [{ last_number: seqValue }] },
+              ];
+            },
+          };
+        },
+        async batch(stmts: unknown[]) {
+          seqValue += 1;
+          return [
+            { results: [] },
+            { results: [{ last_number: seqValue }] },
+          ];
+        },
+      },
+    } as unknown as Env;
+
+    const order = {
+      id: "order-test-1",
+      email: "test@example.com",
+      name: "Teszt Felhasználó",
+      server_calculated_price: 1990,
+      currency: "HUF",
+      paid_at: "2024-06-01T10:00:00.000Z",
+      selected_package: "basic" as const,
+    };
+
+    const invoice = await createInvoice(fakeEnv, order);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(invoice.invoice_number).toMatch(/^SZ-\d{4}-\d{4}$/);
+    expect(invoice.order_id).toBe("order-test-1");
+    expect(invoice.amount).toBe(1990);
+
+    fetchSpy.mockRestore();
+  });
+});
+
+// ─── createInvoice – szamlazz.hu path (production) ───────────────────────────
+
+describe("createInvoice szamlazz.hu path", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("calls szamlazz.hu and stores the returned invoice number in production mode", async () => {
+    const mockInvoiceNumber = "SZKKFT-2024-0001";
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 200,
+        headers: { szlaszam: mockInvoiceNumber },
+      }),
+    );
+
+    let storedInvoiceNumber: unknown;
+    const fakeEnv = {
+      SZAMLAZZ_AGENT_KEY: "live-agent-key-123",
+      DB: {
+        prepare(sql: string) {
+          return {
+            bind(...args: unknown[]) {
+              if (sql.includes("INSERT INTO invoices")) {
+                storedInvoiceNumber = args[2]; // invoice_number is the 3rd bind param
+              }
+              return {
+                async run() {
+                  return { meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown as Env;
+
+    const order = {
+      id: "order-prod-1",
+      email: "production@example.com",
+      name: "Éles Felhasználó",
+      server_calculated_price: 4990,
+      currency: "HUF",
+      paid_at: "2024-06-15T12:00:00.000Z",
+      selected_package: "premium" as const,
+    };
+
+    const invoice = await createInvoice(fakeEnv, order);
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://www.szamlazz.hu/szamla/");
+
+    expect(invoice.invoice_number).toBe(mockInvoiceNumber);
+    expect(storedInvoiceNumber).toBe(mockInvoiceNumber);
+    expect(invoice.order_id).toBe("order-prod-1");
+    expect(invoice.amount).toBe(4990);
+  });
+
+  it("throws when szamlazz.hu returns an error response header", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 200,
+        headers: { szlahibakod: "3", szlahiba: "Hibás agent kulcs" },
+      }),
+    );
+
+    const fakeEnv = {
+      SZAMLAZZ_AGENT_KEY: "bad-key",
+      DB: { prepare: () => ({ bind: () => ({ run: async () => ({}) }) }) },
+    } as unknown as Env;
+
+    const order = {
+      id: "order-err-1",
+      email: "err@example.com",
+      name: "Hiba Teszt",
+      server_calculated_price: 1990,
+      currency: "HUF",
+      paid_at: "2024-06-15T12:00:00.000Z",
+      selected_package: "basic" as const,
+    };
+
+    await expect(createInvoice(fakeEnv, order)).rejects.toThrow(/szamlazz\.hu/);
+  });
+
+  it("does NOT include the agent key in the thrown error message", async () => {
+    const agentKey = "super-secret-agent-key-xyz";
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 500,
+      }),
+    );
+
+    const fakeEnv = {
+      SZAMLAZZ_AGENT_KEY: agentKey,
+      DB: { prepare: () => ({ bind: () => ({ run: async () => ({}) }) }) },
+    } as unknown as Env;
+
+    const order = {
+      id: "order-sec-1",
+      email: "sec@example.com",
+      name: "Sec Teszt",
+      server_calculated_price: 1990,
+      currency: "HUF",
+      paid_at: "2024-06-15T12:00:00.000Z",
+      selected_package: "basic" as const,
+    };
+
+    await expect(createInvoice(fakeEnv, order)).rejects.toSatisfy(
+      (e: unknown) => e instanceof Error && !e.message.includes(agentKey),
     );
   });
 });

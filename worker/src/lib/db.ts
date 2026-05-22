@@ -74,7 +74,7 @@ export async function insertOrder(
         problem_description, desired_result, tone, previous_messages, selected_package,
         server_calculated_price, currency, payment_status, ai_status, created_at,
         updated_at, subscription_id, billing_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         input.id,

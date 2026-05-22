@@ -1,3 +1,4 @@
+import { issueSzamlazzInvoice } from "./szamlazz";
 import type { Env, InvoiceRow, OrderRow } from "./types";
 
 function getYear(iso: string): number {
@@ -5,29 +6,28 @@ function getYear(iso: string): number {
 }
 
 /**
- * Atomically allocates the next invoice number for the given year
- * and inserts the invoice record. Returns the created invoice.
- *
- * Uses a D1 batch so the sequence increment and insert happen in the
- * same transaction, preventing gaps or duplicates under concurrent load.
+ * Returns which invoice provider is active for the current environment.
+ * Production (when SZAMLAZZ_AGENT_KEY is set): "szamlazz"
+ * Test / development (no key):                 "internal"
  */
-export async function createInvoice(
-  env: Env,
-  order: Pick<OrderRow, "id" | "email" | "name" | "server_calculated_price" | "currency" | "paid_at" | "selected_package">,
-): Promise<InvoiceRow> {
-  const issuedAt = order.paid_at ?? new Date().toISOString();
-  const year = getYear(issuedAt);
-  const now = new Date().toISOString();
-  const invoiceId = crypto.randomUUID();
+export function selectInvoiceProvider(env: Env): "szamlazz" | "internal" {
+  return env.SZAMLAZZ_AGENT_KEY ? "szamlazz" : "internal";
+}
 
-  // 1. Ensure the sequence row exists for this year
+/**
+ * Atomically allocates the next internal invoice number for the given year
+ * and returns the formatted string. Uses a D1 batch to prevent gaps or
+ * duplicates under concurrent load.
+ */
+async function allocateInternalInvoiceNumber(env: Env, issuedAt: string): Promise<string> {
+  const year = getYear(issuedAt);
+
   await env.DB.prepare(
     "INSERT OR IGNORE INTO invoice_sequence (year, last_number) VALUES (?, 0)",
   )
     .bind(year)
     .run();
 
-  // 2. Increment sequence and read the new value in a single batch
   const [, seqRow] = await env.DB.batch([
     env.DB.prepare(
       "UPDATE invoice_sequence SET last_number = last_number + 1 WHERE year = ?",
@@ -38,7 +38,29 @@ export async function createInvoice(
   ]);
 
   const lastNumber = (seqRow.results[0] as { last_number: number }).last_number;
-  const invoiceNumber = `SZ-${year}-${String(lastNumber).padStart(4, "0")}`;
+  return `SZ-${year}-${String(lastNumber).padStart(4, "0")}`;
+}
+
+/**
+ * Creates an invoice for a paid order and persists it locally.
+ *
+ * In production (SZAMLAZZ_AGENT_KEY present) the invoice is issued via
+ * szamlazz.hu and their invoice number is stored.
+ * In test / development the existing internal sequence is used, so no
+ * external call is made and behaviour is identical to before.
+ */
+export async function createInvoice(
+  env: Env,
+  order: Pick<OrderRow, "id" | "email" | "name" | "server_calculated_price" | "currency" | "paid_at" | "selected_package">,
+): Promise<InvoiceRow> {
+  const issuedAt = order.paid_at ?? new Date().toISOString();
+  const now = new Date().toISOString();
+  const invoiceId = crypto.randomUUID();
+
+  const invoiceNumber =
+    selectInvoiceProvider(env) === "szamlazz"
+      ? await issueSzamlazzInvoice(env, order)
+      : await allocateInternalInvoiceNumber(env, issuedAt);
 
   await env.DB.prepare(
     `INSERT INTO invoices

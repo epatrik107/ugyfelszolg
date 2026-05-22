@@ -29,6 +29,8 @@ export interface Env {
   SELLER_NAME?: string;
   SELLER_ADDRESS?: string;
   SELLER_TAX_NUMBER?: string;
+  /** szamlazz.hu agent key – presence activates production invoicing via szamlazz.hu */
+  SZAMLAZZ_AGENT_KEY?: string;
 }
 
 export interface OrderRow {
