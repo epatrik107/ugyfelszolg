@@ -68,6 +68,8 @@ jobs:
 
           fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
           NODE
+      - name: Debug generated wrangler.toml
+        run: cat worker/wrangler.toml
         env:
           WORKER_NAME: ${{ vars.WORKER_NAME }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
