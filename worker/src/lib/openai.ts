@@ -201,8 +201,9 @@ export async function generateLetterForPaidOrder(env: Env, order: OrderRow) {
     }
     logEvent("ai_generation_failed", { orderId: order.id, reason });
 
-    // Auto-refund for one-time checkout payments only
-    if (order.stripe_payment_intent_id && order.billing_source === "checkout") {
+    // Auto-refund for one-time checkout payments only (skip for user-initiated regenerations
+    // where generation_count > 1 — the user already received at least one successful letter)
+    if (order.generation_count <= 1 && order.stripe_payment_intent_id && order.billing_source === "checkout") {
       try {
         await createRefund(env, order.stripe_payment_intent_id);
         await markOrderPaymentStatus(env, order.id, "refunded");

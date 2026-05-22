@@ -39,6 +39,10 @@ export function getOrderResult(publicId: string, token: string) {
   return request<OrderResult>(`/api/orders/${publicId}/result`, {}, token);
 }
 
+export function requestRegeneration(publicId: string, token: string) {
+  return request<{ ok: true }>(`/api/orders/${publicId}/regenerate`, { method: "POST" }, token);
+}
+
 export function sendContactMessage(values: {
   name: string;
   email: string;

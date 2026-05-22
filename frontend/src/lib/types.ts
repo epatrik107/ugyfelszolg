@@ -23,6 +23,7 @@ export interface OrderResult {
     | "completed"
     | "failed"
     | "failed_review";
+  generationCount: number;
   generatedLetter?: string;
   selectedPackage: PackageId;
   createdAt: string;

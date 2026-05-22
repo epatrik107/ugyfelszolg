@@ -36,6 +36,7 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
   return noStoreJson(c, {
     paymentStatus: order.payment_status,
     aiStatus: order.ai_status,
+    generationCount: order.generation_count,
     generatedLetter:
       order.ai_status === "completed" ? order.generated_letter : undefined,
     selectedPackage: order.selected_package,

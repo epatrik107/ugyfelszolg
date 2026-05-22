@@ -78,18 +78,20 @@ export function LetterForm({
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="grid gap-5 md:grid-cols-2">
-        <Field label="Név">
+        <Field label="Az Ön neve">
           <input
             className="input"
             maxLength={120}
+            placeholder="pl. Kovács János"
             value={values.name}
             onChange={(event) => update("name", event.target.value)}
           />
         </Field>
-        <Field label="Email cím">
+        <Field label="Email cím (ide küldjük a visszaigazolást)">
           <input
             className="input"
             maxLength={254}
+            placeholder="pl. kovacs.janos@email.com"
             type="email"
             value={values.email}
             onChange={(event) => update("email", event.target.value)}
@@ -109,29 +111,32 @@ export function LetterForm({
             ))}
           </select>
         </Field>
-        <Field label="Kinek szól a levél?">
+        <Field label="Kinek szól a levél? (pl. vállalat neve, hivatal)">
           <input
             className="input"
             maxLength={180}
+            placeholder="pl. Telefonszolgáltató Zrt. Ügyfélszolgálat"
             value={values.recipient}
             onChange={(event) => update("recipient", event.target.value)}
           />
         </Field>
       </div>
 
-      <Field label="Mi történt?">
+      <Field label="Mi történt? (Írja le részletesen a problémát)">
         <textarea
           className="input min-h-36"
           maxLength={3000}
+          placeholder="pl. 2024. január 5-én megrendeltem egy terméket, de azt hibásan szállították ki, és azóta sem sikerült megoldani a problémát..."
           value={values.problemDescription}
           onChange={(event) => update("problemDescription", event.target.value)}
         />
       </Field>
 
-      <Field label="Mit szeretne elérni?">
+      <Field label="Mit szeretne elérni? (Mi legyen a megoldás?)">
         <textarea
           className="input min-h-28"
           maxLength={1200}
+          placeholder="pl. Kérem a termék kicserélését vagy a vételár visszatérítését."
           value={values.desiredResult}
           onChange={(event) => update("desiredResult", event.target.value)}
         />
@@ -176,10 +181,10 @@ export function LetterForm({
       )}
 
       <div className="space-y-4">
-        <label className="flex items-start gap-3 text-sm leading-6 text-slate-700">
+        <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
           <input
             checked={values.legalAccepted}
-            className="mt-1 h-4 w-4"
+            className="mt-1 h-5 w-5 shrink-0 accent-navy-900"
             type="checkbox"
             onChange={(event) => update("legalAccepted", event.target.checked)}
           />
@@ -229,7 +234,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium text-slate-700">
+    <label className="grid gap-2 text-base font-medium text-slate-700">
       <span>{label}</span>
       {children}
     </label>

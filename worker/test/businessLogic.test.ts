@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { claimStripeEvent, consumeMagicLink, insertOrder } from "../src/lib/db";
 import { constantTimeEqual, hashToken } from "../src/lib/hash";
 import { createInvoice, selectInvoiceProvider } from "../src/lib/invoice";
-import { canStartGeneration, canTransitionPaymentStatus } from "../src/lib/orderState";
+import { canStartGeneration, canRequestRegeneration, canTransitionPaymentStatus, MAX_REGENERATIONS } from "../src/lib/orderState";
 import { getPackage } from "../src/lib/packages";
 import { hasAvailableQuota } from "../src/lib/db";
 import { RATE_LIMITS } from "../src/lib/rateLimit";
@@ -134,6 +134,47 @@ describe("generation gating", () => {
         ai_status: "completed",
         generation_count: 1,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("regeneration gating", () => {
+  it("exports MAX_REGENERATIONS as 3", () => {
+    expect(MAX_REGENERATIONS).toBe(3);
+  });
+
+  it("allows regeneration when paid+completed and generation_count is 1..MAX_REGENERATIONS", () => {
+    for (let count = 1; count <= MAX_REGENERATIONS; count++) {
+      expect(
+        canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: count }),
+      ).toBe(true);
+    }
+  });
+
+  it("blocks regeneration when generation_count exceeds MAX_REGENERATIONS", () => {
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: MAX_REGENERATIONS + 1 }),
+    ).toBe(false);
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: 99 }),
+    ).toBe(false);
+  });
+
+  it("blocks regeneration when payment is not paid", () => {
+    expect(
+      canRequestRegeneration({ payment_status: "pending", ai_status: "completed", generation_count: 1 }),
+    ).toBe(false);
+  });
+
+  it("blocks regeneration when ai_status is not completed (still in-flight or failed)", () => {
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "generating", generation_count: 1 }),
+    ).toBe(false);
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "failed", generation_count: 1 }),
+    ).toBe(false);
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "not_started", generation_count: 0 }),
     ).toBe(false);
   });
 });

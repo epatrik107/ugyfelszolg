@@ -33,7 +33,7 @@ export function LetterCreationPage() {
   }
 
   return (
-    <section className="mx-auto grid max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-semibold">Levélkészítés</h1>

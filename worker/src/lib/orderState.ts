@@ -23,6 +23,25 @@ export function canStartGeneration(order: Pick<OrderRow, "payment_status" | "ai_
   );
 }
 
+/** Maximum number of user-initiated regenerations allowed per order. */
+export const MAX_REGENERATIONS = 3;
+
+/**
+ * Returns true when the user is allowed to request another generation of
+ * the same order. Conditions:
+ *  - payment must be confirmed (paid)
+ *  - the previous generation must have completed (not in-flight or failed)
+ *  - the user has not yet exhausted the regeneration budget
+ */
+export function canRequestRegeneration(order: Pick<OrderRow, "payment_status" | "ai_status" | "generation_count">) {
+  return (
+    order.payment_status === "paid" &&
+    order.ai_status === "completed" &&
+    order.generation_count > 0 &&
+    order.generation_count <= MAX_REGENERATIONS
+  );
+}
+
 export function isFinalAiStatus(status: AiStatus) {
   return status === "completed" || status === "failed" || status === "failed_review";
 }

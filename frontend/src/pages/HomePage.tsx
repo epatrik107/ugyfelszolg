@@ -25,7 +25,7 @@ export function HomePage() {
             className="h-full w-full object-cover"
             src={heroImageSrc}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/95 to-white/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white from-50% via-white/95 to-white/30" />
         </div>
         <div className="relative mx-auto flex min-h-[560px] max-w-6xl items-center px-4 py-12">
           <div className="max-w-xl space-y-6">

@@ -16,6 +16,7 @@ import {
 import { contactRoute } from "./routes/contact";
 import { createCheckoutSessionRoute } from "./routes/createCheckoutSession";
 import { getOrderResultRoute } from "./routes/getOrderResult";
+import { regenerateOrderRoute } from "./routes/regenerateOrder";
 import { stripeWebhookRoute } from "./routes/stripeWebhook";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -26,6 +27,7 @@ app.use("/api/*", requireJsonContentType);
 app.post("/api/create-checkout-session", createCheckoutSessionRoute);
 app.post("/api/stripe/webhook", stripeWebhookRoute);
 app.get("/api/orders/:publicId/result", getOrderResultRoute);
+app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
 app.post("/api/contact", contactRoute);
 app.post("/api/business/access-link", sendBusinessAccessLinkRoute);
 app.post("/api/business/session/exchange", exchangeBusinessMagicLinkRoute);

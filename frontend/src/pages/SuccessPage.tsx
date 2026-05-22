@@ -1,8 +1,9 @@
-import { Copy, Download, LoaderCircle } from "lucide-react";
+import { Copy, Download, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
-import { getOrderResult } from "../lib/api";
+import { getOrderResult, requestRegeneration } from "../lib/api";
+import { MAX_REGENERATIONS } from "../lib/constants";
 import type { OrderResult } from "../lib/types";
 
 export function SuccessPage() {
@@ -16,6 +17,8 @@ export function SuccessPage() {
   const [result, setResult] = useState<OrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [regenBusy, setRegenBusy] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -96,6 +99,44 @@ export function SuccessPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleRegenerate() {
+    if (!publicId || !token) return;
+    setRegenBusy(true);
+    setRegenError(null);
+    try {
+      await requestRegeneration(publicId, token);
+      // Reset result so polling restarts cleanly
+      setResult((prev) => prev ? { ...prev, aiStatus: "generating" } : prev);
+      pollCountRef.current = 0;
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = window.setInterval(async () => {
+        pollCountRef.current += 1;
+        try {
+          const payload = await getOrderResult(publicId, token);
+          setResult(payload);
+          setError(null);
+          const isTerminal =
+            payload.aiStatus === "completed" ||
+            payload.aiStatus === "failed" ||
+            payload.aiStatus === "failed_review";
+          if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
+            window.clearInterval(intervalRef.current);
+          }
+        } catch (pollError) {
+          setError(pollError instanceof Error ? pollError.message : "Ismeretlen hiba.");
+        }
+      }, 4000);
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : "A módosítás nem sikerült. Kérjük, próbálja újra.");
+    } finally {
+      setRegenBusy(false);
+    }
+  }
+
+  const remainingRegenerations = result
+    ? Math.max(0, MAX_REGENERATIONS - (result.generationCount ?? 0))
+    : 0;
+
   let statusMessage = "A fizetés ellenőrzése folyamatban...";
   if (result?.paymentStatus === "paid" && result.aiStatus === "generating") {
     statusMessage = "A levele készül...";
@@ -166,6 +207,39 @@ export function SuccessPage() {
             <Link className="button-secondary" to="/level-keszites">
               Új levél készítése
             </Link>
+          </div>
+
+          {/* Regeneration section */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <p className="text-sm font-medium text-slate-700">Nem tetszik a levél?</p>
+            {remainingRegenerations > 0 ? (
+              <>
+                <p className="text-sm text-slate-600">
+                  Még{" "}
+                  <strong>{remainingRegenerations}</strong>{" "}
+                  módosítási lehetősége van — kattintson az újragenerálásra és mi készítünk egy újabb változatot.
+                </p>
+                <button
+                  className="button-secondary"
+                  disabled={regenBusy}
+                  onClick={() => void handleRegenerate()}
+                >
+                  {regenBusy ? (
+                    <LoaderCircle className="animate-spin" size={18} />
+                  ) : (
+                    <RefreshCw size={18} />
+                  )}
+                  {regenBusy ? "Levél készül..." : "Újragenerálás"}
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Elhasználta az összes módosítási lehetőségét. Ha további segítségre van szüksége, vegye fel velünk a kapcsolatot.
+              </p>
+            )}
+            {regenError && (
+              <p className="text-sm text-rose-700">{regenError}</p>
+            )}
           </div>
         </div>
       ) : (

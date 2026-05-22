@@ -3,6 +3,9 @@ import type { PackageId } from "./types";
 export const legalNotice =
   "A szolgáltatás nem minősül jogi, pénzügyi vagy egészségügyi tanácsadásnak. Az elkészített szöveg kommunikációs segítség, amelyet az ügyfél saját felelősségére használ fel.";
 
+/** Must match MAX_REGENERATIONS in worker/src/lib/orderState.ts */
+export const MAX_REGENERATIONS = 3;
+
 export const letterTypes = [
   "Panaszlevél",
   "Reklamáció",

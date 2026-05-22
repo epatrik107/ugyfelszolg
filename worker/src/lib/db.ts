@@ -160,6 +160,23 @@ export async function markOrderPaymentStatus(
     .run();
 }
 
+export async function beginRegeneration(env: Env, orderId: string) {
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE orders
+     SET ai_status = 'generating',
+         generation_count = generation_count + 1,
+         updated_at = ?
+     WHERE id = ?
+       AND payment_status = 'paid'
+       AND ai_status = 'completed'
+       AND generation_count > 0`,
+  )
+    .bind(now, orderId)
+    .run();
+  return result.meta.changes === 1;
+}
+
 export async function beginGeneration(env: Env, orderId: string) {
   const now = new Date().toISOString();
   const result = await env.DB.prepare(
