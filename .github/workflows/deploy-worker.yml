@@ -54,6 +54,9 @@ jobs:
           EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"))}
           DEMO_MODE = ${tomlString(value("DEMO_MODE", "true"))}
           PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "false"))}
+          SELLER_NAME = ${tomlString(value("SELLER_NAME", "Test"))}
+          SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", "Test"))}
+          SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", "00000XXXXXX"))}
 
           [triggers]
           crons = [ "17 2 * * *" ]
@@ -78,6 +81,9 @@ jobs:
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           DEMO_MODE: ${{ vars.DEMO_MODE }}
           PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
+          SELLER_NAME: ${{ vars.SELLER_NAME }}
+          SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
+          SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
       - name: Sync Worker secrets
         run: |
           node <<'NODE'
