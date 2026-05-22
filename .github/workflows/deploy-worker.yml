@@ -39,11 +39,11 @@ jobs:
           [[d1_databases]]
           binding = "DB"
           database_name = ${tomlString(value("D1_DATABASE_NAME", "ugyfelkozpont"))}
-          database_id = ${tomlString(value("D1_DATABASE_ID", ""))}
+          database_id = ${tomlString(value("D1_DATABASE_ID", "da3cbef7-ebe2-4bdd-ac7e-0c3f3e9b1585"))}
 
           [[kv_namespaces]]
           binding = "RATE_LIMIT_KV"
-          id = ${tomlString(value("KV_NAMESPACE_ID", ""))}
+          id = ${tomlString(value("KV_NAMESPACE_ID", "330e31489f97415989d94972003b0202"))}
 
           [vars]
           GEMINI_MODEL = ${tomlString(value("GEMINI_MODEL", "gemini-3.1-flash-lite"))}
@@ -61,10 +61,6 @@ jobs:
           [triggers]
           crons = [ "17 2 * * *" ]
           `;
-
-          if (!process.env.D1_DATABASE_ID || !process.env.KV_NAMESPACE_ID) {
-            throw new Error("Missing D1_DATABASE_ID or KV_NAMESPACE_ID GitHub variable.");
-          }
 
           fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
           NODE
