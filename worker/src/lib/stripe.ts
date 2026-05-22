@@ -100,7 +100,11 @@ export async function createCheckoutSession(
 
   return stripeRequest<StripeCheckoutSession>(env, "/checkout/sessions", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      // Prevent duplicate sessions if the client retries the same order
+      "Idempotency-Key": `checkout-${input.orderId}`,
+    },
     body: params,
   });
 }

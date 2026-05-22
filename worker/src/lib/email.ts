@@ -1,6 +1,8 @@
 import {
   businessMagicLinkEmailHtml,
+  checkoutExpiredEmailHtml,
   invoiceEmailHtml,
+  letterReadyEmailHtml,
   paymentFailedEmailHtml,
   refundEmailHtml,
 } from "./emailTemplates";
@@ -33,19 +35,29 @@ async function sendEmail(
     headers["Idempotency-Key"] = idempotencyKey;
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      from: env.EMAIL_FROM,
-      to: [to],
-      subject,
-      html,
-    }),
+  const body = JSON.stringify({
+    from: env.EMAIL_FROM,
+    to: [to],
+    subject,
+    html,
   });
 
-  if (!response.ok) {
-    throw new Error(`Resend API error (${response.status})`);
+  // Retry once after 1.5s on transient 5xx errors
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers,
+      body,
+    });
+
+    if (response.ok) return;
+
+    const isTransient = response.status >= 500;
+    if (!isTransient || attempt === 1) {
+      throw new Error(`Resend API error (${response.status})`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 }
 
@@ -148,3 +160,48 @@ export async function sendPaymentFailedEmail(
   );
 }
 
+export async function sendCheckoutExpiredEmail(
+  env: Env,
+  order: Pick<OrderRow, "id" | "email" | "name">,
+) {
+  const { sellerName, sellerAddress } = getSellerInfo(env);
+  const html = checkoutExpiredEmailHtml({
+    customerName: order.name,
+    siteUrl: env.SITE_URL,
+    sellerName,
+    sellerAddress,
+  });
+
+  await sendEmail(
+    env,
+    order.email,
+    "A fizetési munkamenet lejárt – Ügyfélközpont",
+    html,
+    `expired-${order.id}`,
+  );
+}
+
+export async function sendLetterReadyEmail(
+  env: Env,
+  order: Pick<OrderRow, "id" | "email" | "name" | "public_id">,
+  letter: string,
+  resultToken: string,
+) {
+  const { sellerName, sellerAddress } = getSellerInfo(env);
+  const orderUrl = `${env.SITE_URL}/sikeres-fizetes?order=${order.public_id}&token=${resultToken}`;
+  const html = letterReadyEmailHtml({
+    customerName: order.name,
+    letter,
+    orderUrl,
+    sellerName,
+    sellerAddress,
+  });
+
+  await sendEmail(
+    env,
+    order.email,
+    "Elkészült a levele – Ügyfélközpont",
+    html,
+    `letter-ready-${order.id}`,
+  );
+}

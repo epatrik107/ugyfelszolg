@@ -12,6 +12,7 @@ export async function insertOrder(
     id: string;
     publicId: string;
     resultTokenHash: string;
+    resultToken: string;
     email: string;
     name: string;
     letterType: string;
@@ -31,17 +32,18 @@ export async function insertOrder(
   const now = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO orders (
-      id, public_id, result_token_hash, email, name, letter_type, recipient,
+      id, public_id, result_token_hash, result_token, email, name, letter_type, recipient,
       problem_description, desired_result, tone, previous_messages, selected_package,
       server_calculated_price, currency, payment_status, ai_status, created_at,
       updated_at, subscription_id, billing_source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
   )
     .bind(
       input.id,
       input.publicId,
       input.resultTokenHash,
+      input.resultToken,
       input.email,
       input.name,
       input.letterType,
@@ -496,6 +498,29 @@ export async function cleanupExpiredData(env: Env) {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM subscription_magic_links WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM subscription_sessions WHERE expires_at < ?").bind(now),
-    env.DB.prepare("DELETE FROM orders WHERE created_at < ?").bind(cutoff),
+    // Only delete orders that have no invoice — invoices require 8-year retention under
+    // Hungarian accounting law (2000. évi C. törvény 169. §).
+    env.DB.prepare(
+      `DELETE FROM orders
+       WHERE created_at < ?
+         AND id NOT IN (SELECT order_id FROM invoices)`,
+    ).bind(cutoff),
   ]);
+}
+
+/**
+ * Returns orders that have been stuck in 'generating' state for more than
+ * `staleMinutes` minutes. These are candidates for automatic failure/refund
+ * because their Worker execution context has long since expired.
+ */
+export async function getStuckGeneratingOrders(env: Env, staleMinutes = 15) {
+  const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString();
+  const result = await env.DB.prepare(
+    `SELECT * FROM orders
+     WHERE ai_status = 'generating'
+       AND updated_at < ?`,
+  )
+    .bind(cutoff)
+    .all<OrderRow>();
+  return result.results;
 }

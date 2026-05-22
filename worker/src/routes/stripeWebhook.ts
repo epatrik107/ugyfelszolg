@@ -9,7 +9,7 @@ import {
   reserveQuota,
   upsertSubscription,
 } from "../lib/db";
-import { sendBusinessMagicLink, sendInvoiceEmail, sendPaymentFailedEmail } from "../lib/email";
+import { sendBusinessMagicLink, sendCheckoutExpiredEmail, sendInvoiceEmail, sendPaymentFailedEmail } from "../lib/email";
 import { generateOpaqueToken, hashToken } from "../lib/hash";
 import { createInvoice } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
@@ -280,6 +280,16 @@ export async function stripeWebhookRoute(c: Context<{ Bindings: Env }>) {
       const object = event.data.object as { metadata?: Record<string, string> };
       if (object.metadata?.orderId) {
         await markOrderPaymentStatus(c.env, object.metadata.orderId, "expired");
+        if (c.env.RESEND_API_KEY) {
+          try {
+            const expiredOrder = await getOrderById(c.env, object.metadata.orderId);
+            if (expiredOrder) {
+              await sendCheckoutExpiredEmail(c.env, expiredOrder);
+            }
+          } catch {
+            // non-fatal
+          }
+        }
       }
       break;
     }

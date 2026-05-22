@@ -228,6 +228,65 @@ export function paymentFailedEmailHtml(data: PaymentFailedEmailData): string {
   return baseHtml("A fizetés nem sikerült", body, data.sellerName, data.sellerAddress);
 }
 
+export interface LetterDeliveryEmailData {
+  customerName: string;
+  letterText: string;
+  siteUrl: string;
+  sellerName: string;
+  sellerAddress: string;
+}
+
+export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
+  const escapedLetter = data.letterText
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Elkészült a levele!</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Az alábbiakban megtalálja a generált levelet. Ezt az emailt megőrizheti, így bármikor visszanézhet rá.</p>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:20px 24px;margin-bottom:24px;">
+      <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,monospace;font-size:13px;line-height:1.8;color:#1e293b;white-space:pre-wrap;word-break:break-word;">${escapedLetter}</pre>
+    </div>
+
+    <p style="margin:0 0 16px;font-size:13px;color:#64748b;line-height:1.6;">
+      A levélhez a megrendelési oldalon is hozzáférhet, ahol másolni és letölteni is tudja.
+    </p>
+
+    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél megrendelése</a>
+  `;
+  return baseHtml("Elkészült a levele – Ügyfélközpont", body, data.sellerName, data.sellerAddress);
+}
+
+export interface ExpiredCheckoutEmailData {
+  customerName: string;
+  siteUrl: string;
+  sellerName: string;
+  sellerAddress: string;
+}
+
+export function expiredCheckoutEmailHtml(data: ExpiredCheckoutEmailData): string {
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetési munkamenet lejárt</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
+      <p style="margin:0;font-size:14px;color:#0369a1;line-height:1.6;">
+        A fizetési oldal lejárt, mielőtt a megrendelés véglegesítve lett volna.
+        <strong>Semmilyen összeg nem lett levonva</strong> bankszámlájáról.
+      </p>
+    </div>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      Ha szeretné, bármikor újra elindíthatja a megrendelést — a korábbi adatait meg kell adni újra.
+    </p>
+
+    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
+  `;
+  return baseHtml("Fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
+}
+
 export interface BusinessMagicLinkEmailData {
   magicLink: string;
   sellerName: string;
@@ -253,4 +312,66 @@ export function businessMagicLinkEmailHtml(data: BusinessMagicLinkEmailData): st
     </p>
   `;
   return baseHtml("Céges hozzáférési link", body, data.sellerName, data.sellerAddress);
+}
+
+export interface CheckoutExpiredEmailData {
+  customerName: string;
+  siteUrl: string;
+  sellerName: string;
+  sellerAddress: string;
+}
+
+export function checkoutExpiredEmailHtml(data: CheckoutExpiredEmailData): string {
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetési munkamenet lejárt</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      A korábban megkezdett fizetési folyamat 30 percen belül nem fejeződött be, ezért automatikusan lejárt.
+      <strong>Semmilyen összeg nem lett levonva</strong> a bankszámlájáról.
+    </p>
+
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6;">
+      Ha szeretné elkészíttetni a levelet, indítson új rendelést — az összes megadott adatát újra be kell tölteni.
+    </p>
+
+    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél készítése</a>
+  `;
+  return baseHtml("A fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
+}
+
+export interface LetterReadyEmailData {
+  customerName: string;
+  letter: string;
+  orderUrl: string;
+  sellerName: string;
+  sellerAddress: string;
+}
+
+export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
+  // Escape the letter text for safe HTML embedding
+  const escapedLetter = data.letter
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Elkészült a levele!</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+      Az Ön megrendelése alapján elkészítettük a kért levelet. Az alábbiakban olvashatja a teljes szöveget.
+    </p>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:20px;margin-bottom:24px;">
+      <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.7;color:#10233f;white-space:pre-wrap;word-break:break-word;">${escapedLetter}</pre>
+    </div>
+
+    <p style="margin:0 0 16px;font-size:13px;color:#64748b;line-height:1.6;">
+      A levelet kimásolhatja vagy letöltheti a rendelési oldalon is.
+    </p>
+
+    <a href="${data.orderUrl}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
+  `;
+  return baseHtml("Elkészült a levele – Ügyfélközpont", body, data.sellerName, data.sellerAddress);
 }

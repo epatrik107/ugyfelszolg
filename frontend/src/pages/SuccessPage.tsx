@@ -27,15 +27,20 @@ export function SuccessPage() {
     }
   }, [queryToken, searchParams, setSearchParams, storageKey]);
 
+  const MAX_POLL_ATTEMPTS = 75; // ~5 minutes at 4s interval
+  const pollCountRef = useRef(0);
+
   useEffect(() => {
     if (!publicId || !token) {
       return;
     }
     const activePublicId = publicId;
     const activeToken = token;
+    pollCountRef.current = 0;
 
     let active = true;
     async function poll() {
+      pollCountRef.current += 1;
       try {
         const payload = await getOrderResult(activePublicId, activeToken);
         if (!active) return;
@@ -44,9 +49,15 @@ export function SuccessPage() {
         const isTerminal =
           payload.aiStatus === "completed" ||
           payload.aiStatus === "failed" ||
-          payload.aiStatus === "failed_review";
-        if (isTerminal) {
+          payload.aiStatus === "failed_review" ||
+          payload.paymentStatus === "refunded";
+        if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
           window.clearInterval(intervalRef.current);
+          if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
+            setError(
+              "A generálás a vártnál hosszabb ideig tart. Kérjük, töltse újra az oldalt néhány perc múlva, vagy vegye fel velünk a kapcsolatot.",
+            );
+          }
         }
       } catch (pollError) {
         if (active) {
