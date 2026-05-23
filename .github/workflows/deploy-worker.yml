@@ -61,6 +61,22 @@ jobs:
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
           DEPLOY_ENV: ${{ vars.DEPLOY_ENV }}
       - name: Create Worker config
+        env:
+          D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+          KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
+          WORKER_NAME: ${{ vars.WORKER_NAME }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          DEMO_MODE: ${{ vars.DEMO_MODE }}
+          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
+          SELLER_NAME: ${{ vars.SELLER_NAME }}
+          SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
+          SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
         run: |
           node <<'NODE'
           const fs = require("fs");
