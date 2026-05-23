@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Env } from "./types";
+import { logEvent } from "./logger";
 
 export type RateLimitScope =
   | "create-checkout-ip"
@@ -45,6 +46,10 @@ export async function isRateLimited(
   now = new Date(),
 ) {
   if (!env.RATE_LIMIT_KV) {
+    // KV binding missing — log for monitoring but do not silently block all traffic.
+    // The deploy workflow (P0-4) ensures KV is configured for production deployments,
+    // so this path should only occur in dev/staging environments without KV.
+    logEvent("rate_limit_kv_missing", { scope, identifier });
     return false;
   }
 
@@ -53,6 +58,7 @@ export async function isRateLimited(
   const current = Number(await env.RATE_LIMIT_KV.get(key)) || 0;
 
   if (current >= rule.limit) {
+    logEvent("rate_limited", { scope, identifier });
     return true;
   }
 

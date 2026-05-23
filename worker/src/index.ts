@@ -40,9 +40,15 @@ app.post("/api/business/customer-portal-session", createBusinessPortalSessionRou
 app.get("/api/health", async (c) => {
   try {
     await c.env.DB.prepare("SELECT 1").run();
-    return c.json({ status: "ok", ts: new Date().toISOString() });
+    const kvOk = Boolean(c.env.RATE_LIMIT_KV);
+    const status = kvOk ? "ok" : "degraded";
+    return c.json({
+      status,
+      ts: new Date().toISOString(),
+      checks: { db: "ok", rateLimitKv: kvOk ? "ok" : "missing" },
+    }, kvOk ? 200 : 503);
   } catch {
-    return c.json({ status: "degraded" }, 503);
+    return c.json({ status: "degraded", checks: { db: "error" } }, 503);
   }
 });
 app.notFound((c) => errorJson(c, "NOT_FOUND", "Nem található.", 404));
