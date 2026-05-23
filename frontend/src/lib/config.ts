@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "https://api.ügyfelszolgalat.hu";
+  import.meta.env.VITE_API_BASE_URL || "https://ugyfelkozpont-api.epatrik107.workers.dev";
 export const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || "";
 export const SITE_URL =
   import.meta.env.VITE_SITE_URL || "https://ügyfelszolgalat.hu";

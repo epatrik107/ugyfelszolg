@@ -26,13 +26,14 @@ jobs:
         run: |
           node <<'NODE'
           const errors = [];
+          const defaultAllowedOrigins = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io";
 
           const d1Id = (process.env.CLOUDFLARE_D1_DATABASE_ID || "").trim();
           const kvId = (process.env.CLOUDFLARE_KV_NAMESPACE_ID || "").trim();
-          const demoMode = (process.env.DEMO_MODE || "").trim();
-          const paymentsEnabled = (process.env.PAYMENTS_ENABLED || "").trim();
-          const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").trim();
-          const deployEnv = (process.env.DEPLOY_ENV || "production").trim();
+          const deployEnv = (process.env.DEPLOY_ENV || "demo").trim();
+          const demoMode = (process.env.DEMO_MODE || (deployEnv === "production" ? "false" : "true")).trim();
+          const paymentsEnabled = (process.env.PAYMENTS_ENABLED || (deployEnv === "production" ? "true" : "false")).trim();
+          const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultAllowedOrigins).trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
 
@@ -85,12 +86,17 @@ jobs:
           SELLER_NAME: ${{ vars.SELLER_NAME }}
           SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
           SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
+          DEPLOY_ENV: ${{ vars.DEPLOY_ENV }}
         run: |
           node <<'NODE'
           const fs = require("fs");
 
           const value = (name, fallback) => (process.env[name] || fallback).trim();
           const tomlString = (input) => JSON.stringify(input);
+          const deployEnv = value("DEPLOY_ENV", "demo");
+          const defaultAllowedOrigins = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io";
+          const defaultDemoMode = deployEnv === "production" ? "false" : "true";
+          const defaultPaymentsEnabled = deployEnv === "production" ? "true" : "false";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
@@ -112,11 +118,11 @@ jobs:
           GEMINI_MODEL = ${tomlString(value("GEMINI_MODEL", "gemini-3.1-flash-lite"))}
           GEMINI_MODEL_PREMIUM = ${tomlString(value("GEMINI_MODEL_PREMIUM", "gemini-3.5-flash"))}
           GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
-          SITE_URL = ${tomlString(value("SITE_URL", "https://ügyfelszolgalat.hu"))}
-          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", ""))}
-          EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@ügyfelszolgalat.hu>"))}
-          DEMO_MODE = ${tomlString(value("DEMO_MODE", "false"))}
-          PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "true"))}
+          SITE_URL = ${tomlString(value("SITE_URL", "https://xn--gyfelszolgalat-fsb.hu"))}
+          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", defaultAllowedOrigins))}
+          EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"))}
+          DEMO_MODE = ${tomlString(value("DEMO_MODE", defaultDemoMode))}
+          PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", defaultPaymentsEnabled))}
           SELLER_NAME = ${tomlString(value("SELLER_NAME", "Test"))}
           SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", "Test"))}
           SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", "00000XXXXXX"))}

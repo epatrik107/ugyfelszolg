@@ -7,6 +7,7 @@ import { getPackage } from "../src/lib/packages";
 import { hasAvailableQuota } from "../src/lib/db";
 import { RATE_LIMITS } from "../src/lib/rateLimit";
 import { reviewLetterWithRules } from "../src/lib/review";
+import { isAllowedOrigin } from "../src/lib/security";
 import { verifyStripeWebhook } from "../src/lib/stripe";
 import type { Env, OrderRow } from "../src/lib/types";
 import { regenerationSchema } from "../src/lib/validation";
@@ -85,6 +86,20 @@ describe("token comparison", () => {
     await expect(hashToken("token", "secret-a")).resolves.not.toBe(
       await hashToken("token", "secret-b"),
     );
+  });
+});
+
+describe("cors origin matching", () => {
+  const env = {
+    ALLOWED_ORIGINS: "https://ügyfelszolgalat.hu,https://epatrik107.github.io",
+  } as unknown as Env;
+
+  it("matches IDN domains in browser origin format", () => {
+    expect(isAllowedOrigin("https://xn--gyfelszolgalat-fsb.hu", env)).toBe(true);
+  });
+
+  it("rejects origins outside the allowlist", () => {
+    expect(isAllowedOrigin("https://example.com", env)).toBe(false);
   });
 });
 

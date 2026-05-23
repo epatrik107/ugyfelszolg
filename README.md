@@ -423,6 +423,7 @@ Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
 
 - `CLOUDFLARE_D1_DATABASE_ID`
 - `CLOUDFLARE_KV_NAMESPACE_ID`
+- `DEPLOY_ENV=demo`
 - `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`
 - `VITE_DEMO_MODE=true`
 - `DEMO_MODE=true`
@@ -430,7 +431,7 @@ Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
 - `SITE_URL=https://xn--gyfelszolgalat-fsb.hu`
 - `ALLOWED_ORIGINS=https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io`
 
-A workflow a hiányzó `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező.
+A workflow a hiányzó `DEPLOY_ENV`, `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező. Ha a felületen `Load failed` jelenik meg a fizetés előtti összegzés után, ellenőrizze, hogy az aktuális frontend origin benne van-e az `ALLOWED_ORIGINS` listában, majd futtassa újra a Worker deployt.
 
 Ha a Worker deploy ezt írja: `binding DB of type d1 must have a valid database_id specified`, akkor a `CLOUDFLARE_D1_DATABASE_ID` GitHub Variable hiányzik vagy nem a D1 UUID van benne. Az érték a `npx wrangler d1 create ugyfelkozpont` kimenetében található `database_id`, nem a `ugyfelkozpont` adatbázisnév.
 

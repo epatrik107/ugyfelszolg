@@ -2,10 +2,21 @@ import type { Context, Next } from "hono";
 import { errorJson } from "./response";
 import type { Env } from "./types";
 
+function normalizeOrigin(origin: string) {
+  const trimmed = origin.trim();
+  if (!trimmed) return "";
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
 function parseAllowedOrigins(rawValue: string) {
   return rawValue
     .split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => normalizeOrigin(origin))
     .filter(Boolean);
 }
 
@@ -13,7 +24,7 @@ export function isAllowedOrigin(origin: string | null, env: Env) {
   if (!origin) {
     return false;
   }
-  return parseAllowedOrigins(env.ALLOWED_ORIGINS).includes(origin);
+  return parseAllowedOrigins(env.ALLOWED_ORIGINS).includes(normalizeOrigin(origin));
 }
 
 export function addSecurityHeaders(response: Response) {

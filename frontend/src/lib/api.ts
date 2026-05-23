@@ -10,14 +10,21 @@ async function request<T>(
   init: RequestInit = {},
   token?: string,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch {
+    throw new Error(
+      "Nem sikerült elérni a szervert. Kérjük, frissítse az oldalt, majd próbálja újra.",
+    );
+  }
 
   const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
   if (!response.ok) {
