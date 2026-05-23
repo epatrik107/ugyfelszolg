@@ -13,7 +13,7 @@ Az **Ügyfélközpont** egy magyar nyelvű, fizetős levélíró MVP. A felhaszn
 - Cloudflare D1 adatbázis
 - opcionális Cloudflare KV rate limithez
 - Stripe Checkout fizetés
-- OpenAI-alapú levélgenerálás és hibrid minőségellenőrzés
+- Gemini (Google) alapú levélgenerálás és hibrid minőségellenőrzés
 
 ## 2. Architektúra
 
@@ -24,7 +24,7 @@ flowchart LR
   W --> D1["Cloudflare D1"]
   W --> KV["Cloudflare KV"]
   W --> S["Stripe Checkout + Webhook"]
-  W --> O["OpenAI API"]
+  W --> O["Gemini API (Google)"]
   W --> R["Resend"]
 ```
 
@@ -48,7 +48,7 @@ A böngészők ezt a felhasználónak megjeleníthetik ékezetes formában, de a
 
 ## 3. Miért nem fut backend GitHub Pages-en?
 
-A GitHub Pages statikus hosting. Nem alkalmas szerveroldali API-kulcsok, Stripe webhook-verifikáció, D1-hozzáférés vagy OpenAI-kulcs biztonságos kezelésére. Emiatt:
+A GitHub Pages statikus hosting. Nem alkalmas szerveroldali API-kulcsok, Stripe webhook-verifikáció, D1-hozzáférés vagy Gemini API-kulcs biztonságos kezelésére. Emiatt:
 
 - frontend: GitHub Pages
 - backend: Cloudflare Workers
@@ -140,22 +140,22 @@ A Stripe Checkout képes Apple Pay és Google Pay megjelenítésére, ha:
 - a domain ellenőrzött
 - a böngésző, eszköz és felhasználói konfiguráció támogatja
 
-## 13. OpenAI API kulcs beállítás
+## 13. Gemini API kulcs beállítás
 
 ```bash
-npx wrangler secret put OPENAI_API_KEY --config worker/wrangler.toml
+npx wrangler secret put GEMINI_API_KEY --config worker/wrangler.toml
 ```
 
 Alap modell:
 
 ```text
-OPENAI_MODEL=gpt-5-nano
+GEMINI_MODEL=gemini-2.0-flash-lite
 ```
 
 Opcionális review modell:
 
 ```text
-OPENAI_REVIEW_MODEL=gpt-5-nano
+GEMINI_REVIEW_MODEL=gemini-2.0-flash-lite
 ```
 
 ## 14. Turnstile beállítás
@@ -184,7 +184,7 @@ Kötelező:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
 - `TURNSTILE_SECRET_KEY`
 - `TOKEN_HASH_SECRET`
 - `RESEND_API_KEY`
@@ -223,9 +223,9 @@ cp worker/wrangler.toml.example worker/wrangler.toml
 Hozza létre a `worker/.dev.vars` fájlt. Ez gitignore alatt van, ide kerülnek a helyi secret értékek:
 
 ```env
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-5-nano
-OPENAI_REVIEW_MODEL=gpt-5-nano
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-2.0-flash-lite
+GEMINI_REVIEW_MODEL=gemini-2.0-flash-lite
 TOKEN_HASH_SECRET=hosszu-random-titok
 SITE_URL=http://127.0.0.1:5173
 ALLOWED_ORIGINS=http://127.0.0.1:5173
@@ -334,8 +334,8 @@ A demóhoz ezek legyenek benne:
 
 ```toml
 [vars]
-OPENAI_MODEL = "gpt-5-nano"
-OPENAI_REVIEW_MODEL = "gpt-5-nano"
+GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_REVIEW_MODEL = "gemini-2.0-flash-lite"
 SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
 EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
@@ -350,7 +350,7 @@ Ne tegyen API kulcsot a `wrangler.toml` fájlba.
 Demóhoz minimum:
 
 ```bash
-npx wrangler secret put OPENAI_API_KEY --config worker/wrangler.toml
+npx wrangler secret put GEMINI_API_KEY --config worker/wrangler.toml
 npx wrangler secret put TOKEN_HASH_SECRET --config worker/wrangler.toml
 npx wrangler secret put DEMO_ACCESS_CODE --config worker/wrangler.toml
 ```
@@ -405,7 +405,7 @@ Ne tegye nyilvánossá a demó hozzáférési kódot. Attól, hogy valaki nem tu
 
 ## API kulcsok és szolgáltatások
 
-- **OpenAI API key:** OpenAI Platform projektből kell létrehozni. Csak Worker secretbe kerülhet: `OPENAI_API_KEY`.
+- **Gemini API key:** Google AI Studio-ból (aistudio.google.com) kell létrehozni. Csak Worker secretbe kerülhet: `GEMINI_API_KEY`.
 - **Cloudflare API token:** GitHub Actions deployhoz kell. Jogosultság: Workers deploy, D1/KV hozzáférés az adott accounton.
 - **Cloudflare Account ID:** Cloudflare dashboardból másolható.
 - **CLOUDFLARE_D1_DATABASE_ID:** GitHub Variable, a `npx wrangler d1 create ugyfelkozpont` parancs kimenetéből.
@@ -452,7 +452,7 @@ A workflow a hiányzó `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_
 - [ ] Saját domain HTTPS alatt fut
 - [ ] API CORS csak saját domainre enged
 - [ ] Turnstile működik
-- [ ] OpenAI kulcs csak Worker secretben van
+- [ ] GEMINI_API_KEY csak Worker secretben van
 - [ ] Stripe secret csak Worker secretben van
 - [ ] frontend bundle nem tartalmaz secretet
 - [ ] fizetés nélkül nem lehet generálni

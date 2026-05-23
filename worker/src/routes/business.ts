@@ -27,7 +27,7 @@ import {
   exchangeMagicLinkSchema,
 } from "../lib/validation";
 import { beginGeneration, getOrderById } from "../lib/db";
-import { generateLetterForPaidOrder } from "../lib/openai";
+import { generateLetterForPaidOrder } from "../lib/ai";
 
 const MAGIC_LINK_EXPIRY_MS = 30 * 60 * 1000;
 

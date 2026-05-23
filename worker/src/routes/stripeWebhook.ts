@@ -13,7 +13,7 @@ import { sendBusinessMagicLink, sendCheckoutExpiredEmail, sendInvoiceEmail, send
 import { generateOpaqueToken, hashToken } from "../lib/hash";
 import { createInvoice } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
-import { generateLetterForPaidOrder } from "../lib/openai";
+import { generateLetterForPaidOrder } from "../lib/ai";
 import { canStartGeneration } from "../lib/orderState";
 import { PACKAGES, getPackage } from "../lib/packages";
 import {

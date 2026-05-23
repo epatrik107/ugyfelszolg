@@ -3,7 +3,7 @@ import { attachStripeSession, beginGeneration, getOrderById, insertOrder } from 
 import { constantTimeEqual, generateOpaqueToken, hashToken } from "../lib/hash";
 import { checkAiServiceAvailable } from "../lib/health";
 import { logEvent } from "../lib/logger";
-import { generateLetterForPaidOrder } from "../lib/openai";
+import { generateLetterForPaidOrder } from "../lib/ai";
 import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { noStoreJson } from "../lib/security";

@@ -23,8 +23,8 @@ export function PrivacyPage() {
         text="A bankkártyás fizetések feldolgozását a Stripe végzi; a kártyaadatok nem kerülnek az Ügyfélszolgálat szervereire."
       />
       <ContentBlock
-        title="OpenAI API használata"
-        text="A levélgeneráláshoz az OpenAI API kerül igénybevételre a megadott szöveges adatok alapján."
+        title="Gemini API (Google) használata"
+        text="A levélgeneráláshoz a Google Gemini API kerül igénybevételre a megadott szöveges adatok alapján. A megadott adatok a Google generatív AI infrastruktúráján kerülnek feldolgozásra."
       />
       <ContentBlock
         title="Cloudflare használata"

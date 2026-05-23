@@ -10,7 +10,7 @@ import { reviewLetterWithRules } from "../src/lib/review";
 import { verifyStripeWebhook } from "../src/lib/stripe";
 import type { Env, OrderRow } from "../src/lib/types";
 import { regenerationSchema } from "../src/lib/validation";
-import { buildUserPrompt, validateAiOutput } from "../src/lib/openai";
+import { buildUserPrompt, validateAiOutput } from "../src/lib/ai";
 
 async function hmacSha256Hex(secret: string, payload: string) {
   const key = await crypto.subtle.importKey(

@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { beginRegeneration, getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
-import { generateLetterForPaidOrder } from "../lib/openai";
+import { generateLetterForPaidOrder } from "../lib/ai";
 import { canRequestRegeneration, MAX_REGENERATIONS } from "../lib/orderState";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { noStoreJson } from "../lib/security";
