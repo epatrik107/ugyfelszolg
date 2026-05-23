@@ -432,6 +432,8 @@ Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
 
 A workflow a hiányzó `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező.
 
+Ha a Worker deploy ezt írja: `binding DB of type d1 must have a valid database_id specified`, akkor a `CLOUDFLARE_D1_DATABASE_ID` GitHub Variable hiányzik vagy nem a D1 UUID van benne. Az érték a `npx wrangler d1 create ugyfelkozpont` kimenetében található `database_id`, nem a `ugyfelkozpont` adatbázisnév.
+
 ## 19. Tesztfizetés Stripe test módban
 
 1. Használjon test kulcsokat.

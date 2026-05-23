@@ -27,15 +27,23 @@ jobs:
           node <<'NODE'
           const errors = [];
 
-          const d1Id = process.env.CLOUDFLARE_D1_DATABASE_ID || "";
-          const kvId = process.env.CLOUDFLARE_KV_NAMESPACE_ID || "";
-          const demoMode = process.env.DEMO_MODE || "";
-          const paymentsEnabled = process.env.PAYMENTS_ENABLED || "";
-          const allowedOrigins = process.env.ALLOWED_ORIGINS || "";
-          const deployEnv = process.env.DEPLOY_ENV || "production";
+          const d1Id = (process.env.CLOUDFLARE_D1_DATABASE_ID || "").trim();
+          const kvId = (process.env.CLOUDFLARE_KV_NAMESPACE_ID || "").trim();
+          const demoMode = (process.env.DEMO_MODE || "").trim();
+          const paymentsEnabled = (process.env.PAYMENTS_ENABLED || "").trim();
+          const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").trim();
+          const deployEnv = (process.env.DEPLOY_ENV || "production").trim();
+          const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
 
           if (!d1Id) errors.push("CLOUDFLARE_D1_DATABASE_ID is required but not set.");
+          else if (!d1DatabaseIdPattern.test(d1Id)) {
+            errors.push("CLOUDFLARE_D1_DATABASE_ID must be the D1 database UUID, not the database name.");
+          }
           if (!kvId) errors.push("CLOUDFLARE_KV_NAMESPACE_ID is required but not set.");
+          else if (!kvNamespaceIdPattern.test(kvId)) {
+            errors.push("CLOUDFLARE_KV_NAMESPACE_ID must be the KV namespace ID from Wrangler.");
+          }
 
           if (deployEnv === "production") {
             if (demoMode === "true") errors.push("DEMO_MODE=true is not allowed in production.");
@@ -81,7 +89,7 @@ jobs:
           node <<'NODE'
           const fs = require("fs");
 
-          const value = (name, fallback) => process.env[name] || fallback;
+          const value = (name, fallback) => (process.env[name] || fallback).trim();
           const tomlString = (input) => JSON.stringify(input);
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
@@ -118,6 +126,50 @@ jobs:
           `;
 
           fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
+          NODE
+      - name: Verify Cloudflare D1 binding
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const d1Id = (process.env.D1_DATABASE_ID || "").trim();
+          const config = fs.readFileSync("worker/wrangler.toml", "utf8");
+
+          if (!config.includes(`database_id = "${d1Id}"`)) {
+            console.error("Generated worker/wrangler.toml does not contain the configured D1 database_id.");
+            process.exit(1);
+          }
+
+          console.log(`Generated Worker config contains D1 database_id ending in ${d1Id.slice(-6)}.`);
+          NODE
+
+          npx wrangler d1 list --json --config worker/wrangler.toml > /tmp/d1-databases.json
+
+          node <<'NODE'
+          const fs = require("fs");
+
+          const d1Id = (process.env.D1_DATABASE_ID || "").trim();
+          const payload = JSON.parse(fs.readFileSync("/tmp/d1-databases.json", "utf8"));
+          const databases = Array.isArray(payload) ? payload : payload.result || [];
+          const databaseIdFor = (db) => db.uuid || db.id || db.database_id || "";
+          const match = databases.find((db) => databaseIdFor(db) === d1Id);
+
+          if (!match) {
+            const visible = databases
+              .map((db) => `${db.name || "(unnamed)"} (...${databaseIdFor(db).slice(-6) || "no-id"})`)
+              .join(", ") || "none";
+
+            console.error(`Cloudflare account/token cannot see D1 database_id ending in ${d1Id.slice(-6)}.`);
+            console.error(`Visible D1 databases for this account/token: ${visible}`);
+            console.error("Check that CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN belong to the same account as this D1 database.");
+            process.exit(1);
+          }
+
+          console.log(`Cloudflare account/token can see D1 database ${match.name || "(unnamed)"} ending in ${d1Id.slice(-6)}.`);
           NODE
       - name: Sync Worker secrets
         run: |
