@@ -25,6 +25,8 @@ export interface OrderResult {
     | "failed_review";
   generationCount: number;
   generatedLetter?: string;
+  letterHistory?: string[];
+  letterEmailSent?: boolean;
   selectedPackage: PackageId;
   createdAt: string;
 }

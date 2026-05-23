@@ -5,7 +5,7 @@ import {
   markOrderPaymentStatus,
   releaseReservedQuota,
 } from "./db";
-import { sendLetterReadyEmail, sendRefundEmail } from "./email";
+import { sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
 import { reviewLetterWithRules } from "./review";
@@ -261,23 +261,11 @@ export async function generateLetterForPaidOrder(
 
       if (ruleReview.ok) {
         const safeLetter = validateAiOutput(letter);
-        await completeGeneration(env, order.id, safeLetter);
+        await completeGeneration(env, order.id, safeLetter, order.generated_letter);
         if (order.subscription_id) {
           await commitReservedQuota(env, order.subscription_id);
         }
         logEvent("ai_generation_completed", { orderId: order.id });
-
-        // Deliver the letter by email so the customer has it even if they closed the browser
-        if (env.RESEND_API_KEY && order.result_token) {
-          try {
-            await sendLetterReadyEmail(env, order, safeLetter, order.result_token);
-          } catch (emailErr) {
-            logEvent("letter_email_failed", {
-              orderId: order.id,
-              reason: emailErr instanceof Error ? emailErr.message : "unknown",
-            });
-          }
-        }
         return;
       }
 

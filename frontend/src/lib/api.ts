@@ -50,6 +50,14 @@ export function requestRegeneration(publicId: string, token: string, feedback: s
   );
 }
 
+export function sendLetterByEmail(publicId: string, token: string) {
+  return request<{ ok: true }>(
+    `/api/orders/${publicId}/send-letter`,
+    { method: "POST" },
+    token,
+  );
+}
+
 export function sendContactMessage(values: {
   name: string;
   email: string;

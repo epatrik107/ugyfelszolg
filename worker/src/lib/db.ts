@@ -203,19 +203,38 @@ export async function completeGeneration(
   env: Env,
   orderId: string,
   generatedLetter: string,
+  previousLetter?: string | null,
 ) {
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    `UPDATE orders
-     SET ai_status = 'completed',
-         generated_letter = ?,
-         generated_at = ?,
-         updated_at = ?,
-         error_message = NULL
-     WHERE id = ?`,
-  )
-    .bind(generatedLetter, now, now, orderId)
-    .run();
+  if (previousLetter) {
+    const row = await env.DB.prepare(
+      "SELECT letter_history FROM orders WHERE id = ?",
+    ).bind(orderId).first<{ letter_history: string | null }>();
+    const existing: string[] = row?.letter_history
+      ? (JSON.parse(row.letter_history) as string[])
+      : [];
+    const newHistory = JSON.stringify([...existing, previousLetter]);
+    await env.DB.prepare(
+      `UPDATE orders
+       SET ai_status = 'completed',
+           generated_letter = ?,
+           letter_history = ?,
+           generated_at = ?,
+           updated_at = ?,
+           error_message = NULL
+       WHERE id = ?`,
+    ).bind(generatedLetter, newHistory, now, now, orderId).run();
+  } else {
+    await env.DB.prepare(
+      `UPDATE orders
+       SET ai_status = 'completed',
+           generated_letter = ?,
+           generated_at = ?,
+           updated_at = ?,
+           error_message = NULL
+       WHERE id = ?`,
+    ).bind(generatedLetter, now, now, orderId).run();
+  }
 }
 
 export async function failGeneration(
@@ -549,6 +568,12 @@ export async function getCurrentUsage(env: Env, subscriptionId: string) {
   )
     .bind(subscriptionId)
     .first<UsageRow>();
+}
+
+export async function markLetterEmailSent(env: Env, orderId: string) {
+  await env.DB.prepare(
+    "UPDATE orders SET letter_email_sent = 1, updated_at = ? WHERE id = ?",
+  ).bind(new Date().toISOString(), orderId).run();
 }
 
 export async function cleanupExpiredData(env: Env) {

@@ -1,8 +1,8 @@
-import { Copy, Download, LoaderCircle, RefreshCw } from "lucide-react";
+import { Copy, Download, LoaderCircle, Mail, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
-import { getOrderResult, requestRegeneration } from "../lib/api";
+import { getOrderResult, requestRegeneration, sendLetterByEmail } from "../lib/api";
 import { MAX_REGENERATIONS } from "../lib/constants";
 import {
   getRemainingRegenerationMessage,
@@ -24,6 +24,10 @@ export function SuccessPage() {
   const [regenBusy, setRegenBusy] = useState(false);
   const [regenFeedback, setRegenFeedback] = useState("");
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [sendEmailBusy, setSendEmailBusy] = useState(false);
+  const [sendEmailDone, setSendEmailDone] = useState(false);
+  const [sendEmailError, setSendEmailError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -81,6 +85,26 @@ export function SuccessPage() {
       window.clearInterval(intervalRef.current);
     };
   }, [publicId, token]);
+
+  useEffect(() => {
+    if (result?.letterEmailSent) {
+      setSendEmailDone(true);
+    }
+  }, [result?.letterEmailSent]);
+
+  async function handleSendEmail() {
+    if (!publicId || !token) return;
+    setSendEmailBusy(true);
+    setSendEmailError(null);
+    try {
+      await sendLetterByEmail(publicId, token);
+      setSendEmailDone(true);
+    } catch (err) {
+      setSendEmailError(err instanceof Error ? err.message : "Az email küldése nem sikerült.");
+    } finally {
+      setSendEmailBusy(false);
+    }
+  }
 
   function copyLetter() {
     if (!result?.generatedLetter) {
@@ -201,7 +225,7 @@ export function SuccessPage() {
           <div>
             <h2 className="text-2xl font-semibold">Elkészült a levele</h2>
             <p className="mt-2 text-slate-600">
-              Az alábbi szöveget kimásolhatja vagy letöltheti.
+              Az alábbi szöveget kimásolhatja, letöltheti, vagy elküldheti emailben.
             </p>
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50">
@@ -222,6 +246,58 @@ export function SuccessPage() {
               Új levél készítése
             </Link>
           </div>
+
+          {/* Send by email */}
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+            <p className="text-sm font-medium text-emerald-900">📧 Tetszik a levél? Küldd el emailben!</p>
+            <p className="text-sm text-emerald-700">
+              Ha elégedett a levéllel, kattints a gombra, és elküldjük az email-címedre.
+            </p>
+            {sendEmailError && (
+              <p className="text-sm text-rose-700">{sendEmailError}</p>
+            )}
+            <button
+              className="button-primary"
+              disabled={sendEmailBusy || sendEmailDone}
+              onClick={() => void handleSendEmail()}
+            >
+              {sendEmailBusy ? (
+                <LoaderCircle className="animate-spin" size={18} />
+              ) : (
+                <Mail size={18} />
+              )}
+              {sendEmailDone ? "Email elküldve ✓" : sendEmailBusy ? "Küldés..." : "Levél elküldése emailben"}
+            </button>
+            {sendEmailDone && (
+              <p className="text-sm text-emerald-700">
+                Elküldtük a levelet a megadott email-címre. Ha nem találja, nézze meg a Spam/Levélszemét mappát is.
+              </p>
+            )}
+          </div>
+
+          {/* Previous versions */}
+          {(result.letterHistory?.length ?? 0) > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <button
+                className="flex w-full items-center justify-between text-sm font-medium text-slate-700"
+                onClick={() => setShowHistory((v) => !v)}
+                type="button"
+              >
+                <span>Korábbi változatok ({result.letterHistory!.length} db)</span>
+                <span className="text-slate-400">{showHistory ? "▲ Elrejtés" : "▼ Megtekintés"}</span>
+              </button>
+              {showHistory && result.letterHistory!.map((version, idx) => (
+                <div key={idx} className="space-y-1">
+                  <p className="text-xs font-medium text-slate-500">{idx + 1}. változat</p>
+                  <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+                    <pre className="whitespace-pre-wrap p-4 text-sm leading-7 text-slate-600">
+                      {version}
+                    </pre>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Regeneration section */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">

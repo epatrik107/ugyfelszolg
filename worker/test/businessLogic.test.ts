@@ -220,6 +220,8 @@ describe("regeneration feedback", () => {
       subscription_id: null,
       billing_source: "checkout",
       result_token: "token",
+      letter_history: null,
+      letter_email_sent: 0,
     } satisfies OrderRow;
 
     const feedback = "Legyen rövidebb és barátságosabb.";
