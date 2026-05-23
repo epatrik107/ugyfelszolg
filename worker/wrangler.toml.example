@@ -8,6 +8,7 @@ preview_urls = false
 binding = "DB"
 database_name = "ugyfelkozpont"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
