@@ -36,6 +36,31 @@ describe("packages", () => {
     expect(getPackage("premium").price).toBe(4990);
     expect(getPackage("business").price).toBe(19900);
   });
+
+  it("basic package has no premium model and 1 max regeneration", () => {
+    const basic = getPackage("basic");
+    expect(basic.capabilities.isPremiumModel).toBe(false);
+    expect(basic.capabilities.maxRegenerations).toBe(1);
+    expect(basic.capabilities.hasAlternatives).toBe(false);
+    expect(basic.capabilities.hasUsageTips).toBe(false);
+  });
+
+  it("premium package uses premium model and allows up to 3 regenerations", () => {
+    const premium = getPackage("premium");
+    expect(premium.capabilities.isPremiumModel).toBe(true);
+    expect(premium.capabilities.maxRegenerations).toBe(3);
+    expect(premium.capabilities.hasAlternatives).toBe(true);
+    expect(premium.capabilities.hasUsageTips).toBe(true);
+  });
+
+  it("business package has quota per period and premium model", () => {
+    const business = getPackage("business");
+    expect(business.capabilities.isPremiumModel).toBe(true);
+    expect(business.capabilities.maxRegenerations).toBe(3);
+    // quotaPerPeriod exists only on business — cast to access it
+    const businessWithQuota = business as typeof business & { quotaPerPeriod: number };
+    expect(businessWithQuota.quotaPerPeriod).toBe(10);
+  });
 });
 
 describe("payment transitions", () => {
@@ -134,19 +159,27 @@ describe("generation gating", () => {
 });
 
 describe("regeneration gating", () => {
-  it("exports MAX_REGENERATIONS as 3", () => {
+  it("exports MAX_REGENERATIONS as 3 (default fallback)", () => {
     expect(MAX_REGENERATIONS).toBe(3);
   });
 
-  it("allows regeneration when paid+completed and generation_count is 1..MAX_REGENERATIONS", () => {
-    for (let count = 1; count <= MAX_REGENERATIONS; count++) {
+  it("allows regeneration when paid+completed and generation_count is within package limit", () => {
+    // basic package allows only 1 regeneration
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: 1 }, 1),
+    ).toBe(true);
+    expect(
+      canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: 2 }, 1),
+    ).toBe(false);
+    // premium/business allow 3
+    for (let count = 1; count <= 3; count++) {
       expect(
-        canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: count }),
+        canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: count }, 3),
       ).toBe(true);
     }
   });
 
-  it("blocks regeneration when generation_count exceeds MAX_REGENERATIONS", () => {
+  it("blocks regeneration when generation_count exceeds MAX_REGENERATIONS (default)", () => {
     expect(
       canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: MAX_REGENERATIONS + 1 }),
     ).toBe(false);

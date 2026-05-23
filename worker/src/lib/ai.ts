@@ -8,6 +8,7 @@ import {
 import { sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
+import { getPackage } from "./packages";
 import { reviewLetterWithRules } from "./review";
 import { createRefund } from "./stripe";
 import type { Env, OrderRow } from "./types";
@@ -200,8 +201,8 @@ export async function generateLetterForPaidOrder(
   order: OrderRow,
   regenerationFeedback?: string,
 ) {
-  const isPremium = order.selected_package === "premium" || order.selected_package === "business";
-  const model = isPremium
+  const pkg = getPackage(order.selected_package);
+  const model = pkg.capabilities.isPremiumModel
     ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-3.5-flash")
     : (env.GEMINI_MODEL || "gemini-3.1-flash-lite");
 

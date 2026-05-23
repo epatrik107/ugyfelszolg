@@ -3,7 +3,8 @@ import { beginRegeneration, getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/ai";
-import { canRequestRegeneration, MAX_REGENERATIONS } from "../lib/orderState";
+import { canRequestRegeneration } from "../lib/orderState";
+import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
@@ -45,7 +46,7 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
     return errorJson(c, "UNAUTHORIZED", "Érvénytelen azonosító.", 401);
   }
 
-  if (!canRequestRegeneration(order)) {
+  if (!canRequestRegeneration(order, getPackage(order.selected_package).capabilities.maxRegenerations)) {
     return errorJson(
       c,
       "CONFLICT",
@@ -54,7 +55,7 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
     );
   }
 
-  const started = await beginRegeneration(c.env, order.id, MAX_REGENERATIONS);
+  const started = await beginRegeneration(c.env, order.id, getPackage(order.selected_package).capabilities.maxRegenerations);
   if (!started) {
     return errorJson(c, "CONFLICT", "A módosítás elindítása nem sikerült. Kérjük, próbálja újra.", 409);
   }
