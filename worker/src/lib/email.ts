@@ -183,12 +183,13 @@ export async function sendCheckoutExpiredEmail(
 
 export async function sendLetterReadyEmail(
   env: Env,
-  order: Pick<OrderRow, "id" | "email" | "name" | "public_id">,
+  order: Pick<OrderRow, "id" | "email" | "name" | "public_id" | "generation_count">,
   letter: string,
   resultToken: string,
 ) {
   const { sellerName, sellerAddress } = getSellerInfo(env);
   const orderUrl = `${env.SITE_URL}/sikeres-fizetes?order=${order.public_id}&token=${resultToken}`;
+  const generationCount = order.generation_count ?? 1;
   const html = letterReadyEmailHtml({
     customerName: order.name,
     letter,
@@ -202,6 +203,6 @@ export async function sendLetterReadyEmail(
     order.email,
     "Elkészült a levele – Ügyfélközpont",
     html,
-    `letter-ready-${order.id}`,
+    `letter-ready-${order.id}-g${generationCount}`,
   );
 }
