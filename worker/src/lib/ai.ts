@@ -247,19 +247,25 @@ export async function generateLetterForPaidOrder(
       );
       const ruleReview = reviewLetterWithRules(letter);
 
-      // AI review is advisory: log issues but do not block on them
+      if (ruleReview.warnings.length > 0) {
+        logEvent("ai_review_warning", { orderId: order.id, attempt, warnings: ruleReview.warnings });
+      }
+
+      // AI review: blockers prevent completion; warnings are advisory
+      let aiBlockers: string[] = [];
       try {
         const aiReview = await reviewWithAi(env, letter);
         if (!aiReview.ok) {
-          logEvent("ai_review_advisory_issues", { orderId: order.id, attempt, issues: aiReview.issues });
+          aiBlockers = aiReview.issues;
+          logEvent("ai_review_blocker", { orderId: order.id, attempt, issues: aiReview.issues });
         }
-        reviewIssues = [...ruleReview.issues, ...aiReview.issues];
+        reviewIssues = [...ruleReview.blockers, ...aiBlockers];
       } catch (reviewErr) {
         logEvent("ai_review_error", { orderId: order.id, reason: reviewErr instanceof Error ? reviewErr.message : "unknown" });
-        reviewIssues = ruleReview.issues;
+        reviewIssues = ruleReview.blockers;
       }
 
-      if (ruleReview.ok) {
+      if (ruleReview.ok && aiBlockers.length === 0) {
         const safeLetter = validateAiOutput(letter);
         await completeGeneration(env, order.id, safeLetter, order.generated_letter);
         if (order.subscription_id) {
@@ -269,7 +275,7 @@ export async function generateLetterForPaidOrder(
         return;
       }
 
-      logEvent("ai_rule_review_failed", { orderId: order.id, attempt, issues: ruleReview.issues });
+      logEvent("ai_review_failed", { orderId: order.id, attempt, ruleBlockers: ruleReview.blockers, aiBlockers });
     }
 
     await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");

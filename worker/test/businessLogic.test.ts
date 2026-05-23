@@ -362,7 +362,7 @@ describe("AI output validation", () => {
 });
 
 describe("prompt injection resistance in review pipeline", () => {
-  it("flags a letter that contains aggressive patterns (injection side-effect)", () => {
+  it("warning patterns produce issues but do not block (ok=true)", () => {
     const injectedLetter = `Tárgy: Panasz
 
 Tisztelt Cím!
@@ -371,7 +371,9 @@ Kérem a megoldást. Fenyeget és megsemmisít mindent.
 
 Tisztelettel`;
     const result = reviewLetterWithRules(injectedLetter);
-    expect(result.ok).toBe(false);
+    // "fenyeget" and "megsemmisít" are warnings now, not blockers
+    expect(result.ok).toBe(true);
+    expect(result.warnings.length).toBeGreaterThan(0);
     expect(result.issues.length).toBeGreaterThan(0);
   });
 
