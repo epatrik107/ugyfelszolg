@@ -22,6 +22,44 @@ jobs:
       - run: npm ci
       - run: npm run typecheck --workspace worker
       - run: npm run test --workspace worker
+      - name: Validate production config
+        run: |
+          node <<'NODE'
+          const errors = [];
+
+          const d1Id = process.env.CLOUDFLARE_D1_DATABASE_ID || "";
+          const kvId = process.env.CLOUDFLARE_KV_NAMESPACE_ID || "";
+          const demoMode = process.env.DEMO_MODE || "";
+          const paymentsEnabled = process.env.PAYMENTS_ENABLED || "";
+          const allowedOrigins = process.env.ALLOWED_ORIGINS || "";
+          const deployEnv = process.env.DEPLOY_ENV || "production";
+
+          if (!d1Id) errors.push("CLOUDFLARE_D1_DATABASE_ID is required but not set.");
+          if (!kvId) errors.push("CLOUDFLARE_KV_NAMESPACE_ID is required but not set.");
+
+          if (deployEnv === "production") {
+            if (demoMode === "true") errors.push("DEMO_MODE=true is not allowed in production.");
+            if (paymentsEnabled === "false") errors.push("PAYMENTS_ENABLED=false is not allowed in production.");
+            if (allowedOrigins.split(",").some(o => o.trim().startsWith("http://"))) {
+              errors.push("ALLOWED_ORIGINS contains http:// origin(s). Only HTTPS is allowed in production.");
+            }
+          }
+
+          if (errors.length > 0) {
+            console.error("Production config validation failed:");
+            for (const e of errors) console.error("  ✗ " + e);
+            process.exit(1);
+          }
+
+          console.log("Production config validation passed (env=" + deployEnv + ").");
+          NODE
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
+          DEMO_MODE: ${{ vars.DEMO_MODE }}
+          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          DEPLOY_ENV: ${{ vars.DEPLOY_ENV }}
       - name: Create Worker config
         run: |
           node <<'NODE'
@@ -51,10 +89,10 @@ jobs:
           GEMINI_MODEL_PREMIUM = ${tomlString(value("GEMINI_MODEL_PREMIUM", "gemini-3.5-flash"))}
           GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
           SITE_URL = ${tomlString(value("SITE_URL", "https://ügyfelszolgalat.hu"))}
-          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", "https://ügyfelszolgalat.hu,https://epatrik107.github.io,http://xn--gyfelszolgalat-fsb.hu,https://xn--gyfelszolgalat-fsb.hu"))}
+          ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", ""))}
           EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@ügyfelszolgalat.hu>"))}
-          DEMO_MODE = ${tomlString(value("DEMO_MODE", "true"))}
-          PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "false"))}
+          DEMO_MODE = ${tomlString(value("DEMO_MODE", "false"))}
+          PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", "true"))}
           SELLER_NAME = ${tomlString(value("SELLER_NAME", "Test"))}
           SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", "Test"))}
           SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", "00000XXXXXX"))}
@@ -65,24 +103,6 @@ jobs:
 
           fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
           NODE
-      - name: Debug generated wrangler.toml
-        run: cat worker/wrangler.toml
-        env:
-          WORKER_NAME: ${{ vars.WORKER_NAME }}
-          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
-          D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
-          KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM }}
-          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}
-          SITE_URL: ${{ vars.SITE_URL }}
-          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
-          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
-          DEMO_MODE: ${{ vars.DEMO_MODE }}
-          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
-          SELLER_NAME: ${{ vars.SELLER_NAME }}
-          SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
-          SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
       - name: Sync Worker secrets
         run: |
           node <<'NODE'
