@@ -1,5 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { DEMO_MODE } from "../lib/config";
 import { letterTypes, tones } from "../lib/constants";
 import type { LetterFormValues, PackageId } from "../lib/types";
@@ -190,7 +191,16 @@ export function LetterForm({
           />
           <span>
             Elfogadom, hogy a szolgáltatás nem minősül jogi tanácsadásnak, az
-            elkészült szöveget saját felelősségemre használom fel.
+            elkészült szöveget saját felelősségemre használom fel. Elolvastam és
+            elfogadom az{" "}
+            <Link to="/aszf" className="underline hover:text-slate-900" target="_blank" rel="noopener noreferrer">
+              Általános Szerződési Feltételeket
+            </Link>{" "}
+            és az{" "}
+            <Link to="/adatkezeles" className="underline hover:text-slate-900" target="_blank" rel="noopener noreferrer">
+              Adatkezelési tájékoztatót
+            </Link>
+            .
           </span>
         </label>
         <LegalNotice />
