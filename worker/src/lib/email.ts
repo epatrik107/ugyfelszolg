@@ -10,7 +10,7 @@ import type { Env, InvoiceRow, OrderRow, SubscriptionRow } from "./types";
 
 function getSellerInfo(env: Env) {
   return {
-    sellerName: env.SELLER_NAME ?? "Ügyfélközpont",
+    sellerName: env.SELLER_NAME ?? "Ügyfélszolgálat",
     sellerAddress: env.SELLER_ADDRESS ?? "",
     sellerTaxNumber: env.SELLER_TAX_NUMBER ?? "",
   };
@@ -73,7 +73,7 @@ export async function sendBusinessMagicLink(
   await sendEmail(
     env,
     subscription.email,
-    "Ügyfélközpont céges hozzáférés",
+    "Ügyfélszolgálat céges hozzáférés",
     html,
     `magic-${subscription.id}-${token.slice(0, 12)}`,
   );
@@ -154,7 +154,7 @@ export async function sendPaymentFailedEmail(
   await sendEmail(
     env,
     order.email,
-    "A fizetés nem sikerült – Ügyfélközpont",
+    "A fizetés nem sikerült – Ügyfélszolgálat",
     html,
     `payment-failed-${order.id}`,
   );
@@ -175,7 +175,7 @@ export async function sendCheckoutExpiredEmail(
   await sendEmail(
     env,
     order.email,
-    "A fizetési munkamenet lejárt – Ügyfélközpont",
+    "A fizetési munkamenet lejárt – Ügyfélszolgálat",
     html,
     `expired-${order.id}`,
   );
@@ -201,7 +201,7 @@ export async function sendLetterReadyEmail(
   await sendEmail(
     env,
     order.email,
-    "Elkészült a levele – Ügyfélközpont",
+    "Elkészült a levele – Ügyfélszolgálat",
     html,
     `letter-ready-${order.id}-g${generationCount}`,
   );

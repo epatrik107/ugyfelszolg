@@ -30,7 +30,7 @@ export function HomePage() {
         <div className="relative mx-auto flex min-h-[560px] max-w-6xl items-center px-4 py-12">
           <div className="max-w-xl space-y-6">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-mint-600">
-              Ügyfélközpont
+              Ügyfélszolgálat
             </p>
             <h1 className="text-4xl font-semibold leading-tight md:text-5xl">
               Megírjuk Ön helyett a nehéz leveleket.

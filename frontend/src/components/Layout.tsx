@@ -22,7 +22,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-navy-900 text-white">
               <FileText size={20} />
             </span>
-            <span className="text-lg">Ügyfélközpont</span>
+            <span className="text-lg">Ügyfélszolgálat</span>
           </Link>
           <button
             className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 md:hidden"
@@ -70,7 +70,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="mt-16 border-t border-slate-200 bg-slate-50">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 md:grid-cols-[1fr_auto] md:items-end">
           <div className="space-y-3">
-            <div className="font-semibold">Ügyfélközpont</div>
+            <div className="font-semibold">Ügyfélszolgálat</div>
             <LegalNotice compact />
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-slate-600">

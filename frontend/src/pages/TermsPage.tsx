@@ -12,7 +12,7 @@ export function TermsPage() {
       <LegalNotice />
       <ContentBlock
         title="1. A szolgáltatás leírása"
-        text="Az Ügyfélközpont online, digitális levélkészítő szolgáltatás. A felhasználó által megadott információk alapján hivatalos hangvételű szöveg készül."
+        text="Az Ügyfélszolgálat online, digitális levélkészítő szolgáltatás. A felhasználó által megadott információk alapján hivatalos hangvételű szöveg készül."
       />
       <ContentBlock
         title="2. Fizetés"

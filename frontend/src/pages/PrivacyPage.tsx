@@ -20,7 +20,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="Stripe használata"
-        text="A bankkártyás fizetések feldolgozását a Stripe végzi; a kártyaadatok nem kerülnek az Ügyfélközpont szervereire."
+        text="A bankkártyás fizetések feldolgozását a Stripe végzi; a kártyaadatok nem kerülnek az Ügyfélszolgálat szervereire."
       />
       <ContentBlock
         title="OpenAI API használata"

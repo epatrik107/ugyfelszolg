@@ -37,7 +37,7 @@ function baseHtml(title: string, body: string, sellerName: string, sellerAddress
           <!-- Header -->
           <tr>
             <td style="background:#10233f;padding:24px 32px;">
-              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Ügyfélközpont</p>
+              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Ügyfélszolgálat</p>
               <p style="margin:4px 0 0;font-size:13px;color:#94a3b8;">Hivatalos levélírási asszisztens</p>
             </td>
           </tr>
@@ -256,7 +256,7 @@ export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
 
     <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél megrendelése</a>
   `;
-  return baseHtml("Elkészült a levele – Ügyfélközpont", body, data.sellerName, data.sellerAddress);
+  return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
 }
 
 export interface ExpiredCheckoutEmailData {
@@ -296,7 +296,7 @@ export interface BusinessMagicLinkEmailData {
 export function businessMagicLinkEmailHtml(data: BusinessMagicLinkEmailData): string {
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Céges hozzáférés</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kattintson az alábbi gombra a céges Ügyfélközpont felület megnyitásához.</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kattintson az alábbi gombra a céges Ügyfélszolgálat felület megnyitásához.</p>
 
     <div style="text-align:center;margin:32px 0;">
       <a href="${data.magicLink}" style="display:inline-block;padding:14px 32px;background:#10233f;color:#ffffff;border-radius:6px;font-size:15px;font-weight:700;text-decoration:none;">
@@ -373,5 +373,5 @@ export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
 
     <a href="${data.orderUrl}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
   `;
-  return baseHtml("Elkészült a levele – Ügyfélközpont", body, data.sellerName, data.sellerAddress);
+  return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
 }
