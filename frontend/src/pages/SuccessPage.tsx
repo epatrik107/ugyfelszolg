@@ -1,5 +1,5 @@
-import { Copy, Download, LoaderCircle, Mail, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, Copy, Download, LoaderCircle, Mail, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 import { getOrderResult, requestRegeneration, sendLetterByEmail } from "../lib/api";
@@ -9,6 +9,79 @@ import {
   getRemainingRegenerations,
 } from "../lib/regeneration";
 import type { OrderResult } from "../lib/types";
+
+type StepStatus = "pending" | "active" | "done" | "error";
+
+function ProgressStep({
+  label,
+  status,
+}: {
+  label: string;
+  status: StepStatus;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {status === "done" ? (
+        <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
+      ) : status === "active" ? (
+        <LoaderCircle className="shrink-0 animate-spin text-azure-500" size={18} />
+      ) : status === "error" ? (
+        <span className="shrink-0 text-rose-500 text-base">✕</span>
+      ) : (
+        <span className="shrink-0 h-[18px] w-[18px] rounded-full border-2 border-slate-300" />
+      )}
+      <span
+        className={
+          status === "done"
+            ? "text-sm text-emerald-700 font-medium"
+            : status === "active"
+              ? "text-sm text-slate-800 font-medium"
+              : "text-sm text-slate-400"
+        }
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function GenerationProgress({ result, pollCount }: { result: OrderResult | null; pollCount: number }) {
+  const paymentStatus = result?.paymentStatus ?? "pending";
+  const aiStatus = result?.aiStatus ?? "not_started";
+
+  const step1: StepStatus =
+    paymentStatus === "paid" ? "done" : paymentStatus === "pending" ? "active" : "pending";
+
+  const step2: StepStatus =
+    aiStatus === "completed" || aiStatus === "failed" || aiStatus === "failed_review"
+      ? aiStatus === "completed" ? "done" : "error"
+      : paymentStatus === "paid" && pollCount < 8
+        ? "active"
+        : paymentStatus === "paid"
+          ? "done"
+          : "pending";
+
+  const step3: StepStatus =
+    aiStatus === "completed"
+      ? "done"
+      : aiStatus === "failed_review"
+        ? "error"
+        : paymentStatus === "paid" && pollCount >= 8
+          ? "active"
+          : "pending";
+
+  const step4: StepStatus =
+    aiStatus === "completed" ? "done" : aiStatus === "failed" ? "error" : "pending";
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <ProgressStep label="1. Fizetés ellenőrizve" status={step1} />
+      <ProgressStep label="2. Levél elkészítése" status={step2} />
+      <ProgressStep label="3. Minőségellenőrzés" status={step3} />
+      <ProgressStep label="4. Kész – email küldhető" status={step4} />
+    </div>
+  );
+}
 
 export function SuccessPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,6 +101,7 @@ export function SuccessPage() {
   const [sentVersions, setSentVersions] = useState<Set<"current" | number>>(new Set());
   const [sendEmailError, setSendEmailError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [pollKey, setPollKey] = useState(0);
   const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -67,12 +141,13 @@ export function SuccessPage() {
           window.clearInterval(intervalRef.current);
           if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
             setError(
-              "A generálás a vártnál hosszabb ideig tart. Kérjük, töltse újra az oldalt néhány perc múlva, vagy vegye fel velünk a kapcsolatot.",
+              "A generálás a vártnál hosszabb ideig tart. Töltse újra az oldalt néhány perc múlva, vagy vegye fel velünk a kapcsolatot.",
             );
           }
         }
       } catch (pollError) {
         if (active) {
+          window.clearInterval(intervalRef.current);
           setError(pollError instanceof Error ? pollError.message : "Ismeretlen hiba.");
         }
       }
@@ -84,7 +159,9 @@ export function SuccessPage() {
       active = false;
       window.clearInterval(intervalRef.current);
     };
-  }, [publicId, token]);
+    // pollKey causes this effect to restart polling after regeneration
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicId, token, pollKey])
 
   useEffect(() => {
     if (result?.letterEmailSent) {
@@ -98,6 +175,11 @@ export function SuccessPage() {
       setShowHistory(true);
     }
   }, [result?.letterHistory?.length]);
+
+  const retryPolling = useCallback(() => {
+    setError(null);
+    setPollKey((k) => k + 1);
+  }, []);
 
   async function handleSendEmail(version: "current" | number = "current") {
     if (!publicId || !token) return;
@@ -147,28 +229,10 @@ export function SuccessPage() {
     setRegenError(null);
     try {
       await requestRegeneration(publicId, token, feedback);
-      // Reset result so polling restarts cleanly
       setResult((prev) => prev ? { ...prev, aiStatus: "generating" } : prev);
       setRegenFeedback("");
-      pollCountRef.current = 0;
-      window.clearInterval(intervalRef.current);
-      intervalRef.current = window.setInterval(async () => {
-        pollCountRef.current += 1;
-        try {
-          const payload = await getOrderResult(publicId, token);
-          setResult(payload);
-          setError(null);
-          const isTerminal =
-            payload.aiStatus === "completed" ||
-            payload.aiStatus === "failed" ||
-            payload.aiStatus === "failed_review";
-          if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
-            window.clearInterval(intervalRef.current);
-          }
-        } catch (pollError) {
-          setError(pollError instanceof Error ? pollError.message : "Ismeretlen hiba.");
-        }
-      }, 4000);
+      // Restart polling via pollKey — this cleans up the old interval and starts fresh
+      setPollKey((k) => k + 1);
     } catch (err) {
       setRegenError(err instanceof Error ? err.message : "A módosítás nem sikerült. Kérjük, próbálja újra.");
     } finally {
@@ -382,24 +446,53 @@ export function SuccessPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 p-5">
-          <div className="flex items-center gap-3">
-            {!result || result.aiStatus === "generating" ? (
-              <LoaderCircle className="shrink-0 animate-spin text-azure-600" size={20} />
-            ) : null}
-            <p>{statusMessage}</p>
-          </div>
-          {isError && (
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <Link className="button-primary" to="/level-keszites">
-                Újra megrendelem
-              </Link>
-              <Link className="button-secondary" to="/kapcsolat">
-                Kapcsolatfelvétel
-              </Link>
+        <div className="space-y-4">
+          <GenerationProgress result={result} pollCount={pollCountRef.current} />
+
+          <div className="rounded-lg border border-slate-200 p-5">
+            <div className="flex items-center gap-3">
+              {!result || result.aiStatus === "generating" || result.aiStatus === "not_started" ? (
+                <LoaderCircle className="shrink-0 animate-spin text-azure-600" size={20} />
+              ) : null}
+              <p>{statusMessage}</p>
             </div>
-          )}
-          {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
+            {isError && (
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <Link className="button-primary" to="/level-keszites">
+                  Újra megrendelem
+                </Link>
+                <Link className="button-secondary" to="/kapcsolat">
+                  Kapcsolatfelvétel
+                </Link>
+              </div>
+            )}
+            {error && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm text-rose-700">{error}</p>
+                {pollCountRef.current < MAX_POLL_ATTEMPTS && (
+                  <button
+                    className="button-secondary text-sm py-1.5 px-3"
+                    onClick={retryPolling}
+                  >
+                    <RefreshCw size={15} />
+                    Újrapróbálom
+                  </button>
+                )}
+                {pollCountRef.current >= MAX_POLL_ATTEMPTS && (
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <p className="font-medium">A generálás a vártnál hosszabb ideig tart.</p>
+                    <p className="mt-1">
+                      Kérjük, töltse újra az oldalt néhány perc múlva, vagy{" "}
+                      <Link className="underline" to="/kapcsolat">
+                        vegye fel velünk a kapcsolatot
+                      </Link>
+                      , és segítünk.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>
