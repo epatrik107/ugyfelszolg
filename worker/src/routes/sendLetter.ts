@@ -35,10 +35,6 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
     return noStoreJson(c, { error: "A levél még nem áll rendelkezésre." }, 409);
   }
 
-  if (!order.result_token) {
-    return noStoreJson(c, { error: "Hiányzó hozzáférési token." }, 500);
-  }
-
   // Determine which version to send (optional versionIndex = history index)
   let letterToSend = order.generated_letter;
   let idempotencyKeySuffix: string | undefined;
@@ -63,7 +59,7 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
   }
 
   try {
-    await sendLetterReadyEmail(c.env, order, letterToSend, order.result_token, idempotencyKeySuffix);
+    await sendLetterReadyEmail(c.env, order, letterToSend, bearerToken, idempotencyKeySuffix);
     await markLetterEmailSent(c.env, order.id);
     logEvent("letter_email_sent_manual", {
       orderId: order.id,

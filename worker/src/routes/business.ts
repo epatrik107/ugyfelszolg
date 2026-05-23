@@ -184,7 +184,6 @@ export async function createBusinessOrderRoute(c: Context<{ Bindings: Env }>) {
     id: orderId,
     publicId,
     resultTokenHash: await hashToken(resultToken, c.env.TOKEN_HASH_SECRET),
-    resultToken,
     email: parsed.data.email.toLowerCase(),
     name: parsed.data.name,
     letterType: parsed.data.letterType,

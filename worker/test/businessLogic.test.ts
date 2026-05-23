@@ -63,20 +63,17 @@ describe("token comparison", () => {
   });
 });
 
-describe("order persistence compatibility", () => {
-  it("falls back cleanly when the result_token migration is not applied yet", async () => {
-    const boundArgs: unknown[][] = [];
+describe("order persistence security", () => {
+  it("does not store raw result_token in the database", async () => {
+    const executedSql: string[] = [];
     const fakeEnv = {
       DB: {
         prepare(sql: string) {
+          executedSql.push(sql);
           return {
-            bind(...args: unknown[]) {
-              boundArgs.push(args);
+            bind(..._args: unknown[]) {
               return {
                 async run() {
-                  if (sql.includes("result_token, email")) {
-                    throw new Error("table orders has no column named result_token");
-                  }
                   return { meta: { changes: 1 } };
                 },
               };
@@ -86,30 +83,27 @@ describe("order persistence compatibility", () => {
       },
     } as unknown as Env;
 
-    await expect(
-      insertOrder(fakeEnv, {
-        id: "order_1",
-        publicId: "public_1",
-        resultTokenHash: "hash",
-        resultToken: "token",
-        email: "patrik@example.com",
-        name: "Patrik",
-        letterType: "Panaszlevél",
-        recipient: "Ügyfélszolgálat",
-        problemDescription: "A szolgáltatás nem megfelelően működött.",
-        desiredResult: "Kérem a hiba javítását.",
-        tone: "Udvarias",
-        previousMessages: "",
-        selectedPackage: "basic",
-        price: 1990,
-        currency: "HUF",
-        paymentStatus: "paid",
-      }),
-    ).resolves.toBeUndefined();
+    await insertOrder(fakeEnv, {
+      id: "order_1",
+      publicId: "public_1",
+      resultTokenHash: "hash_only",
+      email: "patrik@example.com",
+      name: "Patrik",
+      letterType: "Panaszlevél",
+      recipient: "Ügyfélszolgálat",
+      problemDescription: "A szolgáltatás nem megfelelően működött.",
+      desiredResult: "Kérem a hiba javítását.",
+      tone: "Udvarias",
+      previousMessages: "",
+      selectedPackage: "basic",
+      price: 1990,
+      currency: "HUF",
+      paymentStatus: "paid",
+    });
 
-    expect(boundArgs).toHaveLength(2);
-    expect(boundArgs[0]).toHaveLength(21);
-    expect(boundArgs[1]).toHaveLength(20);
+    expect(executedSql).toHaveLength(1);
+    expect(executedSql[0]).not.toContain("result_token,");
+    expect(executedSql[0]).toContain("result_token_hash");
   });
 });
 
@@ -219,7 +213,6 @@ describe("regeneration feedback", () => {
       error_message: null,
       subscription_id: null,
       billing_source: "checkout",
-      result_token: "token",
       letter_history: null,
       letter_email_sent: 0,
     } satisfies OrderRow;

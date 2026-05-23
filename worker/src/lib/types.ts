@@ -61,7 +61,6 @@ export interface OrderRow {
   error_message: string | null;
   subscription_id: string | null;
   billing_source: "checkout" | "subscription";
-  result_token: string | null;
   letter_history: string | null;
   letter_email_sent: number;
 }
