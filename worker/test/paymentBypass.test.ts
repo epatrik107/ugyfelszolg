@@ -36,39 +36,25 @@ describe("result token access control (payment bypass prevention)", () => {
 
 describe("pending payment order result does not include letter", () => {
   it("letter is only returned when ai_status is completed", () => {
-    const baseOrder = {
-      ai_status: "not_started" as const,
-      generated_letter: "Draft letter text",
-      payment_status: "pending" as const,
-      generation_count: 0,
-    };
+    const aiStatus: string = "not_started";
 
     // Simulate getOrderResultRoute logic:
-    const resultForPending = baseOrder.ai_status === "completed" ? baseOrder.generated_letter : undefined;
+    const resultForPending = aiStatus === "completed" ? "Draft letter text" : undefined;
     expect(resultForPending).toBeUndefined();
   });
 
   it("letter is returned when ai_status is completed and payment is paid", () => {
-    const completedOrder = {
-      ai_status: "completed" as const,
-      generated_letter: "Tárgy: Panasz\n\nTisztelt Ügyfélszolgálat!\n\nKérem a megoldást.\n\nTisztelettél:\nNév",
-      payment_status: "paid" as const,
-      generation_count: 1,
-    };
+    const aiStatus: string = "completed";
+    const letter = "Tárgy: Panasz\n\nTisztelt Ügyfélszolgálat!\n\nKérem a megoldást.\n\nTisztelettél:\nNév";
 
-    const result = completedOrder.ai_status === "completed" ? completedOrder.generated_letter : undefined;
-    expect(result).toBe(completedOrder.generated_letter);
+    const result = aiStatus === "completed" ? letter : undefined;
+    expect(result).toBe(letter);
   });
 
   it("generating order does not return letter (in-flight generation)", () => {
-    const generatingOrder = {
-      ai_status: "generating" as const,
-      generated_letter: null,
-      payment_status: "paid" as const,
-      generation_count: 1,
-    };
+    const aiStatus: string = "generating";
 
-    const result = generatingOrder.ai_status === "completed" ? generatingOrder.generated_letter : undefined;
+    const result = aiStatus === "completed" ? "some letter" : undefined;
     expect(result).toBeUndefined();
   });
 });
@@ -114,7 +100,7 @@ describe("checkout frontend price manipulation prevention", () => {
     expect(businessPrice).toBe(19900);
 
     // Any frontend-provided price is ignored – the Stripe session uses server price
-    const manipulatedFrontendPrice = 1; // attacker's price
+    const manipulatedFrontendPrice: number = 1; // attacker's price
     expect(manipulatedFrontendPrice).not.toBe(basicPrice);
   });
 
@@ -122,8 +108,8 @@ describe("checkout frontend price manipulation prevention", () => {
     // This is a design verification test: the createCheckoutSession call in
     // createCheckoutSession.ts uses `selectedPackage.price` where selectedPackage
     // comes from getPackage(input.selectedPackage), not from the request body.
-    const requestBodyPrice = 0; // what an attacker might send
-    const serverPackagePrice = getPackage("basic").price;
+    const requestBodyPrice: number = 0; // what an attacker might send
+    const serverPackagePrice: number = getPackage("basic").price;
 
     // The server always uses getPackage().price, never the request body price
     expect(serverPackagePrice).toBe(1990);

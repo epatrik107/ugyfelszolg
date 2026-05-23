@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { addSecurityHeaders, bodySizeGuard, corsGuard, noStoreJson, requireJsonContentType } from "./lib/security";
+import { addSecurityHeaders, bodySizeGuard, corsGuard, requireJsonContentType } from "./lib/security";
 import { cleanupExpiredData, getStuckGeneratingOrders, markOrderPaymentStatus } from "./lib/db";
 import { sendRefundEmail } from "./lib/email";
 import { getInvoiceByOrderId } from "./lib/invoice";
 import { logEvent } from "./lib/logger";
+import { errorJson } from "./lib/response";
 import { createRefund } from "./lib/stripe";
 import type { Env } from "./lib/types";
 import {
@@ -44,13 +45,13 @@ app.get("/api/health", async (c) => {
     return c.json({ status: "degraded" }, 503);
   }
 });
-app.notFound((c) => c.json({ error: "Nem található." }, 404));
+app.notFound((c) => errorJson(c, "NOT_FOUND", "Nem található.", 404));
 app.onError((error, c) => {
   logEvent("unhandled_error", {
     path: new URL(c.req.url).pathname,
     message: error instanceof Error ? error.message : "unknown",
   });
-  return noStoreJson(c, { error: "Váratlan szerverhiba." }, 500);
+  return errorJson(c, "INTERNAL_ERROR", "Váratlan szerverhiba.", 500);
 });
 
 async function resolveStuckOrders(env: Env) {

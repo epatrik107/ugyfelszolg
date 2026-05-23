@@ -1,6 +1,10 @@
 import { API_BASE_URL } from "./config";
 import type { BusinessSession, LetterFormValues, OrderResult } from "./types";
 
+type ApiSuccess<T> = { ok: true; data: T };
+type ApiError = { ok: false; error: { code: string; message: string } };
+type ApiResponse<T> = ApiSuccess<T> | ApiError;
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -15,14 +19,13 @@ async function request<T>(
     },
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | T
-    | { error?: string }
-    | null;
+  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
   if (!response.ok) {
-    throw new Error((payload as { error?: string } | null)?.error || "Ismeretlen hiba.");
+    const errMsg =
+      (payload as ApiError | null)?.error?.message || "Ismeretlen hiba.";
+    throw new Error(errMsg);
   }
-  return payload as T;
+  return ((payload as ApiSuccess<T> | null)?.data ?? payload) as T;
 }
 
 export function createCheckoutSession(values: LetterFormValues) {
@@ -40,7 +43,7 @@ export function getOrderResult(publicId: string, token: string) {
 }
 
 export function requestRegeneration(publicId: string, token: string, feedback: string) {
-  return request<{ ok: true }>(
+  return request<Record<string, never>>(
     `/api/orders/${publicId}/regenerate`,
     {
       method: "POST",
@@ -51,7 +54,7 @@ export function requestRegeneration(publicId: string, token: string, feedback: s
 }
 
 export function sendLetterByEmail(publicId: string, token: string, versionIndex?: number) {
-  return request<{ ok: true }>(
+  return request<Record<string, never>>(
     `/api/orders/${publicId}/send-letter`,
     {
       method: "POST",
@@ -67,7 +70,7 @@ export function sendContactMessage(values: {
   message: string;
   turnstileToken: string;
 }) {
-  return request<{ ok: true }>("/api/contact", {
+  return request<Record<string, never>>("/api/contact", {
     method: "POST",
     body: JSON.stringify(values),
   });
@@ -77,7 +80,7 @@ export function requestBusinessAccessLink(values: {
   email: string;
   turnstileToken: string;
 }) {
-  return request<{ ok: true }>("/api/business/access-link", {
+  return request<Record<string, never>>("/api/business/access-link", {
     method: "POST",
     body: JSON.stringify(values),
   });

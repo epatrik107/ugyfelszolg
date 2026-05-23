@@ -134,8 +134,8 @@ describe("checkout amount and currency validation", () => {
 
     // Simulates the check in handleCheckoutCompleted:
     // if session.amount_total !== selectedPackage.price → reject
-    const sessionAmountOk = 1990;
-    const sessionAmountBad = 999;
+    const sessionAmountOk: number = 1990;
+    const sessionAmountBad: number = 999;
 
     expect(sessionAmountOk === basicPackage.price).toBe(true);
     expect(sessionAmountBad === basicPackage.price).toBe(false);
@@ -143,18 +143,20 @@ describe("checkout amount and currency validation", () => {
 
   it("rejects amount mismatch – session total does not match package price", () => {
     const pkg = getPackage("premium");
-    const manipulatedAmount = 100; // frontend price manipulation attempt
+    const manipulatedAmount: number = 100; // frontend price manipulation attempt
 
     // The webhook handler would return early without marking paid:
-    const wouldMarkPaid = manipulatedAmount === pkg.price && "huf" === pkg.currency;
+    const pkgCurrency: string = pkg.currency;
+    const wouldMarkPaid = manipulatedAmount === pkg.price && "huf" === pkgCurrency;
     expect(wouldMarkPaid).toBe(false);
   });
 
   it("rejects currency mismatch – session currency does not match package currency", () => {
     const pkg = getPackage("basic");
-    const wrongCurrency = "eur";
+    const wrongCurrency: string = "eur";
+    const pkgCurrency: string = pkg.currency;
 
-    const wouldMarkPaid = pkg.price === 1990 && wrongCurrency === pkg.currency;
+    const wouldMarkPaid = pkg.price === 1990 && wrongCurrency === pkgCurrency;
     expect(wouldMarkPaid).toBe(false);
   });
 

@@ -6,7 +6,7 @@ import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/ai";
 import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
-import { noStoreJson } from "../lib/security";
+import { errorJson, okJson } from "../lib/response";
 import { createCheckoutSession } from "../lib/stripe";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import type { Env } from "../lib/types";
@@ -33,7 +33,7 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   const rawPayload = await c.req.json().catch(() => null);
   const parsed = checkoutSchema.safeParse(rawPayload);
   if (!parsed.success) {
-    return noStoreJson(c, { error: "Hibás űrlapadatok." }, 400);
+    return errorJson(c, "INVALID_INPUT", "Hibás űrlapadatok.", 400);
   }
 
   const input = parsed.data;
@@ -44,26 +44,22 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     (await isRateLimited(c.env, "create-checkout-ip", ip)) ||
     (await isRateLimited(c.env, "create-checkout-email", input.email.toLowerCase()))
   ) {
-    return noStoreJson(c, { error: "Túl sok próbálkozás. Kérjük, próbálja később." }, 429);
+    return errorJson(c, "RATE_LIMITED", "Túl sok próbálkozás. Kérjük, próbálja később.", 429);
   }
 
   if (!demoAccessGranted && !paymentsEnabled(c.env)) {
-    return noStoreJson(
-      c,
-      { error: "A demó jelenleg csak hozzáférési kóddal használható." },
-      403,
-    );
+    return errorJson(c, "DEMO_ONLY", "A demó jelenleg csak hozzáférési kóddal használható.", 403);
   }
 
   if (!demoAccessGranted && !input.turnstileToken) {
-    return noStoreJson(c, { error: "Hiányzó spamvédelmi token." }, 400);
+    return errorJson(c, "INVALID_INPUT", "Hiányzó spamvédelmi token.", 400);
   }
 
   const turnstileOk =
     demoAccessGranted ||
     (await verifyTurnstileToken(c.env, input.turnstileToken, ip));
   if (!turnstileOk) {
-    return noStoreJson(c, { error: "A spamvédelem ellenőrzése sikertelen." }, 400);
+    return errorJson(c, "TURNSTILE_FAILED", "A spamvédelem ellenőrzése sikertelen.", 400);
   }
 
   const selectedPackage = getPackage(input.selectedPackage);
@@ -100,7 +96,7 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
       }
     }
 
-    return noStoreJson(c, {
+    return okJson(c, {
       checkoutUrl: `${c.env.SITE_URL}/sikeres-fizetes?order=${publicId}&token=${resultToken}`,
       publicId,
       demo: true,
@@ -111,9 +107,10 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   const aiAvailable = await checkAiServiceAvailable(c.env);
   if (!aiAvailable) {
     logEvent("checkout_blocked_ai_unavailable", {});
-    return noStoreJson(
+    return errorJson(
       c,
-      { error: "A levélgeneráló szolgáltatás átmenetileg nem elérhető. Kérjük, próbálja újra néhány perc múlva." },
+      "SERVICE_UNAVAILABLE",
+      "A levélgeneráló szolgáltatás átmenetileg nem elérhető. Kérjük, próbálja újra néhány perc múlva.",
       503,
     );
   }
@@ -155,7 +152,7 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   await attachStripeSession(c.env, orderId, session.id);
   logEvent("stripe_session_created", { orderId, stripeSessionId: session.id });
 
-  return noStoreJson(c, {
+  return okJson(c, {
     checkoutUrl: session.url,
     publicId,
   });

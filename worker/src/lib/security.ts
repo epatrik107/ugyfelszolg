@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { errorJson } from "./response";
 import type { Env } from "./types";
 
 function parseAllowedOrigins(rawValue: string) {
@@ -42,7 +43,7 @@ export async function bodySizeGuard(c: Context<{ Bindings: Env }>, next: Next) {
   const limit = path === "/api/stripe/webhook" ? maxWebhookBodyBytes : maxJsonBodyBytes;
 
   if (contentLength > limit) {
-    return noStoreJson(c, { error: "A kérés túl nagy." }, 413);
+    return errorJson(c, "REQUEST_TOO_LARGE", "A kérés túl nagy.", 413);
   }
 
   await next();
@@ -58,7 +59,7 @@ export async function corsGuard(c: Context<{ Bindings: Env }>, next: Next) {
     origin &&
     !isAllowedOrigin(origin, c.env)
   ) {
-    return c.json({ error: "Tiltott origin." }, 403);
+    return errorJson(c, "FORBIDDEN", "Tiltott origin.", 403);
   }
 
   if (c.req.method === "OPTIONS") {
@@ -111,7 +112,7 @@ export async function requireJsonContentType(
   ) {
     const contentType = c.req.header("Content-Type") ?? "";
     if (!contentType.includes("application/json")) {
-      return noStoreJson(c, { error: "Hibás Content-Type. application/json szükséges." }, 400);
+      return errorJson(c, "INVALID_CONTENT_TYPE", "Hibás Content-Type. application/json szükséges.", 400);
     }
   }
 

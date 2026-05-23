@@ -3,7 +3,7 @@ import { getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
-import { noStoreJson } from "../lib/security";
+import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
 
 export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
@@ -14,26 +14,26 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
   const ip = getClientIp(c);
 
   if (await isRateLimited(c.env, "result-ip", ip)) {
-    return noStoreJson(c, { error: "Túl sok lekérdezés." }, 429);
+    return errorJson(c, "RATE_LIMITED", "Túl sok lekérdezés.", 429);
   }
 
   if (!token) {
-    return noStoreJson(c, { error: "Hiányzó token." }, 401);
+    return errorJson(c, "UNAUTHORIZED", "Hiányzó token.", 401);
   }
 
   const order = await getOrderByPublicId(c.env, publicId);
   if (!order) {
-    return noStoreJson(c, { error: "A rendelés nem található." }, 404);
+    return errorJson(c, "NOT_FOUND", "A rendelés nem található.", 404);
   }
 
   const tokenHash = await hashToken(token, c.env.TOKEN_HASH_SECRET);
   if (!constantTimeEqual(order.result_token_hash, tokenHash)) {
-    return noStoreJson(c, { error: "Érvénytelen token." }, 401);
+    return errorJson(c, "UNAUTHORIZED", "Érvénytelen token.", 401);
   }
 
   logEvent("result_fetch", { orderId: order.id, publicId });
 
-  return noStoreJson(c, {
+  return okJson(c, {
     paymentStatus: order.payment_status,
     aiStatus: order.ai_status,
     generationCount: order.generation_count,
