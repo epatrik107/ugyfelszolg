@@ -39,10 +39,37 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
     return noStoreJson(c, { error: "Hiányzó hozzáférési token." }, 500);
   }
 
+  // Determine which version to send (optional versionIndex = history index)
+  let letterToSend = order.generated_letter;
+  let idempotencyKeySuffix: string | undefined;
+
+  const body = await c.req.json<{ versionIndex?: number }>().catch(() => ({} as { versionIndex?: number }));
+  if (typeof body.versionIndex === "number") {
+    if (!order.letter_history) {
+      return noStoreJson(c, { error: "Nincs korábbi változat." }, 404);
+    }
+    let history: string[];
+    try {
+      history = JSON.parse(order.letter_history) as string[];
+    } catch {
+      return noStoreJson(c, { error: "Hibás változat-adat." }, 500);
+    }
+    const version = history[body.versionIndex];
+    if (!version) {
+      return noStoreJson(c, { error: "A kért változat nem található." }, 404);
+    }
+    letterToSend = version;
+    idempotencyKeySuffix = `g${body.versionIndex + 1}-send`;
+  }
+
   try {
-    await sendLetterReadyEmail(c.env, order, order.generated_letter, order.result_token);
+    await sendLetterReadyEmail(c.env, order, letterToSend, order.result_token, idempotencyKeySuffix);
     await markLetterEmailSent(c.env, order.id);
-    logEvent("letter_email_sent_manual", { orderId: order.id, generationCount: order.generation_count });
+    logEvent("letter_email_sent_manual", {
+      orderId: order.id,
+      generationCount: order.generation_count,
+      versionIndex: body.versionIndex ?? "current",
+    });
   } catch (err) {
     logEvent("letter_email_send_failed", {
       orderId: order.id,

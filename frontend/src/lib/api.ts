@@ -50,10 +50,13 @@ export function requestRegeneration(publicId: string, token: string, feedback: s
   );
 }
 
-export function sendLetterByEmail(publicId: string, token: string) {
+export function sendLetterByEmail(publicId: string, token: string, versionIndex?: number) {
   return request<{ ok: true }>(
     `/api/orders/${publicId}/send-letter`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: JSON.stringify(versionIndex !== undefined ? { versionIndex } : {}),
+    },
     token,
   );
 }

@@ -188,6 +188,7 @@ export async function sendLetterReadyEmail(
   order: Pick<OrderRow, "id" | "email" | "name" | "public_id" | "generation_count">,
   letter: string,
   resultToken: string,
+  idempotencyKeySuffix?: string,
 ) {
   const { sellerName, sellerAddress } = getSellerInfo(env);
   const orderUrl = `${env.SITE_URL}/sikeres-fizetes?order=${order.public_id}&token=${resultToken}`;
@@ -200,11 +201,15 @@ export async function sendLetterReadyEmail(
     sellerAddress,
   });
 
+  const idempotencyKey = idempotencyKeySuffix
+    ? `letter-ready-${order.id}-${idempotencyKeySuffix}`
+    : `letter-ready-${order.id}-g${generationCount}`;
+
   await sendEmail(
     env,
     order.email,
     "Elkészült a levele – Ügyfélszolgálat",
     html,
-    `letter-ready-${order.id}-g${generationCount}`,
+    idempotencyKey,
   );
 }

@@ -24,8 +24,8 @@ export function SuccessPage() {
   const [regenBusy, setRegenBusy] = useState(false);
   const [regenFeedback, setRegenFeedback] = useState("");
   const [regenError, setRegenError] = useState<string | null>(null);
-  const [sendEmailBusy, setSendEmailBusy] = useState(false);
-  const [sendEmailDone, setSendEmailDone] = useState(false);
+  const [sendingVersion, setSendingVersion] = useState<"current" | number | null>(null);
+  const [sentVersions, setSentVersions] = useState<Set<"current" | number>>(new Set());
   const [sendEmailError, setSendEmailError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const intervalRef = useRef<number | undefined>(undefined);
@@ -88,21 +88,28 @@ export function SuccessPage() {
 
   useEffect(() => {
     if (result?.letterEmailSent) {
-      setSendEmailDone(true);
+      setSentVersions((prev) => new Set([...prev, "current"]));
     }
   }, [result?.letterEmailSent]);
 
-  async function handleSendEmail() {
+  // Auto-expand history when previous versions exist
+  useEffect(() => {
+    if ((result?.letterHistory?.length ?? 0) > 0) {
+      setShowHistory(true);
+    }
+  }, [result?.letterHistory?.length]);
+
+  async function handleSendEmail(version: "current" | number = "current") {
     if (!publicId || !token) return;
-    setSendEmailBusy(true);
+    setSendingVersion(version);
     setSendEmailError(null);
     try {
-      await sendLetterByEmail(publicId, token);
-      setSendEmailDone(true);
+      await sendLetterByEmail(publicId, token, version === "current" ? undefined : version);
+      setSentVersions((prev) => new Set([...prev, version]));
     } catch (err) {
       setSendEmailError(err instanceof Error ? err.message : "Az email küldése nem sikerült.");
     } finally {
-      setSendEmailBusy(false);
+      setSendingVersion(null);
     }
   }
 
@@ -249,33 +256,69 @@ export function SuccessPage() {
 
           {/* Send by email */}
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-            <p className="text-sm font-medium text-emerald-900">📧 Tetszik a levél? Küldd el emailben!</p>
+            <p className="text-sm font-medium text-emerald-900">📧 Melyik változatot küldjük el emailben?</p>
             <p className="text-sm text-emerald-700">
-              Ha elégedett a levéllel, kattints a gombra, és elküldjük az email-címedre.
+              Válassz az alábbi változatok közül, és elküldjük az email-címedre.
             </p>
             {sendEmailError && (
               <p className="text-sm text-rose-700">{sendEmailError}</p>
             )}
-            <button
-              className="button-primary"
-              disabled={sendEmailBusy || sendEmailDone}
-              onClick={() => void handleSendEmail()}
-            >
-              {sendEmailBusy ? (
-                <LoaderCircle className="animate-spin" size={18} />
-              ) : (
-                <Mail size={18} />
-              )}
-              {sendEmailDone ? "Email elküldve ✓" : sendEmailBusy ? "Küldés..." : "Levél elküldése emailben"}
-            </button>
-            {sendEmailDone && (
+            <div className="flex flex-col gap-2">
+              {/* Current version send button */}
+              <div className="flex items-center justify-between rounded border border-emerald-200 bg-white px-3 py-2">
+                <span className="text-sm font-medium text-slate-700">
+                  {(result.letterHistory?.length ?? 0) > 0
+                    ? `${(result.letterHistory?.length ?? 0) + 1}. változat (jelenlegi)`
+                    : "Jelenlegi változat"}
+                </span>
+                <button
+                  className="button-primary text-sm py-1.5 px-3"
+                  disabled={sendingVersion === "current"}
+                  onClick={() => void handleSendEmail("current")}
+                >
+                  {sendingVersion === "current" ? (
+                    <LoaderCircle className="animate-spin" size={15} />
+                  ) : (
+                    <Mail size={15} />
+                  )}
+                  {sentVersions.has("current")
+                    ? "Elküldve ✓"
+                    : sendingVersion === "current"
+                      ? "Küldés..."
+                      : "Ezt küldd el"}
+                </button>
+              </div>
+              {/* History version send buttons */}
+              {result.letterHistory?.map((_, idx) => (
+                <div key={idx} className="flex items-center justify-between rounded border border-slate-200 bg-white px-3 py-2">
+                  <span className="text-sm text-slate-600">{idx + 1}. változat (korábbi)</span>
+                  <button
+                    className="button-secondary text-sm py-1.5 px-3"
+                    disabled={sendingVersion === idx}
+                    onClick={() => void handleSendEmail(idx)}
+                  >
+                    {sendingVersion === idx ? (
+                      <LoaderCircle className="animate-spin" size={15} />
+                    ) : (
+                      <Mail size={15} />
+                    )}
+                    {sentVersions.has(idx)
+                      ? "Elküldve ✓"
+                      : sendingVersion === idx
+                        ? "Küldés..."
+                        : "Ezt küldd el"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {sentVersions.size > 0 && (
               <p className="text-sm text-emerald-700">
-                Elküldtük a levelet a megadott email-címre. Ha nem találja, nézze meg a Spam/Levélszemét mappát is.
+                ✓ A levél el lett küldve a megadott email-címre. Ha nem találja, nézze meg a Spam/Levélszemét mappát is.
               </p>
             )}
           </div>
 
-          {/* Previous versions */}
+          {/* Previous versions accordion */}
           {(result.letterHistory?.length ?? 0) > 0 && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
               <button
