@@ -54,7 +54,9 @@ async function sendEmail(
 
     const isTransient = response.status >= 500;
     if (!isTransient || attempt === 1) {
-      throw new Error(`Resend API error (${response.status})`);
+      // Capture the response body for better debugging
+      const responseBody = await response.text().catch(() => "");
+      throw new Error(`Resend API error (${response.status}): ${responseBody.slice(0, 300)}`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
