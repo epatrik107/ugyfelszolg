@@ -8,9 +8,6 @@ export type RateLimitScope =
   | "result-ip"
   | "contact-ip"
   | "contact-email"
-  | "business-access-ip"
-  | "business-magic-ip"
-  | "business-session-ip"
   | "regenerate-ip"
   | "send-letter-ip";
 
@@ -23,9 +20,6 @@ export const RATE_LIMITS: Record<
   "result-ip": { limit: 60, windowSeconds: 600 },
   "contact-ip": { limit: 3, windowSeconds: 600 },
   "contact-email": { limit: 3, windowSeconds: 600 },
-  "business-access-ip": { limit: 5, windowSeconds: 600 },
-  "business-magic-ip": { limit: 10, windowSeconds: 600 },
-  "business-session-ip": { limit: 60, windowSeconds: 600 },
   "regenerate-ip": { limit: 10, windowSeconds: 600 },
   "send-letter-ip": { limit: 10, windowSeconds: 600 },
 };

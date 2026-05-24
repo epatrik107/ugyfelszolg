@@ -7,13 +7,6 @@ import { logEvent } from "./lib/logger";
 import { errorJson } from "./lib/response";
 import { createRefund } from "./lib/stripe";
 import type { Env } from "./lib/types";
-import {
-  createBusinessOrderRoute,
-  createBusinessPortalSessionRoute,
-  exchangeBusinessMagicLinkRoute,
-  getBusinessSessionRoute,
-  sendBusinessAccessLinkRoute,
-} from "./routes/business";
 import { contactRoute } from "./routes/contact";
 import { createCheckoutSessionRoute } from "./routes/createCheckoutSession";
 import { getOrderResultRoute } from "./routes/getOrderResult";
@@ -32,11 +25,6 @@ app.get("/api/orders/:publicId/result", getOrderResultRoute);
 app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
 app.post("/api/orders/:publicId/send-letter", sendLetterRoute);
 app.post("/api/contact", contactRoute);
-app.post("/api/business/access-link", sendBusinessAccessLinkRoute);
-app.post("/api/business/session/exchange", exchangeBusinessMagicLinkRoute);
-app.get("/api/business/session", getBusinessSessionRoute);
-app.post("/api/business/orders", createBusinessOrderRoute);
-app.post("/api/business/customer-portal-session", createBusinessPortalSessionRoute);
 app.get("/api/health", async (c) => {
   try {
     await c.env.DB.prepare("SELECT 1").run();

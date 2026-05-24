@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./config";
-import type { BusinessSession, LetterFormValues, OrderResult } from "./types";
+import type { LetterFormValues, OrderResult } from "./types";
 
 type ApiSuccess<T> = { ok: true; data: T };
 type ApiError = { ok: false; error: { code: string; message: string } };
@@ -81,47 +81,4 @@ export function sendContactMessage(values: {
     method: "POST",
     body: JSON.stringify(values),
   });
-}
-
-export function requestBusinessAccessLink(values: {
-  email: string;
-  turnstileToken: string;
-}) {
-  return request<Record<string, never>>("/api/business/access-link", {
-    method: "POST",
-    body: JSON.stringify(values),
-  });
-}
-
-export function exchangeBusinessMagicLink(token: string) {
-  return request<{ sessionToken: string }>("/api/business/session/exchange", {
-    method: "POST",
-    body: JSON.stringify({ token }),
-  });
-}
-
-export function getBusinessSession(sessionToken: string) {
-  return request<BusinessSession>("/api/business/session", {}, sessionToken);
-}
-
-export function createBusinessOrder(
-  values: Omit<LetterFormValues, "selectedPackage" | "turnstileToken">,
-  sessionToken: string,
-) {
-  return request<{ publicId: string; resultToken: string }>(
-    "/api/business/orders",
-    {
-      method: "POST",
-      body: JSON.stringify(values),
-    },
-    sessionToken,
-  );
-}
-
-export function createBusinessPortalSession(sessionToken: string) {
-  return request<{ url: string }>(
-    "/api/business/customer-portal-session",
-    { method: "POST" },
-    sessionToken,
-  );
 }

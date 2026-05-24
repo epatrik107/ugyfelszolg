@@ -33,9 +33,9 @@ async function hmacSha256Hex(secret: string, payload: string) {
 
 describe("packages", () => {
   it("keeps package pricing server-side and fixed", () => {
-    expect(getPackage("basic").price).toBe(1990);
-    expect(getPackage("premium").price).toBe(4990);
-    expect(getPackage("business").price).toBe(19900);
+    expect(getPackage("basic").price).toBe(890);
+    expect(getPackage("premium").price).toBe(3900);
+    expect(getPackage("premium_plus").price).toBe(10900);
   });
 
   it("basic package has no premium model and 1 max regeneration", () => {
@@ -54,13 +54,12 @@ describe("packages", () => {
     expect(premium.capabilities.hasUsageTips).toBe(true);
   });
 
-  it("business package has quota per period and premium model", () => {
-    const business = getPackage("business");
-    expect(business.capabilities.isPremiumModel).toBe(true);
-    expect(business.capabilities.maxRegenerations).toBe(3);
-    // quotaPerPeriod exists only on business — cast to access it
-    const businessWithQuota = business as typeof business & { quotaPerPeriod: number };
-    expect(businessWithQuota.quotaPerPeriod).toBe(10);
+  it("premium plus uses premium model and allows up to 3 regenerations", () => {
+    const premiumPlus = getPackage("premium_plus");
+    expect(premiumPlus.capabilities.isPremiumModel).toBe(true);
+    expect(premiumPlus.capabilities.maxRegenerations).toBe(3);
+    expect(premiumPlus.capabilities.hasAlternatives).toBe(true);
+    expect(premiumPlus.capabilities.hasUsageTips).toBe(true);
   });
 });
 
@@ -136,7 +135,7 @@ describe("order persistence security", () => {
       tone: "Udvarias",
       previousMessages: "",
       selectedPackage: "basic",
-      price: 1990,
+      price: 890,
       currency: "HUF",
       paymentStatus: "paid",
     });
@@ -186,7 +185,7 @@ describe("regeneration gating", () => {
     expect(
       canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: 2 }, 1),
     ).toBe(false);
-    // premium/business allow 3
+    // premium packages allow 3
     for (let count = 1; count <= 3; count++) {
       expect(
         canRequestRegeneration({ payment_status: "paid", ai_status: "completed", generation_count: count }, 3),
@@ -246,7 +245,7 @@ describe("regeneration feedback", () => {
       tone: "Udvarias",
       previous_messages: null,
       selected_package: "basic",
-      server_calculated_price: 1990,
+      server_calculated_price: 890,
       currency: "HUF",
       payment_status: "paid",
       ai_status: "completed",
@@ -353,7 +352,7 @@ describe("stripe webhook signature verification", () => {
   });
 });
 
-describe("business magic link consumption", () => {
+describe("magic link consumption", () => {
   it("marks a magic link consumed only once", async () => {
     const consumed = new Set<string>();
     const fakeEnv = {
@@ -451,16 +450,15 @@ describe("constant-time comparison", () => {
 });
 
 describe("rate limit scopes", () => {
-  it("defines all required scopes including business-session-ip", () => {
+  it("defines all required public scopes", () => {
     const expectedScopes: (keyof typeof RATE_LIMITS)[] = [
       "create-checkout-ip",
       "create-checkout-email",
       "result-ip",
       "contact-ip",
       "contact-email",
-      "business-access-ip",
-      "business-magic-ip",
-      "business-session-ip",
+      "regenerate-ip",
+      "send-letter-ip",
     ];
     for (const scope of expectedScopes) {
       expect(RATE_LIMITS[scope].limit).toBeGreaterThan(0);
@@ -541,7 +539,7 @@ describe("createInvoice internal path", () => {
       id: "order-test-1",
       email: "test@example.com",
       name: "Teszt Felhasználó",
-      server_calculated_price: 1990,
+      server_calculated_price: 890,
       currency: "HUF",
       paid_at: "2024-06-01T10:00:00.000Z",
       selected_package: "basic" as const,
@@ -552,7 +550,7 @@ describe("createInvoice internal path", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(invoice.invoice_number).toMatch(/^SZ-\d{4}-\d{4}$/);
     expect(invoice.order_id).toBe("order-test-1");
-    expect(invoice.amount).toBe(1990);
+    expect(invoice.amount).toBe(890);
 
     fetchSpy.mockRestore();
   });
@@ -600,7 +598,7 @@ describe("createInvoice szamlazz.hu path", () => {
       id: "order-prod-1",
       email: "production@example.com",
       name: "Éles Felhasználó",
-      server_calculated_price: 4990,
+      server_calculated_price: 3900,
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "premium" as const,
@@ -615,7 +613,7 @@ describe("createInvoice szamlazz.hu path", () => {
     expect(invoice.invoice_number).toBe(mockInvoiceNumber);
     expect(storedInvoiceNumber).toBe(mockInvoiceNumber);
     expect(invoice.order_id).toBe("order-prod-1");
-    expect(invoice.amount).toBe(4990);
+    expect(invoice.amount).toBe(3900);
   });
 
   it("throws when szamlazz.hu returns an error response header", async () => {
@@ -635,7 +633,7 @@ describe("createInvoice szamlazz.hu path", () => {
       id: "order-err-1",
       email: "err@example.com",
       name: "Hiba Teszt",
-      server_calculated_price: 1990,
+      server_calculated_price: 890,
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "basic" as const,
@@ -661,7 +659,7 @@ describe("createInvoice szamlazz.hu path", () => {
       id: "order-sec-1",
       email: "sec@example.com",
       name: "Sec Teszt",
-      server_calculated_price: 1990,
+      server_calculated_price: 890,
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "basic" as const,

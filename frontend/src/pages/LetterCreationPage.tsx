@@ -55,7 +55,7 @@ export function LetterCreationPage() {
         {DEMO_MODE && (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
             Demó üzemmód aktív: a szerver csak helyes hozzáférési kóddal indít
-            fizetés nélküli tesztgenerálást.
+            fizetés nélküli próba levélírást.
           </div>
         )}
         {summary ? (
@@ -77,7 +77,7 @@ export function LetterCreationPage() {
               </div>
             )}
             <button className="button-primary w-full" disabled={busy} onClick={continueToPayment}>
-              {DEMO_MODE ? "Demó generálás indítása" : "Biztonságos fizetés"}
+              {DEMO_MODE ? "Levélírás kipróbálása" : "Biztonságos fizetés"}
             </button>
             <button className="button-secondary w-full" onClick={() => navigate("/arak")}>
               Árak újra megtekintése

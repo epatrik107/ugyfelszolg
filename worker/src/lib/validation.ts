@@ -22,7 +22,7 @@ export const toneValues = [
   "Rövid és lényegre törő",
 ] as const;
 
-export const selectedPackageValues = ["basic", "premium", "business"] as const;
+export const selectedPackageValues = ["basic", "premium", "premium_plus"] as const;
 
 export const checkoutSchema = z.object({
   name: trimmed(2, 120),
@@ -38,16 +38,6 @@ export const checkoutSchema = z.object({
   turnstileToken: z.string().trim().max(2048).optional().default(""),
   demoAccessCode: z.string().trim().max(200).optional().default(""),
 });
-
-export const businessOrderSchema = checkoutSchema
-  .omit({
-    selectedPackage: true,
-    turnstileToken: true,
-    demoAccessCode: true,
-  })
-  .extend({
-    selectedPackage: z.literal("business").optional().default("business"),
-  });
 
 export const contactSchema = z.object({
   name: trimmed(2, 120),

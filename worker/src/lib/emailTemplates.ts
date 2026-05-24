@@ -287,33 +287,6 @@ export function expiredCheckoutEmailHtml(data: ExpiredCheckoutEmailData): string
   return baseHtml("Fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
 }
 
-export interface BusinessMagicLinkEmailData {
-  magicLink: string;
-  sellerName: string;
-  sellerAddress: string;
-}
-
-export function businessMagicLinkEmailHtml(data: BusinessMagicLinkEmailData): string {
-  const body = `
-    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Céges hozzáférés</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kattintson az alábbi gombra a céges Ügyfélszolgálat felület megnyitásához.</p>
-
-    <div style="text-align:center;margin:32px 0;">
-      <a href="${data.magicLink}" style="display:inline-block;padding:14px 32px;background:#10233f;color:#ffffff;border-radius:6px;font-size:15px;font-weight:700;text-decoration:none;">
-        Bejelentkezés a céges felületre
-      </a>
-    </div>
-
-    <p style="margin:0 0 8px;font-size:13px;color:#64748b;line-height:1.6;">
-      A link <strong>30 percig érvényes</strong>. Ha lejárt, kérhet újat a céges bejelentkezési oldalon.
-    </p>
-    <p style="margin:0;font-size:12px;color:#94a3b8;">
-      Ha nem Ön kérte ezt az emailt, hagyja figyelmen kívül.
-    </p>
-  `;
-  return baseHtml("Céges hozzáférési link", body, data.sellerName, data.sellerAddress);
-}
-
 export interface CheckoutExpiredEmailData {
   customerName: string;
   siteUrl: string;

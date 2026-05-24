@@ -100,8 +100,7 @@ A létrejött namespace ID kerüljön a `worker/wrangler.toml` megfelelő bindin
 
 ## 9. Stripe Checkout beállítás
 
-- Basic és premium csomag: egyszeri fizetés
-- Business csomag: havi előfizetés, 10 levél / hó
+- Alapcsomag, prémium és prémium plusz: egyszeri fizetés
 - Pénznem: `HUF`
 - A frontend csak `packageId`-t küld; az ár minden esetben szerveroldalon dől el.
 
@@ -119,10 +118,6 @@ Kezelt események:
 - `checkout.session.expired`
 - `payment_intent.payment_failed`
 - `charge.refunded`
-- `invoice.paid`
-- `invoice.payment_failed`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
 
 ## 11. Stripe webhook secret beállítás
 
@@ -278,7 +273,7 @@ Teszteléshez állítsa be:
 - Frontend: `VITE_DEMO_MODE=true`
 - Worker: `PAYMENTS_ENABLED=false`
 
-Ilyenkor a levélkészítő oldalon megjelenik a demó hozzáférési kód mező. A backend csak helyes kóddal hagyja ki a Stripe fizetést, szerveroldalon `paid` állapotú tesztrendelést hoz létre, majd elindítja az AI-generálást. Ezt éles környezetben csak átmeneti tesztre használja, erős, nem kitalálható kóddal.
+Ilyenkor a levélkészítő oldalon megjelenik a demó hozzáférési kód mező. A backend csak helyes kóddal hagyja ki a Stripe fizetést, szerveroldalon `paid` állapotú tesztrendelést hoz létre, majd elindítja a próba levélírást. Ezt éles környezetben csak átmeneti tesztre használja, erős, nem kitalálható kóddal.
 
 Ha `PAYMENTS_ENABLED=false`, akkor a Stripe Checkout és a Stripe webhook útvonal szerveroldalon le van tiltva. Így a demó alatt nincs bankkártyás fizetés.
 
@@ -415,7 +410,7 @@ Ne tegye nyilvánossá a demó hozzáférési kódot. Attól, hogy valaki nem tu
 - **Stripe secret key:** test vagy live mód szerint, `STRIPE_SECRET_KEY`.
 - **Stripe webhook secret:** a webhook endpoint signing secretje, `STRIPE_WEBHOOK_SECRET`.
 - **TOKEN_HASH_SECRET:** saját, hosszú random titok a result tokenek és magic linkek HMAC hash-eléséhez.
-- **Resend API key:** csak céges magic link emailhez kell, `RESEND_API_KEY`.
+- **Resend API key:** tranzakciós e-mailekhez kell, `RESEND_API_KEY`.
 
 ## GitHub Actions demó változók
 

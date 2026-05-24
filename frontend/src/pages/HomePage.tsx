@@ -8,7 +8,7 @@ const categories = [
   "Fizetési felszólítás",
   "Szolgáltatói vita",
   "Webáruházas probléma",
-  "Céges hivatalos válaszlevél",
+  "Hivatalos válaszlevél",
   "Bérleti ügyintéző levél",
   "Munkahelyi hivatalos levél",
 ];

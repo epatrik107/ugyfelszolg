@@ -1,12 +1,11 @@
 import {
-  businessMagicLinkEmailHtml,
   checkoutExpiredEmailHtml,
   invoiceEmailHtml,
   letterReadyEmailHtml,
   paymentFailedEmailHtml,
   refundEmailHtml,
 } from "./emailTemplates";
-import type { Env, InvoiceRow, OrderRow, SubscriptionRow } from "./types";
+import type { Env, InvoiceRow, OrderRow } from "./types";
 
 function getSellerInfo(env: Env) {
   return {
@@ -61,24 +60,6 @@ async function sendEmail(
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
-}
-
-export async function sendBusinessMagicLink(
-  env: Env,
-  subscription: SubscriptionRow,
-  token: string,
-) {
-  const { sellerName, sellerAddress } = getSellerInfo(env);
-  const link = `${env.SITE_URL}/ceges?magic=${token}`;
-  const html = businessMagicLinkEmailHtml({ magicLink: link, sellerName, sellerAddress });
-
-  await sendEmail(
-    env,
-    subscription.email,
-    "Ügyfélszolgálat céges hozzáférés",
-    html,
-    `magic-${subscription.id}-${token.slice(0, 12)}`,
-  );
 }
 
 export async function sendInvoiceEmail(

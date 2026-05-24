@@ -35,7 +35,7 @@ export function TermsPage() {
       />
       <ContentBlock
         title="5. Teljesítés és digitális tartalom"
-        text="A szolgáltatás digitális tartalomnak minősül. A teljesítés a sikeres fizetés igazolása után automatikusan megkezdődik. A kész levél az eredményoldalon érhető el, és e-mailben is elküldhető. A Szolgáltató törekszik az elkészítési idő minimalizálására, de technikai okok miatt az legfeljebb néhány percet vehet igénybe. A premium csomagtól függően a levél újragenerálható."
+        text="A szolgáltatás digitális tartalomnak minősül. A teljesítés a sikeres fizetés igazolása után automatikusan megkezdődik. A kész levél az eredményoldalon érhető el, és e-mailben is elküldhető. A Szolgáltató törekszik az elkészítési idő minimalizálására, de technikai okok miatt az legfeljebb néhány percet vehet igénybe. A prémium csomagoktól függően a levél újra elkészíthető."
       />
       <ContentBlock
         title="6. Elállási jog"

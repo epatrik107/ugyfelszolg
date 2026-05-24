@@ -36,9 +36,9 @@ export const packages: Record<
   }
 > = {
   basic: {
-    name: "Alap levél",
-    price: "1 990 Ft",
-    numericPrice: 1990,
+    name: "Alapcsomag",
+    price: "890 Ft",
+    numericPrice: 890,
     bullets: [
       "1 hivatalos levél",
       "Kulturált, határozott megfogalmazás",
@@ -47,9 +47,9 @@ export const packages: Record<
     ],
   },
   premium: {
-    name: "Prémium levél",
-    price: "4 990 Ft",
-    numericPrice: 4990,
+    name: "Prémium",
+    price: "3 900 Ft",
+    numericPrice: 3900,
     bullets: [
       "Részletesebb megfogalmazás",
       "Alternatív tárgymező",
@@ -58,18 +58,16 @@ export const packages: Record<
       "Komolyabb ügyekhez",
     ],
   },
-  business: {
-    name: "Céges csomag",
-    price: "19 900 Ft",
-    recurring: "/ hó",
-    numericPrice: 19900,
+  premium_plus: {
+    name: "Prémium plusz",
+    price: "10 900 Ft",
+    numericPrice: 10900,
     bullets: [
-      "Havi 10 üzleti levél",
-      "Ajánlatkérés",
-      "Reklamáció",
-      "Válaszlevél",
-      "Fizetési felszólítás",
-      "Céges hangvétel",
+      "Összetettebb ügyekhez",
+      "Részletesebb levélváltozat",
+      "Alternatív tárgymező és zárás",
+      "Rövid használati javaslat",
+      "Prémium modell használata",
     ],
   },
 };

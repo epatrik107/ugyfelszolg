@@ -92,12 +92,12 @@ describe("checkout frontend price manipulation prevention", () => {
     // createCheckoutSession uses selectedPackage.price, not an input price.
     const basicPrice = getPackage("basic").price;
     const premiumPrice = getPackage("premium").price;
-    const businessPrice = getPackage("business").price;
+    const premiumPlusPrice = getPackage("premium_plus").price;
 
     // These must be fixed values
-    expect(basicPrice).toBe(1990);
-    expect(premiumPrice).toBe(4990);
-    expect(businessPrice).toBe(19900);
+    expect(basicPrice).toBe(890);
+    expect(premiumPrice).toBe(3900);
+    expect(premiumPlusPrice).toBe(10900);
 
     // Any frontend-provided price is ignored – the Stripe session uses server price
     const manipulatedFrontendPrice: number = 1; // attacker's price
@@ -112,7 +112,7 @@ describe("checkout frontend price manipulation prevention", () => {
     const serverPackagePrice: number = getPackage("basic").price;
 
     // The server always uses getPackage().price, never the request body price
-    expect(serverPackagePrice).toBe(1990);
+    expect(serverPackagePrice).toBe(890);
     expect(requestBodyPrice).not.toBe(serverPackagePrice);
   });
 });

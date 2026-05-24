@@ -77,7 +77,7 @@ export async function createCheckoutSession(
   },
 ) {
   const params = new URLSearchParams();
-  params.set("mode", input.packageId === "business" ? "subscription" : "payment");
+  params.set("mode", "payment");
   params.set("success_url", `${env.SITE_URL}/sikeres-fizetes?order=${input.publicId}&token=${input.resultToken}`);
   params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}`);
   params.set("customer_email", input.email);
@@ -89,14 +89,8 @@ export async function createCheckoutSession(
   params.set("line_items[0][price_data][unit_amount]", String(input.amount));
   params.set("line_items[0][price_data][product_data][name]", input.packageName);
 
-  if (input.packageId === "business") {
-    params.set("line_items[0][price_data][recurring][interval]", "month");
-    params.set("subscription_data[metadata][orderId]", input.orderId);
-    params.set("subscription_data[metadata][selectedPackage]", input.packageId);
-  } else {
-    params.set("payment_intent_data[metadata][orderId]", input.orderId);
-    params.set("payment_intent_data[metadata][selectedPackage]", input.packageId);
-  }
+  params.set("payment_intent_data[metadata][orderId]", input.orderId);
+  params.set("payment_intent_data[metadata][selectedPackage]", input.packageId);
 
   return stripeRequest<StripeCheckoutSession>(env, "/checkout/sessions", {
     method: "POST",

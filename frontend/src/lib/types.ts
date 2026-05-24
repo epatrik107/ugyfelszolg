@@ -1,4 +1,4 @@
-export type PackageId = "basic" | "premium" | "business";
+export type PackageId = "basic" | "premium" | "premium_plus";
 
 export interface LetterFormValues {
   name: string;
@@ -29,15 +29,4 @@ export interface OrderResult {
   letterEmailSent?: boolean;
   selectedPackage: PackageId;
   createdAt: string;
-}
-
-export interface BusinessSession {
-  email: string;
-  status: string;
-  quota: number;
-  used: number;
-  reserved: number;
-  remaining: number;
-  periodStart: string;
-  periodEnd: string;
 }

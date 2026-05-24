@@ -24,14 +24,12 @@ export const initialLetterValues: LetterFormValues = {
 };
 
 type LetterFormProps = {
-  mode?: "checkout" | "business";
   busy?: boolean;
   submitLabel: string;
   onSubmit: (values: LetterFormValues) => Promise<void>;
 };
 
 export function LetterForm({
-  mode = "checkout",
   busy = false,
   submitLabel,
   onSubmit,
@@ -69,7 +67,7 @@ export function LetterForm({
       setError("A nyilatkozat elfogadása kötelező.");
       return;
     }
-    if (mode === "checkout" && !DEMO_MODE && !values.turnstileToken) {
+    if (!DEMO_MODE && !values.turnstileToken) {
       setError("Kérjük, végezze el a spamvédelmi ellenőrzést.");
       return;
     }
@@ -165,21 +163,22 @@ export function LetterForm({
         </Field>
       </div>
 
-      {mode === "checkout" && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold">Csomag kiválasztása</h2>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {(["basic", "premium", "business"] as PackageId[]).map((packageId) => (
-              <PackageCard
-                key={packageId}
-                packageId={packageId}
-                selected={values.selectedPackage === packageId}
-                onSelect={(selectedPackage) => update("selectedPackage", selectedPackage)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Csomag kiválasztása</h2>
+        <p className="text-sm text-slate-600">
+          Jelenleg kizárólag magánszemélyek részére érhető el a szolgáltatás.
+        </p>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {(["basic", "premium", "premium_plus"] as PackageId[]).map((packageId) => (
+            <PackageCard
+              key={packageId}
+              packageId={packageId}
+              selected={values.selectedPackage === packageId}
+              onSelect={(selectedPackage) => update("selectedPackage", selectedPackage)}
+            />
+          ))}
+        </div>
+      </section>
 
       <div className="space-y-4">
         <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
@@ -206,7 +205,7 @@ export function LetterForm({
         <LegalNotice />
       </div>
 
-      {mode === "checkout" && DEMO_MODE && (
+      {DEMO_MODE && (
         <Field label="Demó hozzáférési kód">
           <input
             className="input"
@@ -218,7 +217,7 @@ export function LetterForm({
         </Field>
       )}
 
-      {mode === "checkout" && !DEMO_MODE && (
+      {!DEMO_MODE && (
         <TurnstileField onSuccess={(token) => update("turnstileToken", token)} />
       )}
 

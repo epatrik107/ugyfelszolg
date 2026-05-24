@@ -1,7 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { BusinessPage } from "./pages/BusinessPage";
 import { CancelPage } from "./pages/CancelPage";
 import { ContactPage } from "./pages/ContactPage";
 import { HomePage } from "./pages/HomePage";
@@ -53,7 +52,6 @@ export default function App() {
           <Route path="/kapcsolat" element={<ContactPage />} />
           <Route path="/aszf" element={<TermsPage />} />
           <Route path="/adatkezeles" element={<PrivacyPage />} />
-          <Route path="/ceges" element={<BusinessPage />} />
         </Routes>
       </Layout>
     </ErrorBoundary>

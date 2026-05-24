@@ -129,12 +129,12 @@ describe("stripe event deduplication", () => {
 describe("checkout amount and currency validation", () => {
   it("validates that amount matches server-side package price", () => {
     const basicPackage = getPackage("basic");
-    expect(basicPackage.price).toBe(1990);
+    expect(basicPackage.price).toBe(890);
     expect(basicPackage.currency).toBe("huf");
 
     // Simulates the check in handleCheckoutCompleted:
     // if session.amount_total !== selectedPackage.price → reject
-    const sessionAmountOk: number = 1990;
+    const sessionAmountOk: number = 890;
     const sessionAmountBad: number = 999;
 
     expect(sessionAmountOk === basicPackage.price).toBe(true);
@@ -156,12 +156,12 @@ describe("checkout amount and currency validation", () => {
     const wrongCurrency: string = "eur";
     const pkgCurrency: string = pkg.currency;
 
-    const wouldMarkPaid = pkg.price === 1990 && wrongCurrency === pkgCurrency;
+    const wouldMarkPaid = pkg.price === 890 && wrongCurrency === pkgCurrency;
     expect(wouldMarkPaid).toBe(false);
   });
 
   it("accepts correct amount and currency for all packages", () => {
-    for (const pkgId of ["basic", "premium"] as const) {
+    for (const pkgId of ["basic", "premium", "premium_plus"] as const) {
       const pkg = getPackage(pkgId);
       const wouldMarkPaid = pkg.price === pkg.price && pkg.currency === pkg.currency;
       expect(wouldMarkPaid).toBe(true);

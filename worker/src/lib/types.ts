@@ -1,4 +1,4 @@
-export type PackageId = "basic" | "premium" | "business";
+export type PackageId = "basic" | "premium" | "premium_plus";
 export type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "refunded";
 export type AiStatus =
   | "not_started"

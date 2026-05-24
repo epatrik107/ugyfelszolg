@@ -8,7 +8,6 @@ const links = [
   { to: "/level-keszites", label: "Levélkészítés" },
   { to: "/arak", label: "Árak" },
   { to: "/kapcsolat", label: "Kapcsolat" },
-  { to: "/ceges", label: "Céges ügyfelek" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

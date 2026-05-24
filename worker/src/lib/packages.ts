@@ -16,8 +16,8 @@ export interface PackageCapabilities {
 export const PACKAGES = {
   basic: {
     id: "basic",
-    name: "Alap levél",
-    price: 1990,
+    name: "Alapcsomag",
+    price: 890,
     currency: "huf",
     billingMode: "payment",
     capabilities: {
@@ -30,8 +30,8 @@ export const PACKAGES = {
   },
   premium: {
     id: "premium",
-    name: "Prémium levél",
-    price: 4990,
+    name: "Prémium",
+    price: 3900,
     currency: "huf",
     billingMode: "payment",
     capabilities: {
@@ -42,13 +42,12 @@ export const PACKAGES = {
       isPremiumModel: true,
     } satisfies PackageCapabilities,
   },
-  business: {
-    id: "business",
-    name: "Céges csomag",
-    price: 19900,
+  premium_plus: {
+    id: "premium_plus",
+    name: "Prémium plusz",
+    price: 10900,
     currency: "huf",
-    billingMode: "subscription",
-    quotaPerPeriod: 10,
+    billingMode: "payment",
     capabilities: {
       maxRegenerations: 3,
       sendsEmailByDefault: false,
