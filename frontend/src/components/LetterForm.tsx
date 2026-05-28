@@ -1,5 +1,5 @@
 import { LoaderCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { DEMO_MODE } from "../lib/config";
 import { letterTypes, tones } from "../lib/constants";
@@ -36,6 +36,13 @@ export function LetterForm({
 }: LetterFormProps) {
   const [values, setValues] = useState<LetterFormValues>(initialLetterValues);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [error]);
 
   function update<K extends keyof LetterFormValues>(
     key: K,
@@ -222,7 +229,10 @@ export function LetterForm({
       )}
 
       {error && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+        <div
+          ref={errorRef}
+          className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+        >
           {error}
         </div>
       )}

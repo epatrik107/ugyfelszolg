@@ -74,6 +74,12 @@ export function buildUserPrompt(
   reviewIssues: string[] = [],
   regenerationFeedback?: string,
 ) {
+  const today = new Date().toLocaleDateString("hu-HU", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   const correction =
     reviewIssues.length > 0
       ? `\n\nAz előző változat javítandó pontjai:\n- ${reviewIssues.join("\n- ")}\nKészíts új, javított változatot.`
@@ -83,6 +89,8 @@ export function buildUserPrompt(
     : "";
 
   return `Készíts hivatalos magyar nyelvű levelet az alábbi adatok alapján.
+
+Jelenlegi dátum: ${today}
 
 Levél típusa:
 ${wrapUserField("level_tipusa", order.letter_type)}

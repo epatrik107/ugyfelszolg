@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LetterForm } from "../components/LetterForm";
 import { LegalNotice } from "../components/LegalNotice";
@@ -11,7 +11,14 @@ export function LetterCreationPage() {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<LetterFormValues | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const serverErrorRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (serverError) {
+      serverErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [serverError]);
 
   async function handleSubmit(values: LetterFormValues) {
     setSummary(values);
@@ -72,7 +79,10 @@ export function LetterCreationPage() {
             />
             <LegalNotice />
             {serverError && (
-              <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700">
+              <div
+                ref={serverErrorRef}
+                className="rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700"
+              >
                 {serverError}
               </div>
             )}
