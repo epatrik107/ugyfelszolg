@@ -10,11 +10,14 @@ export interface EnvValidationResult {
 
 const coreRequiredKeys = [
   "DB",
-  "RATE_LIMIT_KV",
   "GEMINI_API_KEY",
   "TOKEN_HASH_SECRET",
   "SITE_URL",
   "ALLOWED_ORIGINS",
+] as const;
+
+/** Keys only required when not in demo-only mode (demo bypasses Turnstile via access code) */
+const nonDemoRequiredKeys = [
   "TURNSTILE_SECRET_KEY",
 ] as const;
 
@@ -36,6 +39,10 @@ function isDemoOnlyMode(env: Env) {
 
 export function validateEnv(env: Env): EnvValidationResult {
   const missing = [...missingKeys(env, coreRequiredKeys)];
+
+  if (!isDemoOnlyMode(env)) {
+    missing.push(...missingKeys(env, nonDemoRequiredKeys));
+  }
 
   if (isPaymentsEnabled(env)) {
     missing.push(...missingKeys(env, ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]));
