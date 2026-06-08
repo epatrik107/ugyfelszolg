@@ -190,36 +190,66 @@ Ne adj jogi tanácsot.
 Ne hivatkozz jogszabályra, ha azt a felhasználó nem adta meg.${userFeedback}${correction}`;
 }
 
+const GEMINI_MAX_RETRIES = 2;
+const GEMINI_RETRY_BASE_MS = 2000;
+
 async function callGemini(env: Env, model: string, input: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(GEMINI_GENERATION_TIMEOUT_MS),
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: input }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-    }),
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts: [{ text: input }] }],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   });
 
-  if (!response.ok) {
-    throw new Error(`Gemini API error (${response.status})`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt += 1) {
+    if (attempt > 0) {
+      const delayMs = GEMINI_RETRY_BASE_MS * Math.pow(2, attempt - 1);
+      logEvent("gemini_retry", { attempt, delayMs, model });
+      await wait(delayMs);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(GEMINI_GENERATION_TIMEOUT_MS),
+        body,
+      });
+    } catch (fetchError) {
+      lastError = fetchError instanceof Error ? fetchError : new Error("Network error");
+      if (isTimeoutError(fetchError)) {
+        throw lastError;
+      }
+      continue;
+    }
+
+    if (response.status === 429 && attempt < GEMINI_MAX_RETRIES) {
+      lastError = new Error("Gemini API kvóta átmenetileg kimerült (429).");
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error (${response.status})`);
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+
+    const text = payload.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("")
+      .trim();
+
+    if (!text) {
+      throw new Error("Gemini empty response.");
+    }
+    return text;
   }
 
-  const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-
-  const text = payload.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text ?? "")
-    .join("")
-    .trim();
-
-  if (!text) {
-    throw new Error("Gemini empty response.");
-  }
-  return text;
+  throw lastError ?? new Error("Gemini API error after retries.");
 }
 
 async function reviewWithAiOnce(env: Env, letter: string): Promise<AiReviewResult> {
