@@ -239,17 +239,17 @@ describe("environment validation", () => {
     const response = await app.fetch(
       new Request("https://worker.test/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Origin: "https://example.com" },
         body: JSON.stringify({}),
       }),
-      baseEnv({ RATE_LIMIT_KV: undefined }),
+      baseEnv({ GEMINI_API_KEY: "" }),
       {} as ExecutionContext,
     );
     const payload = await response.json() as { error?: { code?: string; message?: string } };
 
     expect(response.status).toBe(503);
     expect(payload.error?.code).toBe("SERVICE_UNAVAILABLE");
-    expect(JSON.stringify(payload)).not.toContain("RATE_LIMIT_KV");
+    expect(JSON.stringify(payload)).not.toContain("GEMINI_API_KEY");
   });
 
   it("does not run scheduled work when env is incomplete", async () => {
@@ -258,7 +258,7 @@ describe("environment validation", () => {
       {} as ScheduledController,
       baseEnv({
         DB: { prepare } as unknown as D1Database,
-        RATE_LIMIT_KV: undefined,
+        GEMINI_API_KEY: "",
       }),
     );
 
