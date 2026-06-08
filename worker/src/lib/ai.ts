@@ -8,6 +8,7 @@ import {
 import { sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
+import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewLetterWithRules } from "./review";
 import { createRefund } from "./stripe";
@@ -222,7 +223,7 @@ async function callGemini(env: Env, model: string, input: string) {
 }
 
 async function reviewWithAiOnce(env: Env, letter: string): Promise<AiReviewResult> {
-  const model = env.GEMINI_REVIEW_MODEL || "gemini-3.1-flash-lite";
+  const model = getReviewModel(env);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   let response: Response;
   try {
@@ -305,9 +306,7 @@ export async function generateLetterForPaidOrder(
   regenerationFeedback?: string,
 ) {
   const pkg = getPackage(order.selected_package);
-  const model = pkg.capabilities.isPremiumModel
-    ? (env.GEMINI_MODEL_PREMIUM || env.GEMINI_MODEL || "gemini-3.5-flash")
-    : (env.GEMINI_MODEL || "gemini-3.1-flash-lite");
+  const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
     await failGeneration(env, order.id, status, message);

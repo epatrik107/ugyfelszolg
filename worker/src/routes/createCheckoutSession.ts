@@ -63,6 +63,20 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   }
 
   const selectedPackage = getPackage(input.selectedPackage);
+  const aiAvailable = await checkAiServiceAvailable(
+    c.env,
+    selectedPackage.capabilities.isPremiumModel,
+  );
+  if (!aiAvailable) {
+    logEvent("checkout_blocked_ai_unavailable", {});
+    return errorJson(
+      c,
+      "SERVICE_UNAVAILABLE",
+      "A levélgeneráló szolgáltatás átmenetileg nem elérhető. Kérjük, próbálja újra néhány perc múlva.",
+      503,
+    );
+  }
+
   const orderId = crypto.randomUUID();
   const publicId = crypto.randomUUID();
   const resultToken = generateOpaqueToken();
@@ -101,18 +115,6 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
       publicId,
       demo: true,
     });
-  }
-
-  // Check AI service availability before creating the order and payment session
-  const aiAvailable = await checkAiServiceAvailable(c.env);
-  if (!aiAvailable) {
-    logEvent("checkout_blocked_ai_unavailable", {});
-    return errorJson(
-      c,
-      "SERVICE_UNAVAILABLE",
-      "A levélgeneráló szolgáltatás átmenetileg nem elérhető. Kérjük, próbálja újra néhány perc múlva.",
-      503,
-    );
   }
 
   await insertOrder(c.env, {
