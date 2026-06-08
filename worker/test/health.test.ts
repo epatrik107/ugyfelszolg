@@ -17,9 +17,9 @@ afterEach(() => {
 });
 
 describe("Gemini service availability", () => {
-  it("replaces the invalid model names previously written by the deploy workflow", () => {
+  it("replaces incompatible model names previously written by the deploy workflow", () => {
     const legacyEnv = {
-      GEMINI_MODEL: "gemini-3.1-flash-lite",
+      GEMINI_MODEL: "gemini-2.5-flash-lite",
       GEMINI_MODEL_PREMIUM: "gemini-3.5-flash",
       GEMINI_REVIEW_MODEL: "gemini-3.1-flash-lite",
     } as Env;
