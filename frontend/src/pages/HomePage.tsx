@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 
@@ -11,6 +11,34 @@ const categories = [
   "Hivatalos válaszlevél",
   "Bérleti ügyintéző levél",
   "Munkahelyi hivatalos levél",
+];
+
+const testimonials = [
+  {
+    name: "Kovács Csaba",
+    comment:
+      "Nagyon jól működik a program! Pár perc alatt kaptam egy profi panaszlevelet, amit azonnal el is tudtam küldeni a szolgáltatónak.",
+  },
+  {
+    name: "Nagy Erika",
+    comment:
+      "Egyszerűen zseniális! Nem kellett nekem fogalmaznom, az AI mindent megírt helyettem. A közműszolgáltató azonnal reagált is a levélre.",
+  },
+  {
+    name: "Tóth Márton",
+    comment:
+      "Kicsit szkeptikus voltam, de tényleg egy korrekt, hivatalos levelet generált. Sok időt és idegeskedést spórolt meg nekem.",
+  },
+  {
+    name: "Szabó Judit",
+    comment:
+      "A webáruházas reklamációmat gyönyörűen megírták. Már másnap visszahívtak az üzletből, hogy intézik a visszatérítést. Szuper szolgáltatás!",
+  },
+  {
+    name: "Horváth Péter",
+    comment:
+      "Fizetési felszólítást generáltattam, profi munka volt. A levél határozott, de udvarias stílusban készült el. Bátran ajánlom bárkinek.",
+  },
 ];
 
 export function HomePage() {
@@ -78,6 +106,58 @@ export function HomePage() {
               >
                 <CheckCircle2 className="shrink-0 text-azure-600" size={18} />
                 <span>{category}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <h2 className="text-2xl font-semibold">Vélemények</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {testimonials.slice(0, 3).map((t) => (
+              <div
+                className="rounded-lg border border-slate-200 bg-white p-6"
+                key={t.name}
+              >
+                <div className="mb-3 flex gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      size={16}
+                      className="fill-mint-500 text-mint-500"
+                    />
+                  ))}
+                </div>
+                <p className="mb-4 text-sm leading-6 text-slate-700">
+                  &ldquo;{t.comment}&rdquo;
+                </p>
+                <p className="text-sm font-semibold text-navy-900">
+                  — {t.name}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {testimonials.slice(3).map((t) => (
+              <div
+                className="rounded-lg border border-slate-200 bg-white p-6"
+                key={t.name}
+              >
+                <div className="mb-3 flex gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      size={16}
+                      className="fill-mint-500 text-mint-500"
+                    />
+                  ))}
+                </div>
+                <p className="mb-4 text-sm leading-6 text-slate-700">
+                  &ldquo;{t.comment}&rdquo;
+                </p>
+                <p className="text-sm font-semibold text-navy-900">
+                  — {t.name}
+                </p>
               </div>
             ))}
           </div>

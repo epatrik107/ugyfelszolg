@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { isRateLimited, RATE_LIMITS, type RateLimitScope } from "../src/lib/rateLimit";
 import type { Env } from "../src/lib/types";
 
@@ -19,6 +19,10 @@ function makeKvMock() {
 
 function makeEnv(kv: unknown = makeKvMock()): Env {
   return { RATE_LIMIT_KV: kv } as unknown as Env;
+}
+
+function makeEnvWithoutKv(): Env {
+  return {} as Env;
 }
 
 describe("isRateLimited", () => {
@@ -68,13 +72,14 @@ describe("isRateLimited", () => {
     expect(await isRateLimited(env, "result-ip", identifier, now)).toBe(false);
   });
 
-  it("when KV binding is missing it allows the request (fail-open) and logs", async () => {
-    const env = makeEnv(undefined);
+  it("when KV binding is missing it blocks the request (fail-closed) and logs", async () => {
+    const env = makeEnvWithoutKv();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    expect(await isRateLimited(env, scope, identifier, now)).toBe(false);
+    expect(await isRateLimited(env, scope, identifier, now)).toBe(true);
     // The logger uses console.log – check that the missing-KV event was recorded
     // (the logger.ts implementation may use console.log, console.warn or similar)
+    expect(logSpy).toHaveBeenCalled();
     logSpy.mockRestore();
   });
 

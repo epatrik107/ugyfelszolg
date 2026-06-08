@@ -218,7 +218,7 @@ cp worker/wrangler.toml.example worker/wrangler.toml
 Hozza létre a `worker/.dev.vars` fájlt. Ez gitignore alatt van, ide kerülnek a helyi secret értékek:
 
 ```env
-GEMINI_API_KEY=AIza...
+GEMINI_API_KEY=<google-ai-studio-key>
 GEMINI_MODEL=gemini-2.0-flash-lite
 GEMINI_REVIEW_MODEL=gemini-2.0-flash-lite
 TOKEN_HASH_SECRET=hosszu-random-titok
@@ -475,18 +475,32 @@ Ha a Worker deploy ezt írja: `binding DB of type d1 must have a valid database_
 - érzékeny API válaszok `Cache-Control: no-store` fejléccel mennek
 - nincs wildcard CORS
 
-## CSP javaslat GitHub Pages frontendhez
+## GitHub Pages frontend biztonsági fejlécek
+
+A GitHub Pages nem támogat repo-szintű egyedi HTTP válaszfejléceket, ezért a
+frontend jelenleg a `frontend/index.html` CSP és referrer meta tagjeit használja.
+Ha a frontendet később Cloudflare Pages, Cloudflare proxy vagy más CDN szolgálja
+ki, ugyanezt HTTP fejlécként kell beállítani, kiegészítve legalább ezekkel:
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self)`.
+
+Aktív CSP:
 
 ```text
 default-src 'self';
 script-src 'self' https://challenges.cloudflare.com;
 style-src 'self';
-img-src 'self' data:;
-connect-src 'self' https://api.xn--gyfelszolgalat-fsb.hu https://challenges.cloudflare.com;
 frame-src https://challenges.cloudflare.com;
-base-uri 'self';
-form-action 'self' https://checkout.stripe.com;
+connect-src 'self' https://ugyfelkozpont-api.epatrik107.workers.dev https://challenges.cloudflare.com;
+img-src 'self' data:;
+object-src 'none';
+base-uri 'none';
+frame-ancestors 'none';
+form-action 'self';
 ```
+
+A Stripe Checkout jelenlegi integrációja top-level redirectet használ, nem HTML
+form POST-ot, ezért Stripe origin nincs a `form-action` direktívában.
 
 ## Projektstruktúra
 

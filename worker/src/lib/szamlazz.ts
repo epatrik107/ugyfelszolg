@@ -115,7 +115,11 @@ export async function issueSzamlazzInvoice(
   const form = new FormData();
   form.append("action-szamla_agent_xml", xml);
 
-  const response = await fetch(SZAMLAZZ_API_URL, { method: "POST", body: form });
+  const response = await fetch(SZAMLAZZ_API_URL, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(15_000),
+  });
 
   if (!response.ok) {
     throw new Error(`szamlazz.hu HTTP error: ${response.status}`);

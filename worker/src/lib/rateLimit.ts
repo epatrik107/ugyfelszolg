@@ -40,11 +40,12 @@ export async function isRateLimited(
   now = new Date(),
 ) {
   if (!env.RATE_LIMIT_KV) {
-    // KV binding missing — log for monitoring but do not silently block all traffic.
-    // The deploy workflow (P0-4) ensures KV is configured for production deployments,
-    // so this path should only occur in dev/staging environments without KV.
+    // KV binding missing — fail-closed to prevent unlimited access.
+    // Production deployments must have KV configured (deploy workflow ensures this).
+    // In development, set up a local KV binding or accept that all rate-limited
+    // endpoints will return 429.
     logEvent("rate_limit_kv_missing", { scope, identifier });
-    return false;
+    return true;
   }
 
   const rule = RATE_LIMITS[scope];

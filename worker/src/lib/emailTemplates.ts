@@ -3,6 +3,37 @@
  * All currency amounts are stored as integer HUF forints.
  */
 
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isLocalHttpHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+export function safeHtmlUrl(rawUrl: string, path = ""): string {
+  const base = rawUrl.trim();
+  let url: URL;
+  try {
+    url = path
+      ? new URL(path.replace(/^\/+/, ""), base.endsWith("/") ? base : `${base}/`)
+      : new URL(base);
+  } catch {
+    throw new Error("Unsupported email link URL scheme.");
+  }
+
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocalHttpHost(url.hostname))) {
+    throw new Error("Unsupported email link URL scheme.");
+  }
+
+  return escapeHtml(url.toString());
+}
+
 function formatAmount(amount: number, currency: string): string {
   const locale = currency.toLowerCase() === "huf" ? "hu-HU" : "en-US";
   const curr = currency.toUpperCase();
@@ -22,12 +53,16 @@ function formatDate(iso: string): string {
 }
 
 function baseHtml(title: string, body: string, sellerName: string, sellerAddress: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeSellerName = escapeHtml(sellerName);
+  const safeSellerAddress = escapeHtml(sellerAddress);
+
   return `<!DOCTYPE html>
 <html lang="hu">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f6f9;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#10233f;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 16px;">
@@ -51,8 +86,8 @@ function baseHtml(title: string, body: string, sellerName: string, sellerAddress
           <tr>
             <td style="padding:24px 32px;border-top:1px solid #e2e8f0;background:#f8fafc;">
               <p style="margin:0;font-size:12px;color:#64748b;line-height:1.6;">
-                <strong>${sellerName}</strong><br>
-                ${sellerAddress}<br>
+                <strong>${safeSellerName}</strong><br>
+                ${safeSellerAddress}<br>
                 Ez az email automatikusan generált értesítés.
               </p>
             </td>
@@ -79,6 +114,16 @@ export interface InvoiceEmailData {
 }
 
 export function invoiceEmailHtml(data: InvoiceEmailData): string {
+  const invoiceNumber = escapeHtml(data.invoiceNumber);
+  const issuedAt = escapeHtml(formatDate(data.issuedAt));
+  const sellerName = escapeHtml(data.sellerName);
+  const sellerAddress = escapeHtml(data.sellerAddress);
+  const sellerTaxNumber = escapeHtml(data.sellerTaxNumber);
+  const customerName = escapeHtml(data.customerName);
+  const customerEmail = escapeHtml(data.customerEmail);
+  const serviceName = escapeHtml(data.serviceName);
+  const amount = escapeHtml(formatAmount(data.amount, data.currency));
+
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Számla</h2>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Köszönjük a megrendelést!</p>
@@ -88,11 +133,11 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
       <tr>
         <td style="padding:0 16px 0 0;vertical-align:top;width:50%;">
           <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Számlaszám</p>
-          <p style="margin:0;font-size:15px;font-weight:700;color:#10233f;">${data.invoiceNumber}</p>
+          <p style="margin:0;font-size:15px;font-weight:700;color:#10233f;">${invoiceNumber}</p>
         </td>
         <td style="vertical-align:top;width:50%;">
           <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Kiállítás dátuma</p>
-          <p style="margin:0;font-size:15px;color:#10233f;">${formatDate(data.issuedAt)}</p>
+          <p style="margin:0;font-size:15px;color:#10233f;">${issuedAt}</p>
         </td>
       </tr>
     </table>
@@ -103,16 +148,16 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
         <td style="padding:12px 16px;width:50%;vertical-align:top;border-right:1px solid #e2e8f0;">
           <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Eladó</p>
           <p style="margin:0;font-size:13px;color:#10233f;line-height:1.6;">
-            <strong>${data.sellerName}</strong><br>
-            ${data.sellerAddress}<br>
-            Adószám: ${data.sellerTaxNumber}
+            <strong>${sellerName}</strong><br>
+            ${sellerAddress}<br>
+            Adószám: ${sellerTaxNumber}
           </p>
         </td>
         <td style="padding:12px 16px;width:50%;vertical-align:top;">
           <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Vevő</p>
           <p style="margin:0;font-size:13px;color:#10233f;line-height:1.6;">
-            <strong>${data.customerName}</strong><br>
-            ${data.customerEmail}
+            <strong>${customerName}</strong><br>
+            ${customerEmail}
           </p>
         </td>
       </tr>
@@ -129,21 +174,21 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
       <tbody>
         <tr>
           <td style="padding:12px 16px;font-size:14px;color:#10233f;border-top:1px solid #e2e8f0;">
-            ${data.serviceName}
+            ${serviceName}
           </td>
           <td style="padding:12px 16px;font-size:14px;color:#10233f;text-align:right;border-top:1px solid #e2e8f0;">
-            ${formatAmount(data.amount, data.currency)}
+            ${amount}
           </td>
         </tr>
       </tbody>
       <tfoot>
         <tr style="background:#f8fafc;border-top:2px solid #e2e8f0;">
           <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#10233f;">Fizetendő összeg</td>
-          <td style="padding:12px 16px;font-size:16px;font-weight:700;color:#10233f;text-align:right;">${formatAmount(data.amount, data.currency)}</td>
+          <td style="padding:12px 16px;font-size:16px;font-weight:700;color:#10233f;text-align:right;">${amount}</td>
         </tr>
       </tfoot>
     </table>
-    <p style="margin:0 0 24px;font-size:12px;color:#64748b;">Fizetési mód: Bankkártyás fizetés (Stripe) &mdash; Teljesítés dátuma: ${formatDate(data.issuedAt)}</p>
+    <p style="margin:0 0 24px;font-size:12px;color:#64748b;">Fizetési mód: Bankkártyás fizetés (Stripe) &mdash; Teljesítés dátuma: ${issuedAt}</p>
 
     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
       A generált levél a fizetés visszaigazolásával egyidejűleg elérhető a rendelési oldalon.<br>
@@ -165,27 +210,32 @@ export interface RefundEmailData {
 }
 
 export function refundEmailHtml(data: RefundEmailData): string {
+  const invoiceNumber = data.invoiceNumber ? escapeHtml(data.invoiceNumber) : "rendelése";
+  const amount = escapeHtml(formatAmount(data.amount, data.currency));
+  const reason = escapeHtml(data.reason);
+  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
+
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Visszatérítési értesítő</h2>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Sajnáljuk a kellemetlenséget!</p>
 
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
       <p style="margin:0;font-size:14px;color:#991b1b;line-height:1.6;">
-        A(z) <strong>${data.invoiceNumber ?? "rendelése"}</strong> összege —
-        <strong>${formatAmount(data.amount, data.currency)}</strong> —
+        A(z) <strong>${invoiceNumber}</strong> összege —
+        <strong>${amount}</strong> —
         visszatérítésre kerül az Ön bankkártyájára.<br>
         A visszatérítés általában <strong>5–10 munkanapon</strong> belül jelenik meg a kártyakivonaton.
       </p>
     </div>
 
     <p style="margin:0 0 8px;font-size:14px;color:#334155;line-height:1.6;"><strong>Mi történt?</strong></p>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6;">${data.reason}</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.6;">${reason}</p>
 
     <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
       Kérjük, próbálja újra — a rendszer rendszerint néhány percen belül visszaáll a normál működésre.
     </p>
 
-    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
   `;
   return baseHtml("Visszatérítési értesítő", body, data.sellerName, data.sellerAddress);
 }
@@ -200,13 +250,17 @@ export interface PaymentFailedEmailData {
 }
 
 export function paymentFailedEmailHtml(data: PaymentFailedEmailData): string {
+  const customerName = escapeHtml(data.customerName);
+  const amount = escapeHtml(formatAmount(data.amount, data.currency));
+  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
+
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetés nem sikerült</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
 
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
       <p style="margin:0;font-size:14px;color:#92400e;line-height:1.6;">
-        A(z) <strong>${formatAmount(data.amount, data.currency)}</strong> összegű fizetés feldolgozása sikertelen volt.
+        A(z) <strong>${amount}</strong> összegű fizetés feldolgozása sikertelen volt.
         Levele nem készült el, és <strong>semmilyen összeg nem lett levonva</strong> a számlájáról.
       </p>
     </div>
@@ -223,7 +277,7 @@ export function paymentFailedEmailHtml(data: PaymentFailedEmailData): string {
       Kérjük, próbálja újra egy másik kártyával, vagy néhány perc múlva.
     </p>
 
-    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újrapróbálom</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újrapróbálom</a>
   `;
   return baseHtml("A fizetés nem sikerült", body, data.sellerName, data.sellerAddress);
 }
@@ -237,10 +291,8 @@ export interface LetterDeliveryEmailData {
 }
 
 export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
-  const escapedLetter = data.letterText
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const escapedLetter = escapeHtml(data.letterText);
+  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
 
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Elkészült a levele!</h2>
@@ -254,7 +306,7 @@ export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
       A levélhez a megrendelési oldalon is hozzáférhet, ahol másolni és letölteni is tudja.
     </p>
 
-    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél megrendelése</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél megrendelése</a>
   `;
   return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
 }
@@ -267,9 +319,12 @@ export interface ExpiredCheckoutEmailData {
 }
 
 export function expiredCheckoutEmailHtml(data: ExpiredCheckoutEmailData): string {
+  const customerName = escapeHtml(data.customerName);
+  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
+
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetési munkamenet lejárt</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
 
     <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
       <p style="margin:0;font-size:14px;color:#0369a1;line-height:1.6;">
@@ -282,7 +337,7 @@ export function expiredCheckoutEmailHtml(data: ExpiredCheckoutEmailData): string
       Ha szeretné, bármikor újra elindíthatja a megrendelést — a korábbi adatait meg kell adni újra.
     </p>
 
-    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
   `;
   return baseHtml("Fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
 }
@@ -295,9 +350,12 @@ export interface CheckoutExpiredEmailData {
 }
 
 export function checkoutExpiredEmailHtml(data: CheckoutExpiredEmailData): string {
+  const customerName = escapeHtml(data.customerName);
+  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
+
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetési munkamenet lejárt</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
 
     <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
       A korábban megkezdett fizetési folyamat 30 percen belül nem fejeződött be, ezért automatikusan lejárt.
@@ -308,7 +366,7 @@ export function checkoutExpiredEmailHtml(data: CheckoutExpiredEmailData): string
       Ha szeretné elkészíttetni a levelet, indítson új rendelést — az összes megadott adatát újra be kell tölteni.
     </p>
 
-    <a href="${data.siteUrl}/level-keszites" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél készítése</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél készítése</a>
   `;
   return baseHtml("A fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
 }
@@ -322,15 +380,13 @@ export interface LetterReadyEmailData {
 }
 
 export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
-  // Escape the letter text for safe HTML embedding
-  const escapedLetter = data.letter
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const customerName = escapeHtml(data.customerName);
+  const escapedLetter = escapeHtml(data.letter);
+  const orderHref = safeHtmlUrl(data.orderUrl);
 
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Elkészült a levele!</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${data.customerName},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
 
     <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
       Az Ön megrendelése alapján elkészítettük a kért levelet. Az alábbiakban olvashatja a teljes szöveget.
@@ -344,7 +400,7 @@ export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
       A levelet kimásolhatja vagy letöltheti a rendelési oldalon is.
     </p>
 
-    <a href="${data.orderUrl}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
+    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
   `;
   return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
 }

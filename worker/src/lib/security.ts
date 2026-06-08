@@ -13,7 +13,7 @@ function normalizeOrigin(origin: string) {
   }
 }
 
-function parseAllowedOrigins(rawValue: string) {
+function parseAllowedOrigins(rawValue = "") {
   return rawValue
     .split(",")
     .map((origin) => normalizeOrigin(origin))
@@ -67,6 +67,7 @@ export async function corsGuard(c: Context<{ Bindings: Env }>, next: Next) {
   if (
     path.startsWith("/api/") &&
     path !== "/api/stripe/webhook" &&
+    path !== "/api/health" &&
     origin &&
     !isAllowedOrigin(origin, c.env)
   ) {

@@ -40,6 +40,64 @@ const systemPrompt =
 
 /** Max characters we accept from the AI before rejecting the output */
 const MAX_AI_OUTPUT_CHARS = 12_000;
+const GEMINI_GENERATION_TIMEOUT_MS = 25_000;
+const AI_REVIEW_TIMEOUT_MS = 15_000;
+const AI_REVIEW_MAX_ATTEMPTS = 2;
+const AI_REVIEW_RETRY_BACKOFF_MS = 50;
+
+export const AI_REVIEW_UNAVAILABLE_MESSAGE =
+  "A levél automatikus minőségellenőrzése átmenetileg nem érhető el. Kérjük, próbálja újra később.";
+
+type AiReviewResult = { ok: boolean; issues: string[] };
+
+class AiReviewFailure extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+  ) {
+    super(code);
+    this.name = "AiReviewFailure";
+  }
+}
+
+function isTimeoutError(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    (error.name === "TimeoutError" || error.name === "AbortError")
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseAiReviewJson(raw: string): AiReviewResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AiReviewFailure("malformed_json", false);
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    typeof (parsed as { ok?: unknown }).ok !== "boolean" ||
+    !Array.isArray((parsed as { issues?: unknown }).issues) ||
+    !(parsed as { issues: unknown[] }).issues.every((issue) => typeof issue === "string")
+  ) {
+    throw new AiReviewFailure("schema_invalid", false);
+  }
+
+  const result = parsed as { ok: boolean; issues: string[] };
+  return {
+    ok: result.ok,
+    issues:
+      result.ok || result.issues.length > 0
+        ? result.issues
+        : ["Az AI minőségellenőrzés blokkolta a levelet."],
+  };
+}
 
 /**
  * Wraps a user-supplied value in XML-like delimiters so the model can
@@ -136,6 +194,7 @@ async function callGemini(env: Env, model: string, input: string) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(GEMINI_GENERATION_TIMEOUT_MS),
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: input }] }],
@@ -162,46 +221,82 @@ async function callGemini(env: Env, model: string, input: string) {
   return text;
 }
 
-async function reviewWithAi(env: Env, letter: string) {
+async function reviewWithAiOnce(env: Env, letter: string): Promise<AiReviewResult> {
   const model = env.GEMINI_REVIEW_MODEL || "gemini-3.1-flash-lite";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [
-          {
-            text:
-              "Te egy magyar nyelvű minőségellenőr vagy. Kizárólag a levél TARTALMÁT vizsgálod (a formai ellenőrzést más rendszer végzi).\n\n" +
-              "Vizsgáld meg, hogy a levél:\n" +
-              "1. Tartalmaz-e konkrét jogi, egészségügyi vagy pénzügyi tanácsot (nem csak tájékoztatást)\n" +
-              "2. Állít-e biztos jogi következményt ('ez jogsértés', 'kötelezhetők', 'bírságot kapnak' stb.)\n" +
-              "3. Fenyegetőző, zsaroló vagy agresszív-e a hangvétele\n" +
-              "4. Tartalmaz-e valótlan vagy félrevezető tényt\n" +
-              "5. Javasol-e konkrét hatósági eljárást jogi tanácsként (nem csak lehetőségként megemlítve)\n\n" +
-              "Ha ezek egyike sem áll fenn, akkor ok=true. Csak JSON-t adj vissza: {\"ok\": boolean, \"issues\": string[]}",
-          },
-        ],
-      },
-      contents: [{ role: "user", parts: [{ text: letter }] }],
-      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 512 },
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(AI_REVIEW_TIMEOUT_MS),
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [
+            {
+              text:
+                "Te egy magyar nyelvű minőségellenőr vagy. Kizárólag a levél TARTALMÁT vizsgálod (a formai ellenőrzést más rendszer végzi).\n\n" +
+                "Vizsgáld meg, hogy a levél:\n" +
+                "1. Tartalmaz-e konkrét jogi, egészségügyi vagy pénzügyi tanácsot (nem csak tájékoztatást)\n" +
+                "2. Állít-e biztos jogi következményt ('ez jogsértés', 'kötelezhetők', 'bírságot kapnak' stb.)\n" +
+                "3. Fenyegetőző, zsaroló vagy agresszív-e a hangvétele\n" +
+                "4. Tartalmaz-e valótlan vagy félrevezető tényt\n" +
+                "5. Javasol-e konkrét hatósági eljárást jogi tanácsként (nem csak lehetőségként megemlítve)\n\n" +
+                "Ha ezek egyike sem áll fenn, akkor ok=true. Csak JSON-t adj vissza: {\"ok\": boolean, \"issues\": string[]}",
+            },
+          ],
+        },
+        contents: [{ role: "user", parts: [{ text: letter }] }],
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 512 },
+      }),
+    });
+  } catch (error) {
+    throw new AiReviewFailure(isTimeoutError(error) ? "timeout" : "network_error", true);
+  }
 
   if (!response.ok) {
-    throw new Error(`Gemini review error (${response.status})`);
+    const retryable = response.status === 429 || response.status >= 500;
+    throw new AiReviewFailure(`http_${response.status}`, retryable);
   }
 
   const payload = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-  const raw = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "{}";
-  const parsed = JSON.parse(raw) as { ok?: boolean; issues?: string[] };
-  return {
-    ok: parsed.ok === true,
-    issues: Array.isArray(parsed.issues) ? parsed.issues : [],
-  };
+  const raw = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
+  if (!raw) {
+    throw new AiReviewFailure("empty_response", false);
+  }
+  return parseAiReviewJson(raw);
+}
+
+/**
+ * Secondary AI review is an intentional fail-closed security gate. Transient
+ * provider failures get one bounded retry; malformed or schema-invalid review
+ * output blocks generation immediately instead of falling back to rule-only review.
+ */
+async function reviewWithAi(env: Env, letter: string): Promise<AiReviewResult> {
+  let lastFailure: AiReviewFailure | null = null;
+
+  for (let attempt = 0; attempt < AI_REVIEW_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await reviewWithAiOnce(env, letter);
+    } catch (error) {
+      const failure =
+        error instanceof AiReviewFailure
+          ? error
+          : new AiReviewFailure("unexpected_error", false);
+      lastFailure = failure;
+
+      if (!failure.retryable || attempt === AI_REVIEW_MAX_ATTEMPTS - 1) {
+        throw failure;
+      }
+
+      logEvent("ai_review_retry", { attempt, reason: failure.code });
+      await wait(AI_REVIEW_RETRY_BACKOFF_MS);
+    }
+  }
+
+  throw lastFailure ?? new AiReviewFailure("unexpected_error", false);
 }
 
 export async function generateLetterForPaidOrder(
@@ -260,7 +355,7 @@ export async function generateLetterForPaidOrder(
         logEvent("ai_review_warning", { orderId: order.id, attempt, warnings: ruleReview.warnings });
       }
 
-      // AI review: blockers prevent completion; warnings are advisory
+      // AI review is a fail-closed security gate; warnings are advisory.
       let aiBlockers: string[] = [];
       try {
         const aiReview = await reviewWithAi(env, letter);
@@ -270,8 +365,17 @@ export async function generateLetterForPaidOrder(
         }
         reviewIssues = [...ruleReview.blockers, ...aiBlockers];
       } catch (reviewErr) {
-        logEvent("ai_review_error", { orderId: order.id, reason: reviewErr instanceof Error ? reviewErr.message : "unknown" });
-        reviewIssues = ruleReview.blockers;
+        logEvent("ai_review_gate_failed", {
+          orderId: order.id,
+          attempt,
+          reason: reviewErr instanceof AiReviewFailure ? reviewErr.code : "unknown",
+        });
+        await handleFailure(
+          "failed_review",
+          AI_REVIEW_UNAVAILABLE_MESSAGE,
+          "ai_review_unavailable",
+        );
+        return;
       }
 
       if (ruleReview.ok && aiBlockers.length === 0) {

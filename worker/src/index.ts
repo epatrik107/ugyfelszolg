@@ -2,6 +2,11 @@ import { Hono } from "hono";
 import { addSecurityHeaders, bodySizeGuard, corsGuard, requireJsonContentType } from "./lib/security";
 import { cleanupExpiredData, getStuckGeneratingOrders, markOrderPaymentStatus } from "./lib/db";
 import { sendRefundEmail } from "./lib/email";
+import {
+  envValidationGuard,
+  logEnvValidationFailure,
+  validateEnv,
+} from "./lib/envValidation";
 import { getInvoiceByOrderId } from "./lib/invoice";
 import { logEvent } from "./lib/logger";
 import { errorJson } from "./lib/response";
@@ -19,6 +24,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.use("*", corsGuard);
 app.use("/api/*", bodySizeGuard);
 app.use("/api/*", requireJsonContentType);
+app.use("/api/*", envValidationGuard);
 app.post("/api/create-checkout-session", createCheckoutSessionRoute);
 app.post("/api/stripe/webhook", stripeWebhookRoute);
 app.get("/api/orders/:publicId/result", getOrderResultRoute);
@@ -26,17 +32,15 @@ app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
 app.post("/api/orders/:publicId/send-letter", sendLetterRoute);
 app.post("/api/contact", contactRoute);
 app.get("/api/health", async (c) => {
+  const validation = validateEnv(c.env);
+  logEnvValidationFailure(validation, "health");
+
   try {
     await c.env.DB.prepare("SELECT 1").run();
-    const kvOk = Boolean(c.env.RATE_LIMIT_KV);
-    const status = kvOk ? "ok" : "degraded";
-    return c.json({
-      status,
-      ts: new Date().toISOString(),
-      checks: { db: "ok", rateLimitKv: kvOk ? "ok" : "missing" },
-    }, kvOk ? 200 : 503);
+    const status = validation.ok ? "ok" : "degraded";
+    return c.json({ status, ts: new Date().toISOString() }, validation.ok ? 200 : 503);
   } catch {
-    return c.json({ status: "degraded", checks: { db: "error" } }, 503);
+    return c.json({ status: "degraded", ts: new Date().toISOString() }, 503);
   }
 });
 app.notFound((c) => errorJson(c, "NOT_FOUND", "Nem található.", 404));
@@ -92,6 +96,11 @@ export default {
     return addSecurityHeaders(response);
   },
   async scheduled(_controller: ScheduledController, env: Env) {
+    const validation = validateEnv(env);
+    if (!validation.ok) {
+      logEnvValidationFailure(validation, "scheduled");
+      return;
+    }
     await cleanupExpiredData(env);
     await resolveStuckOrders(env);
   },

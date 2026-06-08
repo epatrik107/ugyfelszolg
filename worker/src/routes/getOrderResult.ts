@@ -39,9 +39,14 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
     generationCount: order.generation_count,
     generatedLetter:
       order.ai_status === "completed" ? order.generated_letter : undefined,
-    letterHistory: order.letter_history
-      ? (JSON.parse(order.letter_history) as string[])
-      : [],
+    letterHistory: (() => {
+      if (!order.letter_history) return [];
+      try {
+        return JSON.parse(order.letter_history) as string[];
+      } catch {
+        return [];
+      }
+    })(),
     letterEmailSent: order.letter_email_sent === 1,
     selectedPackage: order.selected_package,
     createdAt: order.created_at,
