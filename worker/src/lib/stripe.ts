@@ -33,9 +33,17 @@ interface StripeInvoice {
 export interface StripeEvent<T = unknown> {
   id: string;
   type: string;
+  livemode: boolean;
   data: {
     object: T;
   };
+}
+
+function assertStripeKeyMatchesMode(env: Env) {
+  const expectedPrefix = env.PAYMENT_MODE === "live" ? "sk_live_" : "sk_test_";
+  if (!env.PAYMENT_MODE || !env.STRIPE_SECRET_KEY.startsWith(expectedPrefix)) {
+    throw new Error("Stripe key does not match the configured payment mode.");
+  }
 }
 
 async function stripeRequest<T>(
@@ -46,6 +54,7 @@ async function stripeRequest<T>(
   if (!env.STRIPE_SECRET_KEY) {
     throw new Error("Stripe is not configured.");
   }
+  assertStripeKeyMatchesMode(env);
 
   const response = await fetch(`https://api.stripe.com/v1${path}`, {
     ...init,
@@ -203,6 +212,7 @@ export async function verifyStripeWebhook(
     if (
       typeof parsed.id !== "string" ||
       typeof parsed.type !== "string" ||
+      typeof parsed.livemode !== "boolean" ||
       !parsed.data ||
       typeof parsed.data !== "object" ||
       !("object" in parsed.data)

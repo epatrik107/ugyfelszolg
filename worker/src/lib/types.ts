@@ -49,6 +49,8 @@ export interface Env {
   DEMO_MODE?: string;
   DEMO_ACCESS_CODE?: string;
   PAYMENTS_ENABLED?: string;
+  PAYMENT_MODE?: "test" | "live";
+  SZAMLAZZ_TEST_ACCOUNT_CONFIRMED?: string;
   /** Seller information for invoice generation */
   SELLER_NAME?: string;
   SELLER_ADDRESS?: string;

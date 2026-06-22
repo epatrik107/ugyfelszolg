@@ -36,6 +36,7 @@ describe("stripe webhook signature verification", () => {
     const body = JSON.stringify({
       id: "evt_valid",
       type: "checkout.session.completed",
+      livemode: false,
       data: { object: { id: "cs_valid" } },
     });
     const sigHeader = await makeStripeSignature(body, WEBHOOK_SECRET);
@@ -60,7 +61,12 @@ describe("stripe webhook signature verification", () => {
   });
 
   it("accepts a webhook within tolerance (4 min old)", async () => {
-    const body = JSON.stringify({ id: "evt_recent", type: "test", data: { object: {} } });
+    const body = JSON.stringify({
+      id: "evt_recent",
+      type: "test",
+      livemode: false,
+      data: { object: {} },
+    });
     const sigHeader = await makeStripeSignature(body, WEBHOOK_SECRET, -240);
 
     const event = await verifyStripeWebhook(body, sigHeader, WEBHOOK_SECRET);

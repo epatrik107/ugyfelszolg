@@ -159,7 +159,11 @@ describe("Stripe Checkout request", () => {
       }),
     );
     await createCheckoutSession(
-      { STRIPE_SECRET_KEY: "sk_test_fake", SITE_URL: "https://example.com" } as Env,
+      {
+        PAYMENT_MODE: "test",
+        STRIPE_SECRET_KEY: "sk_test_fake",
+        SITE_URL: "https://example.com",
+      } as Env,
       {
         packageId: "basic",
         packageName: "Alapcsomag",
@@ -221,7 +225,7 @@ describe("Szamlazz.hu B2C payload", () => {
       orderFixture({ payment_status: "paid", paid_at: "2026-06-22T10:00:00.000Z" }),
     );
     const result = await issueSzamlazzInvoice(
-      { SZAMLAZZ_AGENT_KEY: "test-agent-key" } as Env,
+      { PAYMENT_MODE: "test", SZAMLAZZ_AGENT_KEY: "test-agent-key" } as Env,
       payload,
     );
     expect(result.invoiceNumber).toBe("E-TST-2026-1");
@@ -230,6 +234,7 @@ describe("Szamlazz.hu B2C payload", () => {
     expect(form.get("action-szamla_agent_xml")).toBeNull();
     const xml = await (form.get("action-xmlagentxmlfile") as Blob).text();
     expect(xml).not.toMatch(/<adoszam(?:EU)?>/i);
+    expect(xml).toContain("<sendEmail>false</sendEmail>");
   });
 
   it("reconciles an ambiguous retry by external id before creating again", async () => {

@@ -191,17 +191,60 @@ describe("environment validation", () => {
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "SZAMLAZZ_AGENT_KEY",
+      "PAYMENT_MODE",
     ]);
     expect(
       validateEnv(
         baseEnv({
           PAYMENTS_ENABLED: "true",
-          STRIPE_SECRET_KEY: "stripe-secret",
-          STRIPE_WEBHOOK_SECRET: "webhook-secret",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
           SZAMLAZZ_AGENT_KEY: "test-agent-key",
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
         }),
       ).ok,
     ).toBe(true);
+  });
+
+  it("keeps Stripe test and live credentials isolated", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
+          SZAMLAZZ_AGENT_KEY: "test-agent-key",
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
+        }),
+      ).missing,
+    ).toContain("STRIPE_KEY_MODE_MISMATCH");
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+        }),
+      ).missing,
+    ).toContain("STRIPE_KEY_MODE_MISMATCH");
+  });
+
+  it("requires explicit Szamlazz.hu test-account confirmation in test mode", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
+          SZAMLAZZ_AGENT_KEY: "test-agent-key",
+        }),
+      ).missing,
+    ).toContain("SZAMLAZZ_TEST_ACCOUNT_CONFIRMED");
   });
 
   it("requires a demo access code only in demo-only mode", () => {
@@ -225,9 +268,11 @@ describe("environment validation", () => {
       validateEnv(
         baseEnv({
           PAYMENTS_ENABLED: "true",
-          STRIPE_SECRET_KEY: "stripe-secret",
-          STRIPE_WEBHOOK_SECRET: "webhook-secret",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
           SZAMLAZZ_AGENT_KEY: "UPPERCASE-KEY",
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
         }),
       ).missing,
     ).toContain("SZAMLAZZ_AGENT_KEY_LOWERCASE");

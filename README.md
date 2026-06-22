@@ -179,23 +179,13 @@ GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite
 
 ## 17. GitHub Actions secret beállítás
 
-Kötelező:
+A Worker külön GitHub `sandbox` és `production` Environmentet használ, környezetenként elkülönített Stripe-, Számlázz.hu-, Cloudflare- és alkalmazás-secretekkel. A pontos secret- és variable-lista: [docs/github-environments.md](docs/github-environments.md).
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `GEMINI_API_KEY`
-- `TURNSTILE_SECRET_KEY`
-- `TOKEN_HASH_SECRET`
-- `RESEND_API_KEY`
-- `VITE_TURNSTILE_SITE_KEY`
-- `DEMO_ACCESS_CODE`, csak akkor, ha demó módot is szeretne távoli teszteléshez
-- `SZAMLAZZ_AGENT_KEY`, production payment módban kötelező
-
-Fontos: a Worker secret értékeket nem szabad frontend env változóba tenni. A deploy workflow a GitHub Secretsből `wrangler secret bulk` paranccsal szinkronizálja őket Cloudflare Worker secretként.
+Fontos: a Worker secret értékeket nem szabad frontend env változóba tenni. A deploy workflow a kiválasztott GitHub Environment secretjeiből szinkronizálja őket Cloudflare Worker secretként. A merge nem indít automatikus production deployt.
 
 ## 18. Lokális fejlesztés
+
+A teljes Stripe + Számlázz.hu sandbox smoke teszt külön útmutatója: [docs/payment-test.md](docs/payment-test.md). A tesztkonfiguráció ellenőrzéséhez futtassa az `npm run test:payment-env` parancsot; ez nem ír ki secret értékeket.
 
 ```bash
 npm install
@@ -420,21 +410,9 @@ Ne tegye nyilvánossá a demó hozzáférési kódot. Attól, hogy valaki nem tu
 - **TOKEN_HASH_SECRET:** saját, hosszú random titok a result tokenek és magic linkek HMAC hash-eléséhez.
 - **Resend API key:** tranzakciós e-mailekhez kell, `RESEND_API_KEY`.
 
-## GitHub Actions demó változók
+## GitHub Actions környezetek
 
-Demó alatt ezek legyenek GitHub **Variables** értékek, nem secretként:
-
-- `CLOUDFLARE_D1_DATABASE_ID`
-- `CLOUDFLARE_KV_NAMESPACE_ID`
-- `DEPLOY_ENV=demo`
-- `VITE_API_BASE_URL=https://ugyfelkozpont-api.epatrik107.workers.dev`
-- `VITE_DEMO_MODE=true`
-- `DEMO_MODE=true`
-- `PAYMENTS_ENABLED=false`
-- `SITE_URL=https://xn--gyfelszolgalat-fsb.hu`
-- `ALLOWED_ORIGINS=https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io`
-
-A workflow a hiányzó `DEPLOY_ENV`, `DEMO_MODE`, `PAYMENTS_ENABLED`, `SITE_URL` és `ALLOWED_ORIGINS` értékekhez demóbarát alapértéket használ, de a D1 és KV azonosító kötelező. Ha a felületen `Load failed` jelenik meg a fizetés előtti összegzés után, ellenőrizze, hogy az aktuális frontend origin benne van-e az `ALLOWED_ORIGINS` listában, majd futtassa újra a Worker deployt.
+A `Deploy worker` workflow kézzel indítható `sandbox` vagy `production` célkörnyezettel. A két környezethez külön Worker, D1, KV és environment-szintű secretek szükségesek; részletek: [docs/github-environments.md](docs/github-environments.md).
 
 Ha a Worker deploy ezt írja: `binding DB of type d1 must have a valid database_id specified`, akkor a `CLOUDFLARE_D1_DATABASE_ID` GitHub Variable hiányzik vagy nem a D1 UUID van benne. Az érték a `npx wrangler d1 create ugyfelkozpont` kimenetében található `database_id`, nem a `ugyfelkozpont` adatbázisnév.
 

@@ -103,7 +103,11 @@ export function buildSzamlazzPayload(
   };
 }
 
-export function buildInvoiceXml(agentKey: string, invoice: SzamlazzInvoicePayload): string {
+export function buildInvoiceXml(
+  agentKey: string,
+  invoice: SzamlazzInvoicePayload,
+  sendEmail = true,
+): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd">
   <beallitasok>
@@ -139,7 +143,7 @@ export function buildInvoiceXml(agentKey: string, invoice: SzamlazzInvoicePayloa
     <telepules>${escapeXml(invoice.city)}</telepules>
     <cim>${escapeXml(invoice.addressLine1)}</cim>
     <email>${escapeXml(invoice.customerEmail)}</email>
-    <sendEmail>true</sendEmail>
+    <sendEmail>${sendEmail}</sendEmail>
     <adoalany>-1</adoalany>
   </vevo>
   <tetelek>
@@ -249,7 +253,11 @@ export async function issueSzamlazzInvoice(
   const response = await fetchSzamlazz(
     formWithXml(
       "action-xmlagentxmlfile",
-      buildInvoiceXml(env.SZAMLAZZ_AGENT_KEY, invoice),
+      buildInvoiceXml(
+        env.SZAMLAZZ_AGENT_KEY,
+        invoice,
+        env.PAYMENT_MODE !== "test",
+      ),
       "invoice.xml",
     ),
   );

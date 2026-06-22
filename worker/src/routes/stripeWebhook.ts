@@ -213,6 +213,15 @@ export async function stripeWebhookRoute(c: WorkerContext) {
     return c.text("Invalid signature", 400);
   }
 
+  const expectedLiveMode = c.env.PAYMENT_MODE === "live";
+  if (event.livemode !== expectedLiveMode) {
+    logEvent("stripe_webhook_mode_mismatch", {
+      eventId: event.id,
+      configuredMode: c.env.PAYMENT_MODE ?? "missing",
+    });
+    return c.text("Event mode mismatch", 400);
+  }
+
   const object = event.data.object as { id?: string };
   const firstTime = await claimStripeEvent(c.env, event.id, event.type, object.id ?? "");
   if (!firstTime) {

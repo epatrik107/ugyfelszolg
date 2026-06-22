@@ -56,7 +56,7 @@ function app() {
 }
 
 function event(type: string, object: Record<string, unknown>, id = "evt_1") {
-  return { id, type, data: { object } };
+  return { id, type, livemode: false, data: { object } };
 }
 
 async function deliver(waitUntilPromises: Promise<unknown>[]) {
@@ -68,6 +68,7 @@ async function deliver(waitUntilPromises: Promise<unknown>[]) {
     }),
     {
       PAYMENTS_ENABLED: "true",
+      PAYMENT_MODE: "test",
       STRIPE_WEBHOOK_SECRET: "whsec_test",
     } as Env,
     {
@@ -242,6 +243,17 @@ describe("Stripe webhook business flow", () => {
     const response = await deliver([]);
     expect(response.status).toBe(400);
     expect(mocks.claimStripeEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a live event in test mode before claiming it", async () => {
+    mocks.verifyStripeWebhook.mockResolvedValue({
+      ...event("checkout.session.completed", { id: "cs_live_1" }),
+      livemode: true,
+    });
+    const response = await deliver([]);
+    expect(response.status).toBe(400);
+    expect(mocks.claimStripeEvent).not.toHaveBeenCalled();
+    expect(mocks.retrieveCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("returns 500 and marks the event retryable when critical processing throws", async () => {

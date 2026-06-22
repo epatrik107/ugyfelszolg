@@ -1,13 +1,6 @@
 name: Deploy frontend
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
 
 permissions:

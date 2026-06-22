@@ -9,6 +9,7 @@
 - A jelenlegi szolgáltatás nem támogat kupont vagy promóciót (`discountAmount = 0`).
 - A piac HU-only, mert az ár 27% magyar ÁFÁ-t tartalmaz. Külföldi fogyasztó addig nem engedhető, amíg az OSS/célországi ÁFA szabály nincs implementálva.
 - Aktiválás és számlázás kizárólag Stripe által aláírt, szerveroldalon visszaolvasott, `paid` állapotú, pontos összegű és pénznemű Checkout Session után indul.
+- A `PAYMENT_MODE=test|live` explicit környezetválasztás kötelező. A Stripe secret kulcs prefixének és a webhook `livemode` jelzőjének egyeznie kell vele.
 - `failed`, `cancelled`, `expired`, `amount_mismatch` és `currency_mismatch` állapotban nincs aktiválás és nincs számla.
 
 ## Stripe flow
@@ -33,6 +34,7 @@
 - Retry-olható hiba `retry_required`, legfeljebb 5 próbálkozás, 5/30/120/720 perces backoff. Validáció/auth hiba `failed`, kézi javítást igényel.
 - Az ütemezett Worker feldolgozza a due és stale invoice állapotokat. A fizetés közben végig `paid` marad.
 - A Számlázz.hu vevői fiók/PDF linkje, ha érkezik, D1-be kerül; a Számlázz.hu küldi ki az e-számlát a validált számlázási emailre.
+- `PAYMENT_MODE=test` esetén a Számlázz.hu vevői email küldése kényszerítetten ki van kapcsolva, és `SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true` szükséges.
 
 ## Refund szabály
 
@@ -49,3 +51,5 @@
 5. Ellenőrizze a számlaképet, eladói adatokat, 27% ÁFÁ-t, email-kézbesítést és a Számlázz.hu tesztfiók kikapcsolását csak a jóváhagyott go-live pillanatban.
 6. Alkalmazza a D1 migrációkat a Worker deploy előtt. Ne deployoljon mainen kívüli automatikával és ne merge-eljen ellenőrzés nélkül.
 7. Monitorozza: `payment_paid`, `payment_failed`, `duplicate_webhook_ignored`, `amount_mismatch`, `currency_mismatch`, `invoice_pending`, `invoice_created`, `invoice_retry_finished`, `refund_invoice_manual_required`, `rejected_business_buyer_attempt`, `rejected_tax_number_attempt`, `rejected_manipulated_price`.
+
+A GitHub sandbox/production secret- és deploy-konfiguráció részletes leírása: [github-environments.md](github-environments.md).
