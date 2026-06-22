@@ -144,13 +144,13 @@ npx wrangler secret put GEMINI_API_KEY --config worker/wrangler.toml
 Alap modell:
 
 ```text
-GEMINI_MODEL=gemini-2.0-flash-lite
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 Opcionális review modell:
 
 ```text
-GEMINI_REVIEW_MODEL=gemini-2.0-flash-lite
+GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite
 ```
 
 ## 14. Turnstile beállítás
@@ -219,8 +219,8 @@ Hozza létre a `worker/.dev.vars` fájlt. Ez gitignore alatt van, ide kerülnek 
 
 ```env
 GEMINI_API_KEY=<google-ai-studio-key>
-GEMINI_MODEL=gemini-2.0-flash-lite
-GEMINI_REVIEW_MODEL=gemini-2.0-flash-lite
+GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite
 TOKEN_HASH_SECRET=hosszu-random-titok
 SITE_URL=http://127.0.0.1:5173
 ALLOWED_ORIGINS=http://127.0.0.1:5173
@@ -329,8 +329,8 @@ A demóhoz ezek legyenek benne:
 
 ```toml
 [vars]
-GEMINI_MODEL = "gemini-2.0-flash-lite"
-GEMINI_REVIEW_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_REVIEW_MODEL = "gemini-3.1-flash-lite"
 SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
 EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"

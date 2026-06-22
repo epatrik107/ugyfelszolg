@@ -17,16 +17,34 @@ afterEach(() => {
 });
 
 describe("Gemini service availability", () => {
-  it("replaces incompatible model names previously written by the deploy workflow", () => {
-    const legacyEnv = {
+  it("uses the active Gemini replacement models by default", () => {
+    expect(DEFAULT_GEMINI_MODEL).toBe("gemini-3.1-flash-lite");
+    expect(DEFAULT_GEMINI_PREMIUM_MODEL).toBe("gemini-3.5-flash");
+    expect(getReviewModel(env)).toBe("gemini-3.1-flash-lite");
+  });
+
+  it("replaces retired Gemini 2.0 model names from existing deployments", () => {
+    const retiredEnv = {
+      GEMINI_MODEL: "gemini-2.0-flash-lite",
+      GEMINI_MODEL_PREMIUM: "gemini-2.0-flash",
+      GEMINI_REVIEW_MODEL: "gemini-2.0-flash-lite-001",
+    } as Env;
+
+    expect(getGenerationModel(retiredEnv, false)).toBe(DEFAULT_GEMINI_MODEL);
+    expect(getGenerationModel(retiredEnv, true)).toBe(DEFAULT_GEMINI_PREMIUM_MODEL);
+    expect(getReviewModel(retiredEnv)).toBe(DEFAULT_GEMINI_MODEL);
+  });
+
+  it("keeps supported configured model names unchanged", () => {
+    const currentEnv = {
       GEMINI_MODEL: "gemini-2.5-flash-lite",
       GEMINI_MODEL_PREMIUM: "gemini-3.5-flash",
       GEMINI_REVIEW_MODEL: "gemini-3.1-flash-lite",
     } as Env;
 
-    expect(getGenerationModel(legacyEnv, false)).toBe(DEFAULT_GEMINI_MODEL);
-    expect(getGenerationModel(legacyEnv, true)).toBe(DEFAULT_GEMINI_PREMIUM_MODEL);
-    expect(getReviewModel(legacyEnv)).toBe(DEFAULT_GEMINI_MODEL);
+    expect(getGenerationModel(currentEnv, false)).toBe("gemini-2.5-flash-lite");
+    expect(getGenerationModel(currentEnv, true)).toBe("gemini-3.5-flash");
+    expect(getReviewModel(currentEnv)).toBe("gemini-3.1-flash-lite");
   });
 
   it("checks the exact default model instead of accepting a models-list response", async () => {
