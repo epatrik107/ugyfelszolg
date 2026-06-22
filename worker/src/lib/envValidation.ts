@@ -45,7 +45,19 @@ export function validateEnv(env: Env): EnvValidationResult {
   }
 
   if (isPaymentsEnabled(env)) {
-    missing.push(...missingKeys(env, ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]));
+    missing.push(
+      ...missingKeys(env, [
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "SZAMLAZZ_AGENT_KEY",
+      ]),
+    );
+    if (
+      typeof env.SZAMLAZZ_AGENT_KEY === "string" &&
+      env.SZAMLAZZ_AGENT_KEY !== env.SZAMLAZZ_AGENT_KEY.toLowerCase()
+    ) {
+      missing.push("SZAMLAZZ_AGENT_KEY_LOWERCASE");
+    }
   }
 
   if (isDemoOnlyMode(env)) {

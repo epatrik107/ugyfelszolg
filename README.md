@@ -13,6 +13,7 @@ Az **Ügyfélközpont** egy magyar nyelvű, fizetős levélíró MVP. A felhaszn
 - Cloudflare D1 adatbázis
 - opcionális Cloudflare KV rate limithez
 - Stripe Checkout fizetés
+- Számlázz.hu automatikus B2C e-számla
 - Gemini (Google) alapú levélgenerálás és hibrid minőségellenőrzés
 
 ## 2. Architektúra
@@ -24,6 +25,7 @@ flowchart LR
   W --> D1["Cloudflare D1"]
   W --> KV["Cloudflare KV"]
   W --> S["Stripe Checkout + Webhook"]
+  W --> I["Számlázz.hu Számla Agent"]
   W --> O["Gemini API (Google)"]
   W --> R["Resend"]
 ```
@@ -103,6 +105,8 @@ A létrejött namespace ID kerüljön a `worker/wrangler.toml` megfelelő bindin
 - Alapcsomag, prémium és prémium plusz: egyszeri fizetés
 - Pénznem: `HUF`
 - A frontend csak `packageId`-t küld; az ár minden esetben szerveroldalon dől el.
+- A checkout kizárólag magyarországi magánszemély számlázási adatokkal indítható.
+- Cégnév, adószám, VAT ID, céges buyer type és kliensoldali ár API-szinten is tiltott.
 
 ## 10. Stripe webhook beállítás
 
@@ -115,6 +119,8 @@ https://api.xn--gyfelszolgalat-fsb.hu/api/stripe/webhook
 Kezelt események:
 
 - `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
 - `checkout.session.expired`
 - `payment_intent.payment_failed`
 - `charge.refunded`
@@ -185,6 +191,7 @@ Kötelező:
 - `RESEND_API_KEY`
 - `VITE_TURNSTILE_SITE_KEY`
 - `DEMO_ACCESS_CODE`, csak akkor, ha demó módot is szeretne távoli teszteléshez
+- `SZAMLAZZ_AGENT_KEY`, production payment módban kötelező
 
 Fontos: a Worker secret értékeket nem szabad frontend env változóba tenni. A deploy workflow a GitHub Secretsből `wrangler secret bulk` paranccsal szinkronizálja őket Cloudflare Worker secretként.
 
@@ -231,6 +238,7 @@ PAYMENTS_ENABLED=false
 # Ezek csak teljes Stripe/Turnstile/Resend flow teszteléshez kellenek:
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
+SZAMLAZZ_AGENT_KEY= # csak Számlázz.hu tesztfiók kulcsa lokális smoke teszthez
 TURNSTILE_SECRET_KEY=
 RESEND_API_KEY=
 EMAIL_FROM=Ügyfélközpont <noreply@example.com>

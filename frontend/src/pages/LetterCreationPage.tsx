@@ -21,7 +21,7 @@ export function LetterCreationPage() {
   }, [serverError]);
 
   async function handleSubmit(values: LetterFormValues) {
-    setSummary(values);
+    setSummary({ ...values, checkoutAttemptId: crypto.randomUUID() });
   }
 
   async function continueToPayment() {
@@ -69,6 +69,11 @@ export function LetterCreationPage() {
           <div className="mt-5 space-y-4 text-sm">
             <SummaryRow label="Név" value={summary.name} />
             <SummaryRow label="Email" value={summary.email} />
+            <SummaryRow label="Számlázási név" value={summary.billing.name} />
+            <SummaryRow
+              label="Számlázási cím"
+              value={`${summary.billing.postalCode} ${summary.billing.city}, ${summary.billing.addressLine1}`}
+            />
             <SummaryRow label="Levél típusa" value={summary.letterType} />
             <SummaryRow label="Csomag" value={packages[summary.selectedPackage].name} />
             <SummaryRow

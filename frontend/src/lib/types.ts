@@ -1,5 +1,15 @@
 export type PackageId = "basic" | "premium" | "premium_plus";
 
+export interface IndividualBillingDetails {
+  buyerType: "individual";
+  name: string;
+  email: string;
+  country: "HU";
+  postalCode: string;
+  city: string;
+  addressLine1: string;
+}
+
 export interface LetterFormValues {
   name: string;
   email: string;
@@ -10,13 +20,33 @@ export interface LetterFormValues {
   tone: string;
   previousMessages: string;
   selectedPackage: PackageId;
+  checkoutAttemptId: string;
+  billing: IndividualBillingDetails;
   legalAccepted: boolean;
   turnstileToken: string;
   demoAccessCode?: string;
 }
 
 export interface OrderResult {
-  paymentStatus: "pending" | "paid" | "failed" | "expired" | "refunded";
+  paymentStatus:
+    | "pending"
+    | "checkout_created"
+    | "paid"
+    | "failed"
+    | "cancelled"
+    | "expired"
+    | "amount_mismatch"
+    | "currency_mismatch"
+    | "partially_refunded"
+    | "refunded";
+  invoiceStatus:
+    | "not_required"
+    | "pending"
+    | "processing"
+    | "created"
+    | "failed"
+    | "retry_required"
+    | "already_created";
   aiStatus:
     | "not_started"
     | "generating"

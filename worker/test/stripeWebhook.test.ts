@@ -71,6 +71,12 @@ describe("stripe webhook signature verification", () => {
     const body = JSON.stringify({ id: "evt_nosig", type: "test", data: { object: {} } });
     await expect(verifyStripeWebhook(body, undefined, WEBHOOK_SECRET)).resolves.toBeNull();
   });
+
+  it("rejects a correctly signed payload that is not a Stripe event shape", async () => {
+    const body = JSON.stringify({ hello: "world" });
+    const sigHeader = await makeStripeSignature(body, WEBHOOK_SECRET);
+    await expect(verifyStripeWebhook(body, sigHeader, WEBHOOK_SECRET)).resolves.toBeNull();
+  });
 });
 
 describe("stripe event deduplication", () => {
@@ -80,9 +86,11 @@ describe("stripe event deduplication", () => {
       DB: {
         prepare(sql: string) {
           return {
-            bind(eventId: string, _eventType: string, _now: string) {
+            bind(...args: string[]) {
               return {
                 async run() {
+                  if (!sql.includes("INSERT OR IGNORE")) return { meta: { changes: 0 } };
+                  const eventId = args[0];
                   if (processed.has(eventId)) {
                     return { meta: { changes: 0 } };
                   }
@@ -105,11 +113,13 @@ describe("stripe event deduplication", () => {
     const processed = new Set<string>();
     const fakeEnv = {
       DB: {
-        prepare(_sql: string) {
+        prepare(sql: string) {
           return {
-            bind(eventId: string, _eventType: string, _now: string) {
+            bind(...args: string[]) {
               return {
                 async run() {
+                  if (!sql.includes("INSERT OR IGNORE")) return { meta: { changes: 0 } };
+                  const eventId = args[0];
                   if (processed.has(eventId)) return { meta: { changes: 0 } };
                   processed.add(eventId);
                   return { meta: { changes: 1 } };
@@ -194,8 +204,8 @@ describe("payment status transition safety", () => {
     expect(canTransitionPaymentStatus("refunded", "paid")).toBe(false);
   });
 
-  it("failed order cannot be marked paid (prevents retries without new session)", () => {
-    expect(canTransitionPaymentStatus("failed", "paid")).toBe(false);
+  it("a failed card attempt may later become paid in the same verified Checkout session", () => {
+    expect(canTransitionPaymentStatus("failed", "paid")).toBe(true);
   });
 });
 
@@ -226,7 +236,7 @@ describe("markOrderPaid guards against non-pending orders", () => {
       stripePaymentIntentId: "pi_test",
     });
 
-    // Verify the SQL uses a WHERE payment_status = 'pending' guard
-    expect(updatedSqls.some((sql) => sql.includes("payment_status = 'pending'"))).toBe(true);
+    expect(updatedSqls.some((sql) => sql.includes("payment_status IN"))).toBe(true);
+    expect(updatedSqls.some((sql) => sql.includes("'checkout_created'"))).toBe(true);
   });
 });

@@ -1,8 +1,19 @@
+import { calculateHufB2cVat } from "./billing";
 import { PACKAGES } from "./packages";
 import type { Env, OrderRow } from "./types";
 
 const SZAMLAZZ_API_URL = "https://www.szamlazz.hu/szamla/";
-const HUF_VAT_RATE = 0.27;
+
+export class InvoiceProviderError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly retryable: boolean,
+    message = "A számlaszolgáltató elutasította a kérést.",
+  ) {
+    super(message);
+    this.name = "InvoiceProviderError";
+  }
+}
 
 function escapeXml(value: string): string {
   return value
@@ -13,124 +24,251 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function calcHufAmounts(grossHUF: number): { net: number; vat: number; gross: number } {
-  const net = Math.round((grossHUF / (1 + HUF_VAT_RATE)) * 100) / 100;
-  const vat = Math.round((grossHUF - net) * 100) / 100;
-  return { net, vat, gross: grossHUF };
+function decodeHeader(value: string | null) {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
-function buildInvoiceXml(params: {
-  agentKey: string;
-  dateStr: string;
+export interface SzamlazzInvoicePayload {
+  externalId: string;
+  issueDate: string;
+  performanceDate: string;
   customerName: string;
   customerEmail: string;
+  country: "HU";
+  postalCode: string;
+  city: string;
+  addressLine1: string;
   serviceName: string;
-  net: number;
-  vat: number;
-  gross: number;
-  currency: string;
-}): string {
-  const { agentKey, dateStr, customerName, customerEmail, serviceName, net, vat, gross, currency } =
-    params;
+  quantity: 1;
+  netAmount: number;
+  vatAmount: number;
+  grossAmount: number;
+  vatRate: 27;
+  currency: "HUF";
+}
 
+export function buildSzamlazzPayload(
+  order: Pick<
+    OrderRow,
+    | "id"
+    | "billing_name"
+    | "billing_email"
+    | "billing_country"
+    | "billing_postal_code"
+    | "billing_city"
+    | "billing_address_line1"
+    | "server_calculated_price"
+    | "currency"
+    | "paid_at"
+    | "selected_package"
+  >,
+): SzamlazzInvoicePayload {
+  if (
+    !order.billing_name ||
+    !order.billing_email ||
+    order.billing_country !== "HU" ||
+    !order.billing_postal_code ||
+    !order.billing_city ||
+    !order.billing_address_line1
+  ) {
+    throw new InvoiceProviderError("INVALID_BILLING_DATA", false, "Hiányos számlázási adatok.");
+  }
+  if (order.currency.toLowerCase() !== "huf") {
+    throw new InvoiceProviderError("UNSUPPORTED_CURRENCY", false, "Nem támogatott pénznem.");
+  }
+
+  const amounts = calculateHufB2cVat(order.server_calculated_price, 27);
+  return {
+    externalId: order.id,
+    issueDate: new Date().toISOString().slice(0, 10),
+    performanceDate: (order.paid_at ?? new Date().toISOString()).slice(0, 10),
+    customerName: order.billing_name,
+    customerEmail: order.billing_email,
+    country: "HU",
+    postalCode: order.billing_postal_code,
+    city: order.billing_city,
+    addressLine1: order.billing_address_line1,
+    serviceName: PACKAGES[order.selected_package]?.name ?? "Levélírási szolgáltatás",
+    quantity: 1,
+    netAmount: amounts.netAmount,
+    vatAmount: amounts.vatAmount,
+    grossAmount: amounts.grossAmount,
+    vatRate: 27,
+    currency: "HUF",
+  };
+}
+
+export function buildInvoiceXml(agentKey: string, invoice: SzamlazzInvoicePayload): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla http://www.szamlazz.hu/szamla/docs/xsd/agent/xmlszamla.xsd">
+<xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd">
   <beallitasok>
     <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
     <eszamla>true</eszamla>
-    <szamlaszam/>
-    <valaszVerzio>1</valaszVerzio>
     <szamlaLetoltes>false</szamlaLetoltes>
+    <valaszVerzio>1</valaszVerzio>
+    <aggregator></aggregator>
+    <szamlaKulsoAzon>${escapeXml(invoice.externalId)}</szamlaKulsoAzon>
   </beallitasok>
   <fejlec>
-    <keltDatum>${escapeXml(dateStr)}</keltDatum>
-    <teljesitesDatum>${escapeXml(dateStr)}</teljesitesDatum>
-    <fizetesiHataridoDatum>${escapeXml(dateStr)}</fizetesiHataridoDatum>
+    <keltDatum>${invoice.issueDate}</keltDatum>
+    <teljesitesDatum>${invoice.performanceDate}</teljesitesDatum>
+    <fizetesiHataridoDatum>${invoice.performanceDate}</fizetesiHataridoDatum>
     <fizmod>Bankkártya</fizmod>
-    <penznem>${escapeXml(currency.toUpperCase())}</penznem>
-    <nyelv>hu</nyelv>
-    <megjegyzes/>
+    <penznem>${invoice.currency}</penznem>
+    <szamlaNyelve>hu</szamlaNyelve>
+    <megjegyzes></megjegyzes>
+    <rendelesSzam>${escapeXml(invoice.externalId)}</rendelesSzam>
     <fizetve>true</fizetve>
   </fejlec>
   <elado>
-    <bank/>
-    <bankszamlaszam/>
-    <emailReplyto/>
-    <emailTargy/>
-    <emailSzoveg/>
+    <bank></bank>
+    <bankszamlaszam></bankszamlaszam>
+    <emailReplyto></emailReplyto>
+    <emailTargy></emailTargy>
+    <emailSzoveg></emailSzoveg>
   </elado>
   <vevo>
-    <nev>${escapeXml(customerName)}</nev>
-    <irsz/>
-    <telepules/>
-    <cim/>
-    <email>${escapeXml(customerEmail)}</email>
-    <sendEmail>false</sendEmail>
+    <nev>${escapeXml(invoice.customerName)}</nev>
+    <orszag>${invoice.country}</orszag>
+    <irsz>${escapeXml(invoice.postalCode)}</irsz>
+    <telepules>${escapeXml(invoice.city)}</telepules>
+    <cim>${escapeXml(invoice.addressLine1)}</cim>
+    <email>${escapeXml(invoice.customerEmail)}</email>
+    <sendEmail>true</sendEmail>
+    <adoalany>-1</adoalany>
   </vevo>
   <tetelek>
     <tetel>
-      <megnevezes>${escapeXml(serviceName)}</megnevezes>
-      <mennyiseg>1</mennyiseg>
+      <megnevezes>${escapeXml(invoice.serviceName)}</megnevezes>
+      <mennyiseg>${invoice.quantity}</mennyiseg>
       <mennyisegiEgyseg>db</mennyisegiEgyseg>
-      <nettoEgysegAr>${net}</nettoEgysegAr>
-      <afakulcs>27</afakulcs>
-      <nettoErtek>${net}</nettoErtek>
-      <afaErtek>${vat}</afaErtek>
-      <bruttoErtek>${gross}</bruttoErtek>
+      <nettoEgysegar>${invoice.netAmount}</nettoEgysegar>
+      <afakulcs>${invoice.vatRate}</afakulcs>
+      <nettoErtek>${invoice.netAmount}</nettoErtek>
+      <afaErtek>${invoice.vatAmount}</afaErtek>
+      <bruttoErtek>${invoice.grossAmount}</bruttoErtek>
     </tetel>
   </tetelek>
 </xmlszamla>`;
 }
 
-/**
- * Issues an invoice via szamlazz.hu and returns the invoice number assigned by szamlazz.hu.
- * Only called in production when SZAMLAZZ_AGENT_KEY is set.
- * Throws on API error – callers should catch and log without including the agent key.
- */
+function buildInvoiceQueryXml(agentKey: string, externalId: string) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xmlszamlaxml xmlns="http://www.szamlazz.hu/xmlszamlaxml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamlaxml https://www.szamlazz.hu/szamla/docs/xsds/agentxml/xmlszamlaxml.xsd">
+  <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
+  <szamlaszam></szamlaszam>
+  <rendelesSzam></rendelesSzam>
+  <pdf>false</pdf>
+  <szamlaKulsoAzon>${escapeXml(externalId)}</szamlaKulsoAzon>
+</xmlszamlaxml>`;
+}
+
+function formWithXml(field: string, xml: string, filename: string) {
+  const form = new FormData();
+  form.append(field, new Blob([xml], { type: "application/xml" }), filename);
+  return form;
+}
+
+function providerErrorFromResponse(response: Response) {
+  const code = response.headers.get("szlahu_error_code") ?? `HTTP_${response.status}`;
+  const retryable = response.status === 408 || response.status === 429 || response.status >= 500 || code === "1" || code === "55";
+  return new InvoiceProviderError(code, retryable);
+}
+
+async function fetchSzamlazz(form: FormData) {
+  try {
+    return await fetch(SZAMLAZZ_API_URL, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    const code = error instanceof DOMException && error.name === "TimeoutError" ? "TIMEOUT" : "NETWORK_ERROR";
+    throw new InvoiceProviderError(code, true, "A számlaszolgáltató átmenetileg nem érhető el.");
+  }
+}
+
+export interface SzamlazzResult {
+  invoiceNumber: string;
+  externalId: string;
+  pdfUrl: string | null;
+  alreadyExisted: boolean;
+}
+
+export async function findSzamlazzInvoice(
+  env: Env,
+  externalId: string,
+): Promise<SzamlazzResult | null> {
+  if (!env.SZAMLAZZ_AGENT_KEY) {
+    throw new InvoiceProviderError("NOT_CONFIGURED", false);
+  }
+  const response = await fetchSzamlazz(
+    formWithXml(
+      "action-szamla_agent_xml",
+      buildInvoiceQueryXml(env.SZAMLAZZ_AGENT_KEY, externalId),
+      "invoice-query.xml",
+    ),
+  );
+  const errorCode = response.headers.get("szlahu_error_code");
+  if (errorCode === "7") return null;
+  if (!response.ok || errorCode) throw providerErrorFromResponse(response);
+
+  const body = await response.text();
+  const headerNumber = decodeHeader(response.headers.get("szlahu_szamlaszam"));
+  const xmlNumber = body.match(/<szamlaszam>([^<]+)<\/szamlaszam>/u)?.[1] ?? null;
+  const invoiceNumber = headerNumber ?? xmlNumber;
+  if (!invoiceNumber) return null;
+  const headerUrl = decodeHeader(response.headers.get("szlahu_vevoifiokurl"));
+  const xmlUrl = body.match(/<vevoifiokurl>([^<]+)<\/vevoifiokurl>/u)?.[1] ?? null;
+  return {
+    invoiceNumber,
+    externalId,
+    pdfUrl: headerUrl ?? xmlUrl,
+    alreadyExisted: true,
+  };
+}
+
 export async function issueSzamlazzInvoice(
   env: Env,
-  order: Pick<
-    OrderRow,
-    "name" | "email" | "server_calculated_price" | "currency" | "paid_at" | "selected_package"
-  >,
-): Promise<string> {
-  const agentKey = env.SZAMLAZZ_AGENT_KEY!;
-  const issuedAt = order.paid_at ?? new Date().toISOString();
-  const dateStr = issuedAt.slice(0, 10);
-  const { net, vat, gross } = calcHufAmounts(order.server_calculated_price);
-  const serviceName = PACKAGES[order.selected_package]?.name ?? "Levélírási szolgáltatás";
-
-  const xml = buildInvoiceXml({
-    agentKey,
-    dateStr,
-    customerName: order.name,
-    customerEmail: order.email,
-    serviceName,
-    net,
-    vat,
-    gross,
-    currency: order.currency,
-  });
-
-  const form = new FormData();
-  form.append("action-szamla_agent_xml", xml);
-
-  const response = await fetch(SZAMLAZZ_API_URL, {
-    method: "POST",
-    body: form,
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`szamlazz.hu HTTP error: ${response.status}`);
+  invoice: SzamlazzInvoicePayload,
+  reconcileFirst = false,
+): Promise<SzamlazzResult> {
+  if (!env.SZAMLAZZ_AGENT_KEY) {
+    throw new InvoiceProviderError("NOT_CONFIGURED", false);
+  }
+  if (reconcileFirst) {
+    const existing = await findSzamlazzInvoice(env, invoice.externalId);
+    if (existing) return existing;
   }
 
-  const invoiceNumber = response.headers.get("szlaszam");
-  if (invoiceNumber) {
-    return invoiceNumber;
-  }
+  const response = await fetchSzamlazz(
+    formWithXml(
+      "action-xmlagentxmlfile",
+      buildInvoiceXml(env.SZAMLAZZ_AGENT_KEY, invoice),
+      "invoice.xml",
+    ),
+  );
+  const errorCode = response.headers.get("szlahu_error_code");
+  if (!response.ok || errorCode) throw providerErrorFromResponse(response);
 
-  const errorCode = response.headers.get("szlahibakod") ?? "unknown";
-  const errorMsg = response.headers.get("szlahiba") ?? "no details";
-  throw new Error(`szamlazz.hu invoice rejected: [${errorCode}] ${errorMsg}`);
+  const body = await response.text();
+  const headerNumber = decodeHeader(response.headers.get("szlahu_szamlaszam"));
+  const textNumber = body.startsWith("xmlagentresponse=DONE;")
+    ? body.slice("xmlagentresponse=DONE;".length).trim()
+    : null;
+  const invoiceNumber = headerNumber ?? textNumber;
+  if (!invoiceNumber) {
+    throw new InvoiceProviderError("INVALID_RESPONSE", true, "A számlaszolgáltató válasza hiányos.");
+  }
+  return {
+    invoiceNumber,
+    externalId: invoice.externalId,
+    pdfUrl: decodeHeader(response.headers.get("szlahu_vevoifiokurl")),
+    alreadyExisted: false,
+  };
 }

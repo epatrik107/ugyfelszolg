@@ -18,6 +18,16 @@ export const initialLetterValues: LetterFormValues = {
   tone: "Udvarias",
   previousMessages: "",
   selectedPackage: "basic",
+  checkoutAttemptId: crypto.randomUUID(),
+  billing: {
+    buyerType: "individual",
+    name: "",
+    email: "",
+    country: "HU",
+    postalCode: "",
+    city: "",
+    addressLine1: "",
+  },
   legalAccepted: false,
   turnstileToken: "",
   demoAccessCode: "",
@@ -51,6 +61,16 @@ export function LetterForm({
     setValues((current) => ({ ...current, [key]: value }));
   }
 
+  function updateBilling<K extends keyof LetterFormValues["billing"]>(
+    key: K,
+    value: LetterFormValues["billing"][K],
+  ) {
+    setValues((current) => ({
+      ...current,
+      billing: { ...current.billing, [key]: value },
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -68,6 +88,20 @@ export function LetterForm({
     }
     if (!values.desiredResult.trim()) {
       setError("Kérjük, írja le, mit szeretne elérni.");
+      return;
+    }
+    if (
+      !values.billing.name.trim() ||
+      !values.billing.email.trim() ||
+      !/^\d{4}$/.test(values.billing.postalCode) ||
+      !values.billing.city.trim() ||
+      !values.billing.addressLine1.trim()
+    ) {
+      setError("Kérjük, adja meg a teljes magánszemély számlázási adatokat.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.billing.email)) {
+      setError("Kérjük, adjon meg érvényes számlázási email címet.");
       return;
     }
     if (!values.legalAccepted) {
@@ -187,6 +221,67 @@ export function LetterForm({
         </div>
       </section>
 
+      <section className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-5">
+        <div>
+          <h2 className="text-lg font-semibold">Számlázási adatok – magánszemély</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            A szolgáltatás kizárólag magánszemélyeknek érhető el. Cégnév és adószám nem adható meg.
+          </p>
+        </div>
+        <div className="grid gap-5 md:grid-cols-2">
+          <Field label="Számlázási név">
+            <input
+              className="input"
+              maxLength={120}
+              placeholder="pl. Kovács János"
+              value={values.billing.name}
+              onChange={(event) => updateBilling("name", event.target.value)}
+            />
+          </Field>
+          <Field label="Számlázási email">
+            <input
+              className="input"
+              maxLength={254}
+              type="email"
+              value={values.billing.email}
+              onChange={(event) => updateBilling("email", event.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          <Field label="Ország">
+            <input className="input" disabled value="Magyarország" />
+          </Field>
+          <Field label="Irányítószám">
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="1234"
+              value={values.billing.postalCode}
+              onChange={(event) => updateBilling("postalCode", event.target.value)}
+            />
+          </Field>
+          <Field label="Település">
+            <input
+              className="input"
+              maxLength={100}
+              value={values.billing.city}
+              onChange={(event) => updateBilling("city", event.target.value)}
+            />
+          </Field>
+        </div>
+        <Field label="Közterület neve, jellege és házszám">
+          <input
+            className="input"
+            maxLength={180}
+            placeholder="pl. Példa utca 1."
+            value={values.billing.addressLine1}
+            onChange={(event) => updateBilling("addressLine1", event.target.value)}
+          />
+        </Field>
+      </section>
+
       <div className="space-y-4">
         <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
           <input
@@ -206,7 +301,9 @@ export function LetterForm({
             <Link to="/adatkezeles" className="underline hover:text-slate-900" target="_blank" rel="noopener noreferrer">
               Adatkezelési tájékoztatót
             </Link>
-            .
+            . Kifejezetten kérem, hogy a digitális szolgáltatás teljesítése a sikeres
+            fizetés után azonnal kezdődjön meg, és tudomásul veszem, hogy a teljesítés
+            megkezdésével elveszítem a 14 napos elállási jogomat.
           </span>
         </label>
         <LegalNotice />

@@ -1,10 +1,11 @@
 import { constantTimeEqual } from "./hash";
 import type { Env, PackageId } from "./types";
 
-interface StripeCheckoutSession {
+export interface StripeCheckoutSession {
   id: string;
   url: string | null;
   mode: "payment" | "subscription";
+  status: "open" | "complete" | "expired" | null;
   payment_status: string;
   amount_total: number | null;
   currency: string | null;
@@ -12,6 +13,7 @@ interface StripeCheckoutSession {
   payment_intent: string | null;
   subscription: string | null;
   metadata: Record<string, string>;
+  client_reference_id: string | null;
 }
 
 interface StripeSubscription {
@@ -79,14 +81,17 @@ export async function createCheckoutSession(
   const params = new URLSearchParams();
   params.set("mode", "payment");
   params.set("success_url", `${env.SITE_URL}/sikeres-fizetes?order=${input.publicId}&token=${input.resultToken}`);
-  params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}`);
+  params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}&token=${input.resultToken}`);
   params.set("customer_email", input.email);
+  params.set("client_reference_id", input.orderId);
+  params.set("payment_method_types[0]", "card");
   params.set("metadata[orderId]", input.orderId);
   params.set("metadata[publicId]", input.publicId);
   params.set("metadata[selectedPackage]", input.packageId);
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", input.currency);
   params.set("line_items[0][price_data][unit_amount]", String(input.amount));
+  params.set("line_items[0][price_data][tax_behavior]", "inclusive");
   params.set("line_items[0][price_data][product_data][name]", input.packageName);
 
   params.set("payment_intent_data[metadata][orderId]", input.orderId);
@@ -110,6 +115,17 @@ export async function retrieveCheckoutSession(env: Env, sessionId: string) {
   );
 }
 
+export async function expireCheckoutSession(env: Env, sessionId: string) {
+  return stripeRequest<StripeCheckoutSession>(
+    env,
+    `/checkout/sessions/${encodeURIComponent(sessionId)}/expire`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": `expire-${sessionId}` },
+    },
+  );
+}
+
 export async function retrieveSubscription(env: Env, subscriptionId: string) {
   return stripeRequest<StripeSubscription>(env, `/subscriptions/${subscriptionId}`);
 }
@@ -118,29 +134,16 @@ export async function createRefund(env: Env, paymentIntentId: string) {
   const params = new URLSearchParams({ payment_intent: paymentIntentId });
   return stripeRequest<{ id: string; status: string }>(env, "/refunds", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-  });
-}
-
-export async function createCustomerPortalSession(
-  env: Env,
-  stripeCustomerId: string,
-) {
-  const params = new URLSearchParams({
-    customer: stripeCustomerId,
-    return_url: `${env.SITE_URL}/ceges`,
-  });
-
-  return stripeRequest<{ url: string }>(env, "/billing_portal/sessions", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": `refund-${paymentIntentId}`,
+    },
     body: params,
   });
 }
 
 function parseStripeSignature(signatureHeader: string) {
-  const parts = signatureHeader.split(",");
+  const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);
   const signatures = parts
     .filter((part) => part.startsWith("v1="))
@@ -196,7 +199,17 @@ export async function verifyStripeWebhook(
   }
 
   try {
-    return JSON.parse(rawBody) as StripeEvent<
+    const parsed = JSON.parse(rawBody) as Partial<StripeEvent<unknown>>;
+    if (
+      typeof parsed.id !== "string" ||
+      typeof parsed.type !== "string" ||
+      !parsed.data ||
+      typeof parsed.data !== "object" ||
+      !("object" in parsed.data)
+    ) {
+      return null;
+    }
+    return parsed as StripeEvent<
       StripeCheckoutSession | StripeSubscription | StripeInvoice
     >;
   } catch {

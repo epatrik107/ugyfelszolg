@@ -35,6 +35,7 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
 
   return okJson(c, {
     paymentStatus: order.payment_status,
+    invoiceStatus: order.invoice_status,
     aiStatus: order.ai_status,
     generationCount: order.generation_count,
     generatedLetter:

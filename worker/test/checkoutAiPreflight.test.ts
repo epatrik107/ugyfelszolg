@@ -1,18 +1,24 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { checkAiServiceAvailable } from "../src/lib/health";
+import { getOrderByCheckoutIdempotencyKey } from "../src/lib/db";
+import { hashToken } from "../src/lib/hash";
+import { createCheckoutSession as createStripeCheckoutSession } from "../src/lib/stripe";
+import { retrieveCheckoutSession } from "../src/lib/stripe";
 import { createCheckoutSessionRoute } from "../src/routes/createCheckoutSession";
 import type { Env } from "../src/lib/types";
+import { orderFixture } from "./fixtures";
 
 vi.mock("../src/lib/ai", () => ({
   generateLetterForPaidOrder: vi.fn(async () => {}),
 }));
 
 vi.mock("../src/lib/db", () => ({
-  attachStripeSession: vi.fn(async () => {}),
+  attachStripeSession: vi.fn(async () => true),
   beginGeneration: vi.fn(async () => true),
+  getOrderByCheckoutIdempotencyKey: vi.fn(async () => null),
   getOrderById: vi.fn(async () => ({ id: "order_1" })),
-  insertOrder: vi.fn(async () => {}),
+  insertOrder: vi.fn(async () => true),
 }));
 
 vi.mock("../src/lib/health", () => ({
@@ -26,6 +32,7 @@ vi.mock("../src/lib/rateLimit", () => ({
 
 vi.mock("../src/lib/stripe", () => ({
   createCheckoutSession: vi.fn(async () => ({ id: "session_1", url: "https://stripe.test" })),
+  retrieveCheckoutSession: vi.fn(),
 }));
 
 vi.mock("../src/lib/turnstile", () => ({
@@ -42,6 +49,16 @@ const payload = {
   tone: "Udvarias",
   previousMessages: "",
   selectedPackage: "premium",
+  checkoutAttemptId: "84c31d7f-0c7c-4bf8-85e5-fcd6a0949681",
+  billing: {
+    buyerType: "individual",
+    name: "Patrik Engelbrecht",
+    email: "patrik@example.com",
+    country: "HU",
+    postalCode: "1111",
+    city: "Budapest",
+    addressLine1: "Példa utca 1.",
+  },
   legalAccepted: true,
   turnstileToken: "turnstile-token",
   demoAccessCode: "demo-code",
@@ -68,6 +85,7 @@ describe("checkout AI availability preflight", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(checkAiServiceAvailable).mockResolvedValue(false);
+    vi.mocked(getOrderByCheckoutIdempotencyKey).mockResolvedValue(null);
   });
 
   it("does not block a valid demo request when AI metadata preflight fails", async () => {
@@ -98,5 +116,166 @@ describe("checkout AI availability preflight", () => {
 
     expect(response.status).toBe(503);
     expect(checkAiServiceAvailable).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it.each([
+    ["company name", { billing: { ...payload.billing, companyName: "Minta Kft." } }],
+    ["tax number", { billing: { ...payload.billing, taxNumber: "12345678-1-42" } }],
+    ["VAT ID", { billing: { ...payload.billing, vatId: "HU12345678" } }],
+    ["business buyer", { billing: { ...payload.billing, buyerType: "business" } }],
+    ["company buyer", { billing: { ...payload.billing, buyerType: "company" } }],
+    ["organization buyer", { billing: { ...payload.billing, buyerType: "organization" } }],
+  ])("blocks %s before Stripe is called", async (_label, override) => {
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, ...override }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(400);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("blocks an organization-like billing name before Stripe is called", async () => {
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          billing: { ...payload.billing, name: "Minta Kft." },
+        }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(400);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects a manipulated frontend price before Stripe is called", async () => {
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, price: 1 }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(400);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("uses the server catalog price and individual billing email for a paid checkout", async () => {
+    vi.mocked(checkAiServiceAvailable).mockResolvedValue(true);
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(200);
+    expect(createStripeCheckoutSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        packageId: "premium",
+        amount: 3900,
+        currency: "huf",
+        email: "patrik@example.com",
+      }),
+    );
+  });
+
+  it("does not start a second payment for an already paid idempotent order", async () => {
+    const fingerprint = await hashToken(
+      JSON.stringify({
+        name: payload.name,
+        email: payload.email,
+        letterType: payload.letterType,
+        recipient: payload.recipient,
+        problemDescription: payload.problemDescription,
+        desiredResult: payload.desiredResult,
+        tone: payload.tone,
+        previousMessages: payload.previousMessages,
+        selectedPackage: payload.selectedPackage,
+        billing: payload.billing,
+      }),
+      "token-secret",
+    );
+    vi.mocked(getOrderByCheckoutIdempotencyKey).mockResolvedValue(
+      orderFixture({ payment_status: "paid", checkout_input_hash: fingerprint }),
+    );
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, demoAccessCode: "" }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(409);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects reuse of an idempotency key with different order data", async () => {
+    vi.mocked(getOrderByCheckoutIdempotencyKey).mockResolvedValue(
+      orderFixture({ checkout_input_hash: "different-input-hash" }),
+    );
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, demoAccessCode: "" }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(409);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("reuses the same open Stripe session for an identical client retry", async () => {
+    const fingerprint = await hashToken(
+      JSON.stringify({
+        name: payload.name,
+        email: payload.email,
+        letterType: payload.letterType,
+        recipient: payload.recipient,
+        problemDescription: payload.problemDescription,
+        desiredResult: payload.desiredResult,
+        tone: payload.tone,
+        previousMessages: payload.previousMessages,
+        selectedPackage: payload.selectedPackage,
+        billing: payload.billing,
+      }),
+      "token-secret",
+    );
+    vi.mocked(getOrderByCheckoutIdempotencyKey).mockResolvedValue(
+      orderFixture({ checkout_input_hash: fingerprint, payment_status: "checkout_created" }),
+    );
+    vi.mocked(retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_test_1",
+      url: "https://stripe.test/reused",
+      status: "open",
+    } as never);
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, demoAccessCode: "" }),
+      }),
+      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(200);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 
-const PRIVACY_VERSION = "1.0";
-const PRIVACY_DATE = "2025-01-15";
+const PRIVACY_VERSION = "1.1";
+const PRIVACY_DATE = "2026-06-22";
 
 export function PrivacyPage() {
   return (
@@ -23,7 +23,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="2. Kezelt adatok"
-        text="Név, e-mail cím, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, hiba üzenetek)."
+        text="Név, e-mail cím, magánszemély számlázási név, számlázási e-mail, ország, irányítószám, település és cím, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), számlaszám és számlázási állapot, megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, személyes adatot nem tartalmazó hibakódok). Cégnév, adószám és VAT ID nem fogadható el."
       />
       <ContentBlock
         title="3. Az adatkezelés céljai és jogalapjai"
@@ -31,7 +31,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="4. Adattovábbítás és adatfeldolgozók"
-        text="Stripe Inc. (USA) – fizetési tranzakció feldolgozása; Cloudflare Inc. (USA) – backend futtatás, D1 adatbázis, KV tároló, Turnstile spamvédelem; Google LLC – Gemini API, a levélgeneráláshoz szükséges szöveges adatok kerülnek átadásra; Resend Inc. – tranzakciós e-mail kézbesítés. Az adatfeldolgozók az EU–USA adatvédelmi keretrendszer vagy Standard Contractual Clauses alapján kezelik az adatokat."
+        text="Stripe Inc. (USA) – fizetési tranzakció feldolgozása; KBOSS.hu Kft. / Számlázz.hu (Magyarország) – elektronikus számla kiállítása és kézbesítése; Cloudflare Inc. (USA) – backend futtatás, D1 adatbázis, KV tároló, Turnstile spamvédelem; Google LLC – Gemini API, a levélgeneráláshoz szükséges szöveges adatok kerülnek átadásra; Resend Inc. – egyéb tranzakciós e-mail kézbesítés. Az EGT-n kívüli adatfeldolgozók az EU–USA adatvédelmi keretrendszer vagy Standard Contractual Clauses alapján kezelik az adatokat."
       />
       <ContentBlock
         title="5. Adatmegőrzési idők"

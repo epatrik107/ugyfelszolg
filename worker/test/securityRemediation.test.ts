@@ -190,6 +190,7 @@ describe("environment validation", () => {
     expect(validateEnv(baseEnv({ PAYMENTS_ENABLED: "true" })).missing).toEqual([
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
+      "SZAMLAZZ_AGENT_KEY",
     ]);
     expect(
       validateEnv(
@@ -197,6 +198,7 @@ describe("environment validation", () => {
           PAYMENTS_ENABLED: "true",
           STRIPE_SECRET_KEY: "stripe-secret",
           STRIPE_WEBHOOK_SECRET: "webhook-secret",
+          SZAMLAZZ_AGENT_KEY: "test-agent-key",
         }),
       ).ok,
     ).toBe(true);
@@ -216,6 +218,19 @@ describe("environment validation", () => {
       ).ok,
     ).toBe(true);
     expect(validateEnv(baseEnv({ DEMO_MODE: "false", DEMO_ACCESS_CODE: "" })).ok).toBe(true);
+  });
+
+  it("rejects an uppercase Szamlazz.hu Agent key in payment mode", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          STRIPE_SECRET_KEY: "stripe-secret",
+          STRIPE_WEBHOOK_SECRET: "webhook-secret",
+          SZAMLAZZ_AGENT_KEY: "UPPERCASE-KEY",
+        }),
+      ).missing,
+    ).toContain("SZAMLAZZ_AGENT_KEY_LOWERCASE");
   });
 
   it("keeps health available and generic when env is incomplete", async () => {

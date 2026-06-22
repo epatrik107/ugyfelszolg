@@ -1,18 +1,24 @@
 import { Hono } from "hono";
 import { addSecurityHeaders, bodySizeGuard, corsGuard, requireJsonContentType } from "./lib/security";
-import { cleanupExpiredData, getStuckGeneratingOrders, markOrderPaymentStatus } from "./lib/db";
+import {
+  cleanupExpiredData,
+  getStuckGeneratingOrders,
+  markOrderPaymentStatus,
+  markRefundInvoiceManualRequired,
+} from "./lib/db";
 import { sendRefundEmail } from "./lib/email";
 import {
   envValidationGuard,
   logEnvValidationFailure,
   validateEnv,
 } from "./lib/envValidation";
-import { getInvoiceByOrderId } from "./lib/invoice";
+import { getInvoiceByOrderId, retryDueInvoices } from "./lib/invoice";
 import { logEvent } from "./lib/logger";
 import { errorJson } from "./lib/response";
 import { createRefund } from "./lib/stripe";
 import type { Env } from "./lib/types";
 import { contactRoute } from "./routes/contact";
+import { cancelCheckoutSessionRoute } from "./routes/cancelCheckoutSession";
 import { createCheckoutSessionRoute } from "./routes/createCheckoutSession";
 import { getOrderResultRoute } from "./routes/getOrderResult";
 import { regenerateOrderRoute } from "./routes/regenerateOrder";
@@ -27,6 +33,7 @@ app.use("/api/*", requireJsonContentType);
 app.use("/api/*", envValidationGuard);
 app.post("/api/create-checkout-session", createCheckoutSessionRoute);
 app.post("/api/stripe/webhook", stripeWebhookRoute);
+app.post("/api/orders/:publicId/cancel-checkout", cancelCheckoutSessionRoute);
 app.get("/api/orders/:publicId/result", getOrderResultRoute);
 app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
 app.post("/api/orders/:publicId/send-letter", sendLetterRoute);
@@ -71,6 +78,7 @@ async function resolveStuckOrders(env: Env) {
       if (order.stripe_payment_intent_id && order.billing_source === "checkout") {
         await createRefund(env, order.stripe_payment_intent_id);
         await markOrderPaymentStatus(env, order.id, "refunded");
+        await markRefundInvoiceManualRequired(env, order.id);
         logEvent("stuck_order_refunded", { orderId: order.id });
 
         const invoice = await getInvoiceByOrderId(env, order.id);
@@ -102,6 +110,10 @@ export default {
       return;
     }
     await cleanupExpiredData(env);
+    const invoiceRetries = await retryDueInvoices(env);
+    for (const retry of invoiceRetries) {
+      logEvent("invoice_retry_finished", retry);
+    }
     await resolveStuckOrders(env);
   },
 };

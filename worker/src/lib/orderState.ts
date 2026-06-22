@@ -1,10 +1,30 @@
 import type { AiStatus, OrderRow, PaymentStatus } from "./types";
 
 const paymentTransitions: Record<PaymentStatus, PaymentStatus[]> = {
-  pending: ["paid", "failed", "expired"],
-  paid: ["refunded"],
-  failed: [],
+  pending: [
+    "checkout_created",
+    "paid",
+    "failed",
+    "cancelled",
+    "expired",
+    "amount_mismatch",
+    "currency_mismatch",
+  ],
+  checkout_created: [
+    "paid",
+    "failed",
+    "cancelled",
+    "expired",
+    "amount_mismatch",
+    "currency_mismatch",
+  ],
+  paid: ["partially_refunded", "refunded"],
+  failed: ["paid", "cancelled", "expired", "amount_mismatch", "currency_mismatch"],
+  cancelled: [],
   expired: [],
+  amount_mismatch: [],
+  currency_mismatch: [],
+  partially_refunded: ["refunded"],
   refunded: [],
 };
 
