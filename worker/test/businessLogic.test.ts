@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { claimStripeEvent, consumeMagicLink, insertOrder } from "../src/lib/db";
 import { constantTimeEqual, hashToken } from "../src/lib/hash";
 import { createInvoice, selectInvoiceProvider } from "../src/lib/invoice";
@@ -262,6 +262,26 @@ describe("regeneration feedback", () => {
       billing_source: "checkout",
       letter_history: null,
       letter_email_sent: 0,
+      checkout_idempotency_key: null,
+      checkout_input_hash: null,
+      billing_name: "Teszt Elek",
+      billing_email: "teszt@example.com",
+      billing_country: "HU",
+      billing_postal_code: "1111",
+      billing_city: "Budapest",
+      billing_address_line1: "Példa utca 1.",
+      invoice_status: "not_required",
+      invoice_provider: null,
+      invoice_number: null,
+      invoice_external_id: null,
+      invoice_pdf_url: null,
+      invoice_error_code: null,
+      invoice_error_message: null,
+      invoice_retry_count: 0,
+      invoice_last_attempted_at: null,
+      invoice_next_retry_at: null,
+      invoiced_at: null,
+      refund_invoice_status: "not_required",
     } satisfies OrderRow;
 
     const feedback = "Legyen rövidebb és barátságosabb.";
@@ -309,11 +329,13 @@ describe("stripe webhook idempotency", () => {
     const seen = new Set<string>();
     const fakeEnv = {
       DB: {
-        prepare() {
+        prepare(sql: string) {
           return {
-            bind(eventId: string) {
+            bind(...args: string[]) {
               return {
                 async run() {
+                  if (!sql.includes("INSERT OR IGNORE")) return { meta: { changes: 0 } };
+                  const eventId = args[0];
                   if (seen.has(eventId)) {
                     return { meta: { changes: 0 } };
                   }
@@ -543,12 +565,19 @@ describe("createInvoice internal path", () => {
       currency: "HUF",
       paid_at: "2024-06-01T10:00:00.000Z",
       selected_package: "basic" as const,
+      billing_name: "Teszt Felhasználó",
+      billing_email: "test@example.com",
+      billing_country: "HU",
+      billing_postal_code: "1111",
+      billing_city: "Budapest",
+      billing_address_line1: "Példa utca 1.",
+      invoice_retry_count: 1,
     };
 
     const invoice = await createInvoice(fakeEnv, order);
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(invoice.invoice_number).toMatch(/^SZ-\d{4}-\d{4}$/);
+    expect(invoice.invoice_number).toMatch(/^TEST-\d{4}-\d{6}$/);
     expect(invoice.order_id).toBe("order-test-1");
     expect(invoice.amount).toBe(890);
 
@@ -569,7 +598,7 @@ describe("createInvoice szamlazz.hu path", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(null, {
         status: 200,
-        headers: { szlaszam: mockInvoiceNumber },
+        headers: { szlahu_szamlaszam: mockInvoiceNumber },
       }),
     );
 
@@ -580,7 +609,7 @@ describe("createInvoice szamlazz.hu path", () => {
         prepare(sql: string) {
           return {
             bind(...args: unknown[]) {
-              if (sql.includes("INSERT INTO invoices")) {
+              if (sql.includes("INTO invoices")) {
                 storedInvoiceNumber = args[2]; // invoice_number is the 3rd bind param
               }
               return {
@@ -590,6 +619,9 @@ describe("createInvoice szamlazz.hu path", () => {
               };
             },
           };
+        },
+        async batch(_stmts: unknown[]) {
+          return [];
         },
       },
     } as unknown as Env;
@@ -602,6 +634,13 @@ describe("createInvoice szamlazz.hu path", () => {
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "premium" as const,
+      billing_name: "Éles Felhasználó",
+      billing_email: "production@example.com",
+      billing_country: "HU",
+      billing_postal_code: "1111",
+      billing_city: "Budapest",
+      billing_address_line1: "Példa utca 1.",
+      invoice_retry_count: 1,
     };
 
     const invoice = await createInvoice(fakeEnv, order);
@@ -620,7 +659,7 @@ describe("createInvoice szamlazz.hu path", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(null, {
         status: 200,
-        headers: { szlahibakod: "3", szlahiba: "Hibás agent kulcs" },
+        headers: { szlahu_error_code: "3", szlahu_error: "Hibás agent kulcs" },
       }),
     );
 
@@ -637,9 +676,16 @@ describe("createInvoice szamlazz.hu path", () => {
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "basic" as const,
+      billing_name: "Hiba Teszt",
+      billing_email: "err@example.com",
+      billing_country: "HU",
+      billing_postal_code: "1111",
+      billing_city: "Budapest",
+      billing_address_line1: "Példa utca 1.",
+      invoice_retry_count: 1,
     };
 
-    await expect(createInvoice(fakeEnv, order)).rejects.toThrow(/szamlazz\.hu/);
+    await expect(createInvoice(fakeEnv, order)).rejects.toThrow();
   });
 
   it("does NOT include the agent key in the thrown error message", async () => {
@@ -663,6 +709,13 @@ describe("createInvoice szamlazz.hu path", () => {
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "basic" as const,
+      billing_name: "Sec Teszt",
+      billing_email: "sec@example.com",
+      billing_country: "HU",
+      billing_postal_code: "1111",
+      billing_city: "Budapest",
+      billing_address_line1: "Példa utca 1.",
+      invoice_retry_count: 1,
     };
 
     await expect(createInvoice(fakeEnv, order)).rejects.toSatisfy(

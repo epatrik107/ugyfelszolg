@@ -16,6 +16,7 @@ vi.mock("../src/lib/db", () => ({
   completeGeneration: vi.fn(),
   failGeneration: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
+  markRefundInvoiceManualRequired: vi.fn(),
   releaseReservedQuota: vi.fn(),
 }));
 
@@ -45,7 +46,7 @@ Tisztelettel:
 Teszt Felhasználó`;
 
 const env = {
-  GEMINI_API_KEY: "AIzaFakeKeyForTestsOnly000000000000",
+  GEMINI_API_KEY: "fake-gemini-key-for-tests",
   GEMINI_MODEL: "gemini-test",
   GEMINI_REVIEW_MODEL: "gemini-review-test",
 } as unknown as Env;
@@ -80,6 +81,26 @@ const order: OrderRow = {
   billing_source: "checkout",
   letter_history: null,
   letter_email_sent: 0,
+  checkout_idempotency_key: null,
+  checkout_input_hash: null,
+  billing_name: "Teszt Elek",
+  billing_email: "test@example.com",
+  billing_country: "HU",
+  billing_postal_code: "1111",
+  billing_city: "Budapest",
+  billing_address_line1: "Példa utca 1.",
+  invoice_status: "created",
+  invoice_provider: "internal",
+  invoice_number: "TEST-2026-000001",
+  invoice_external_id: "order_1",
+  invoice_pdf_url: null,
+  invoice_error_code: null,
+  invoice_error_message: null,
+  invoice_retry_count: 1,
+  invoice_last_attempted_at: null,
+  invoice_next_retry_at: null,
+  invoiced_at: "2026-01-01T00:00:00.000Z",
+  refund_invoice_status: "not_required",
 };
 
 function geminiResponse(text: string) {

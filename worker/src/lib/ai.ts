@@ -3,6 +3,7 @@ import {
   completeGeneration,
   failGeneration,
   markOrderPaymentStatus,
+  markRefundInvoiceManualRequired,
   releaseReservedQuota,
 } from "./db";
 import { sendRefundEmail } from "./email";
@@ -351,6 +352,7 @@ export async function generateLetterForPaidOrder(
       try {
         await createRefund(env, order.stripe_payment_intent_id);
         await markOrderPaymentStatus(env, order.id, "refunded");
+        await markRefundInvoiceManualRequired(env, order.id);
         logEvent("auto_refund_issued", { orderId: order.id });
 
         const invoice = await getInvoiceByOrderId(env, order.id);

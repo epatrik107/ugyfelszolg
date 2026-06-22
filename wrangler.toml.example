@@ -22,6 +22,7 @@ ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.i
 EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
+PAYMENT_MODE = "test"
 # SZAMLAZZ_AGENT_KEY must be added as a secret (wrangler secret put SZAMLAZZ_AGENT_KEY)
 # in production – its presence switches invoice issuing to szamlazz.hu.
 

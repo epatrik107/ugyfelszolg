@@ -1,27 +1,43 @@
-import { issueSzamlazzInvoice } from "./szamlazz";
+import {
+  claimInvoiceProcessing,
+  getInvoiceRetryCandidates,
+  getOrderById,
+  markInvoiceAttemptFailed,
+  persistCreatedInvoice,
+} from "./db";
+import {
+  buildSzamlazzPayload,
+  InvoiceProviderError,
+  issueSzamlazzInvoice,
+} from "./szamlazz";
 import type { Env, InvoiceRow, OrderRow } from "./types";
 
+type InvoiceableOrder = Pick<
+  OrderRow,
+  | "id"
+  | "billing_name"
+  | "billing_email"
+  | "billing_country"
+  | "billing_postal_code"
+  | "billing_city"
+  | "billing_address_line1"
+  | "server_calculated_price"
+  | "currency"
+  | "paid_at"
+  | "selected_package"
+  | "invoice_retry_count"
+>;
+
 function getYear(iso: string): number {
-  return new Date(iso).getFullYear();
+  return new Date(iso).getUTCFullYear();
 }
 
-/**
- * Returns which invoice provider is active for the current environment.
- * Production (when SZAMLAZZ_AGENT_KEY is set): "szamlazz"
- * Test / development (no key):                 "internal"
- */
 export function selectInvoiceProvider(env: Env): "szamlazz" | "internal" {
   return env.SZAMLAZZ_AGENT_KEY ? "szamlazz" : "internal";
 }
 
-/**
- * Atomically allocates the next internal invoice number for the given year
- * and returns the formatted string. Uses a D1 batch to prevent gaps or
- * duplicates under concurrent load.
- */
 async function allocateInternalInvoiceNumber(env: Env, issuedAt: string): Promise<string> {
   const year = getYear(issuedAt);
-
   await env.DB.prepare(
     "INSERT OR IGNORE INTO invoice_sequence (year, last_number) VALUES (?, 0)",
   )
@@ -36,67 +52,100 @@ async function allocateInternalInvoiceNumber(env: Env, issuedAt: string): Promis
       "SELECT last_number FROM invoice_sequence WHERE year = ?",
     ).bind(year),
   ]);
-
   const lastNumber = (seqRow.results[0] as { last_number: number }).last_number;
-  return `SZ-${year}-${String(lastNumber).padStart(4, "0")}`;
+  return `TEST-${year}-${String(lastNumber).padStart(6, "0")}`;
 }
 
 /**
- * Creates an invoice for a paid order and persists it locally.
- *
- * In production (SZAMLAZZ_AGENT_KEY present) the invoice is issued via
- * szamlazz.hu and their invoice number is stored.
- * In test / development the existing internal sequence is used, so no
- * external call is made and behaviour is identical to before.
+ * Creates one invoice after the caller has atomically claimed invoice processing.
+ * The internal provider is deliberately test/development-only; production env
+ * validation requires a Szamlazz.hu Agent key whenever payments are enabled.
  */
-export async function createInvoice(
-  env: Env,
-  order: Pick<OrderRow, "id" | "email" | "name" | "server_calculated_price" | "currency" | "paid_at" | "selected_package">,
-): Promise<InvoiceRow> {
-  const issuedAt = order.paid_at ?? new Date().toISOString();
-  const now = new Date().toISOString();
+export async function createInvoice(env: Env, order: InvoiceableOrder): Promise<InvoiceRow> {
+  const payload = buildSzamlazzPayload(order);
+  const provider = selectInvoiceProvider(env);
+  const issuedAt = new Date().toISOString();
+  const externalId = order.id;
+
+  let invoiceNumber: string;
+  let pdfUrl: string | null = null;
+  let alreadyExisted = false;
+  if (provider === "szamlazz") {
+    const result = await issueSzamlazzInvoice(
+      env,
+      payload,
+      order.invoice_retry_count > 1,
+    );
+    invoiceNumber = result.invoiceNumber;
+    pdfUrl = result.pdfUrl;
+    alreadyExisted = result.alreadyExisted;
+  } else {
+    invoiceNumber = await allocateInternalInvoiceNumber(env, issuedAt);
+  }
+
   const invoiceId = crypto.randomUUID();
+  await persistCreatedInvoice(env, order, {
+    id: invoiceId,
+    invoiceNumber,
+    provider,
+    externalId,
+    pdfUrl,
+    issuedAt,
+    status: alreadyExisted ? "already_created" : "created",
+  });
 
-  const invoiceNumber =
-    selectInvoiceProvider(env) === "szamlazz"
-      ? await issueSzamlazzInvoice(env, order)
-      : await allocateInternalInvoiceNumber(env, issuedAt);
-
-  await env.DB.prepare(
-    `INSERT INTO invoices
-       (id, order_id, invoice_number, amount, currency, customer_name, customer_email, issued_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      invoiceId,
-      order.id,
-      invoiceNumber,
-      order.server_calculated_price,
-      order.currency,
-      order.name,
-      order.email,
-      issuedAt,
-      now,
-    )
-    .run();
-
+  const now = new Date().toISOString();
   return {
     id: invoiceId,
     order_id: order.id,
     invoice_number: invoiceNumber,
     amount: order.server_calculated_price,
     currency: order.currency,
-    customer_name: order.name,
-    customer_email: order.email,
+    customer_name: order.billing_name!,
+    customer_email: order.billing_email!,
     issued_at: issuedAt,
     created_at: now,
+    provider,
+    external_id: externalId,
+    pdf_url: pdfUrl,
+    updated_at: now,
   };
 }
 
-export async function getInvoiceByOrderId(
-  env: Env,
-  orderId: string,
-): Promise<InvoiceRow | null> {
+export async function processInvoiceForOrder(env: Env, orderId: string) {
+  const claimedOrder = await claimInvoiceProcessing(env, orderId);
+  if (!claimedOrder) {
+    const current = await getOrderById(env, orderId);
+    return current?.invoice_status ?? "not_required";
+  }
+
+  try {
+    await createInvoice(env, claimedOrder);
+    return (await getOrderById(env, orderId))?.invoice_status ?? "created";
+  } catch (error) {
+    const providerError = error instanceof InvoiceProviderError
+      ? error
+      : new InvoiceProviderError("INVOICE_PROCESSING_ERROR", true, "A számlázás átmenetileg sikertelen.");
+    return markInvoiceAttemptFailed(env, orderId, {
+      retryable: providerError.retryable,
+      errorCode: providerError.code,
+      errorMessage: providerError.message,
+      retryCount: claimedOrder.invoice_retry_count,
+    });
+  }
+}
+
+export async function retryDueInvoices(env: Env) {
+  const orders = await getInvoiceRetryCandidates(env);
+  const results: Array<{ orderId: string; status: string }> = [];
+  for (const order of orders) {
+    const status = await processInvoiceForOrder(env, order.id);
+    results.push({ orderId: order.id, status });
+  }
+  return results;
+}
+
+export async function getInvoiceByOrderId(env: Env, orderId: string) {
   return env.DB.prepare("SELECT * FROM invoices WHERE order_id = ? LIMIT 1")
     .bind(orderId)
     .first<InvoiceRow>();

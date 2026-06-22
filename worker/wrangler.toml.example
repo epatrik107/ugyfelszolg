@@ -23,6 +23,7 @@ ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.i
 EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
+PAYMENT_MODE = "test"
 
 [triggers]
 crons = [ "17 2 * * *" ]

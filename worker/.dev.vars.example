@@ -1,0 +1,22 @@
+# Copy only the missing entries into worker/.dev.vars. Never commit .dev.vars.
+GEMINI_API_KEY=<PASTE_EXISTING_DEVELOPMENT_KEY>
+TOKEN_HASH_SECRET=<ADD_AT_LEAST_32_RANDOM_CHARACTERS>
+SITE_URL=http://localhost:5173
+ALLOWED_ORIGINS=http://localhost:5173
+DEMO_MODE=false
+PAYMENTS_ENABLED=true
+PAYMENT_MODE=test
+
+# Official Cloudflare Turnstile always-pass test secret.
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+
+# Stripe sandbox/test-mode values only.
+STRIPE_SECRET_KEY=<PASTE_SK_TEST_KEY>
+STRIPE_WEBHOOK_SECRET=<PASTE_WHSEC_FROM_STRIPE_LISTEN>
+
+# Dedicated Szamlazz.hu test-account Agent key only, lowercase.
+SZAMLAZZ_AGENT_KEY=<PASTE_TEST_ACCOUNT_AGENT_KEY>
+SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true
+
+# Keep empty during local payment tests: no real transactional email is sent.
+RESEND_API_KEY=

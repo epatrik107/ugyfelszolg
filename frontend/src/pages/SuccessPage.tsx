@@ -50,7 +50,11 @@ function GenerationProgress({ result, pollCount }: { result: OrderResult | null;
   const aiStatus = result?.aiStatus ?? "not_started";
 
   const step1: StepStatus =
-    paymentStatus === "paid" ? "done" : paymentStatus === "pending" ? "active" : "pending";
+    paymentStatus === "paid" || paymentStatus === "partially_refunded"
+      ? "done"
+      : paymentStatus === "pending" || paymentStatus === "checkout_created"
+        ? "active"
+        : "error";
 
   const step2: StepStatus =
     aiStatus === "completed" || aiStatus === "failed" || aiStatus === "failed_review"
@@ -136,7 +140,11 @@ export function SuccessPage() {
           payload.aiStatus === "completed" ||
           payload.aiStatus === "failed" ||
           payload.aiStatus === "failed_review" ||
-          payload.paymentStatus === "refunded";
+          payload.paymentStatus === "refunded" ||
+          payload.paymentStatus === "cancelled" ||
+          payload.paymentStatus === "expired" ||
+          payload.paymentStatus === "amount_mismatch" ||
+          payload.paymentStatus === "currency_mismatch";
         if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
           window.clearInterval(intervalRef.current);
           if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
@@ -268,6 +276,13 @@ export function SuccessPage() {
     <section className="mx-auto max-w-3xl space-y-6 px-4 py-10">
       <h1 className="text-3xl font-semibold">{pageTitle}</h1>
       <LegalNotice />
+      {result?.paymentStatus === "paid" &&
+        (result.invoiceStatus === "failed" || result.invoiceStatus === "retry_required") && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            A fizetés sikeres és a szolgáltatás aktív. A számla kiállítása átmenetileg nem sikerült;
+            a rendszer biztonságosan megőrizte az állapotot, és újrapróbálja, vagy ügyintézői beavatkozást kér.
+          </div>
+        )}
 
       {!publicId || !token ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-700">

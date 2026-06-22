@@ -1,17 +1,34 @@
 name: Deploy worker
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "worker/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Isolated GitHub Environment to deploy"
+        required: true
+        default: sandbox
+        type: choice
+        options:
+          - sandbox
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-${{ inputs.target_environment }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    environment:
+      name: ${{ inputs.target_environment }}
+    env:
+      DEPLOY_ENV: ${{ inputs.target_environment }}
+      DEMO_MODE: "false"
+      PAYMENTS_ENABLED: "true"
+      PAYMENT_MODE: ${{ inputs.target_environment == 'production' && 'live' || 'test' }}
+      SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: ${{ inputs.target_environment == 'sandbox' && 'true' || 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,20 +37,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck --workspace worker
-      - run: npm run test --workspace worker
-      - name: Validate production config
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Validate isolated deploy config
         run: |
           node <<'NODE'
           const errors = [];
-          const defaultAllowedOrigins = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io";
 
           const d1Id = (process.env.CLOUDFLARE_D1_DATABASE_ID || "").trim();
           const kvId = (process.env.CLOUDFLARE_KV_NAMESPACE_ID || "").trim();
-          const deployEnv = (process.env.DEPLOY_ENV || "demo").trim();
-          const demoMode = (process.env.DEMO_MODE || (deployEnv === "production" ? "false" : "true")).trim();
-          const paymentsEnabled = (process.env.PAYMENTS_ENABLED || (deployEnv === "production" ? "true" : "false")).trim();
-          const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultAllowedOrigins).trim();
+          const deployEnv = (process.env.DEPLOY_ENV || "").trim();
+          const demoMode = (process.env.DEMO_MODE || "").trim();
+          const paymentsEnabled = (process.env.PAYMENTS_ENABLED || "").trim();
+          const paymentMode = (process.env.PAYMENT_MODE || "").trim();
+          const szamlazzTestAccountConfirmed = (process.env.SZAMLAZZ_TEST_ACCOUNT_CONFIRMED || "").trim();
+          const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").trim();
+          const siteUrl = (process.env.SITE_URL || "").trim();
+          const workerName = (process.env.WORKER_NAME || "").trim();
+          const d1DatabaseName = (process.env.D1_DATABASE_NAME || "").trim();
+          const hasSzamlazzAgentKey = Boolean((process.env.SZAMLAZZ_AGENT_KEY || "").trim());
+          const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+          const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
 
@@ -46,29 +71,67 @@ jobs:
             errors.push("CLOUDFLARE_KV_NAMESPACE_ID must be the KV namespace ID from Wrangler.");
           }
 
+          if (!['sandbox', 'production'].includes(deployEnv)) {
+            errors.push("DEPLOY_ENV must be sandbox or production.");
+          }
+          if (demoMode !== "false") errors.push("DEMO_MODE must be false for payment deploys.");
+          if (paymentsEnabled !== "true") errors.push("PAYMENTS_ENABLED must be true for payment deploys.");
+          if (!stripeWebhookSecret.startsWith("whsec_")) {
+            errors.push("A Stripe webhook signing secret is required.");
+          }
+          if (!hasSzamlazzAgentKey) errors.push("SZAMLAZZ_AGENT_KEY is required.");
+          if (!allowedOrigins) errors.push("ALLOWED_ORIGINS is required.");
+          if (!siteUrl) errors.push("SITE_URL is required.");
+
+          if (deployEnv === "sandbox") {
+            if (paymentMode !== "test") errors.push("PAYMENT_MODE=test is required in sandbox.");
+            if (!stripeSecretKey.startsWith("sk_test_")) errors.push("A Stripe test secret key is required in sandbox.");
+            if (szamlazzTestAccountConfirmed !== "true") {
+              errors.push("SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true is required in sandbox.");
+            }
+            if (!/(sandbox|test)/i.test(workerName)) {
+              errors.push("Sandbox WORKER_NAME must contain sandbox or test.");
+            }
+            if (!/(sandbox|test)/i.test(d1DatabaseName)) {
+              errors.push("Sandbox D1_DATABASE_NAME must contain sandbox or test.");
+            }
+            const sandboxUrls = [siteUrl, ...allowedOrigins.split(",")]
+              .map(value => value.trim())
+              .filter(Boolean);
+            if (sandboxUrls.some(value => value.startsWith("http://") && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(value))) {
+              errors.push("Sandbox HTTP URLs are allowed only for localhost or 127.0.0.1.");
+            }
+          }
+
           if (deployEnv === "production") {
-            if (demoMode === "true") errors.push("DEMO_MODE=true is not allowed in production.");
-            if (paymentsEnabled === "false") errors.push("PAYMENTS_ENABLED=false is not allowed in production.");
-            if (allowedOrigins.split(",").some(o => o.trim().startsWith("http://"))) {
-              errors.push("ALLOWED_ORIGINS contains http:// origin(s). Only HTTPS is allowed in production.");
+            if (paymentMode !== "live") errors.push("PAYMENT_MODE=live is required in production.");
+            if (!stripeSecretKey.startsWith("sk_live_")) errors.push("A Stripe live secret key is required in production.");
+            if (szamlazzTestAccountConfirmed === "true") {
+              errors.push("A Szamlazz.hu test account cannot be confirmed in production.");
+            }
+            if ([siteUrl, ...allowedOrigins.split(",")].some(value => value.trim().startsWith("http://"))) {
+              errors.push("Production SITE_URL and ALLOWED_ORIGINS must use HTTPS.");
             }
           }
 
           if (errors.length > 0) {
-            console.error("Production config validation failed:");
+            console.error("Deploy config validation failed:");
             for (const e of errors) console.error("  ✗ " + e);
             process.exit(1);
           }
 
-          console.log("Production config validation passed (env=" + deployEnv + ").");
+          console.log("Isolated deploy config validation passed (env=" + deployEnv + ").");
           NODE
         env:
           CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
           CLOUDFLARE_KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
-          DEMO_MODE: ${{ vars.DEMO_MODE }}
-          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
-          DEPLOY_ENV: ${{ vars.DEPLOY_ENV }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          WORKER_NAME: ${{ vars.WORKER_NAME }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
       - name: Create Worker config
         env:
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
@@ -81,22 +144,20 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
-          DEMO_MODE: ${{ vars.DEMO_MODE }}
-          PAYMENTS_ENABLED: ${{ vars.PAYMENTS_ENABLED }}
           SELLER_NAME: ${{ vars.SELLER_NAME }}
           SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
           SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
-          DEPLOY_ENV: ${{ vars.DEPLOY_ENV }}
         run: |
           node <<'NODE'
           const fs = require("fs");
 
           const value = (name, fallback) => (process.env[name] || fallback).trim();
           const tomlString = (input) => JSON.stringify(input);
-          const deployEnv = value("DEPLOY_ENV", "demo");
+          const deployEnv = value("DEPLOY_ENV", "sandbox");
           const defaultAllowedOrigins = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io";
           const defaultDemoMode = deployEnv === "production" ? "false" : "true";
           const defaultPaymentsEnabled = deployEnv === "production" ? "true" : "false";
+          const defaultPaymentMode = deployEnv === "production" ? "live" : "test";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
@@ -123,6 +184,8 @@ jobs:
           EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"))}
           DEMO_MODE = ${tomlString(value("DEMO_MODE", defaultDemoMode))}
           PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", defaultPaymentsEnabled))}
+          PAYMENT_MODE = ${tomlString(value("PAYMENT_MODE", defaultPaymentMode))}
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED = ${tomlString(value("SZAMLAZZ_TEST_ACCOUNT_CONFIRMED", "false"))}
           SELLER_NAME = ${tomlString(value("SELLER_NAME", "Test"))}
           SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", "Test"))}
           SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", "00000XXXXXX"))}
@@ -188,7 +251,8 @@ jobs:
             "TURNSTILE_SECRET_KEY",
             "TOKEN_HASH_SECRET",
             "RESEND_API_KEY",
-            "DEMO_ACCESS_CODE"
+            "DEMO_ACCESS_CODE",
+            "SZAMLAZZ_AGENT_KEY"
           ];
           const secrets = {};
           for (const key of keys) {
@@ -208,11 +272,13 @@ jobs:
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           DEMO_ACCESS_CODE: ${{ secrets.DEMO_ACCESS_CODE }}
+          SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
       - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply ugyfelkozpont --remote --config worker/wrangler.toml
+        run: npx wrangler d1 migrations apply "$D1_DATABASE_NAME" --remote --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'ugyfelkozpont' }}
       - name: Deploy Cloudflare Worker
         run: npx wrangler deploy --config worker/wrangler.toml
         env:

@@ -1,5 +1,29 @@
 export type PackageId = "basic" | "premium" | "premium_plus";
-export type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "refunded";
+export type BuyerType = "individual";
+export type PaymentStatus =
+  | "pending"
+  | "checkout_created"
+  | "paid"
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "amount_mismatch"
+  | "currency_mismatch"
+  | "partially_refunded"
+  | "refunded";
+export type InvoiceStatus =
+  | "not_required"
+  | "pending"
+  | "processing"
+  | "created"
+  | "failed"
+  | "retry_required"
+  | "already_created";
+export type RefundInvoiceStatus =
+  | "not_required"
+  | "manual_required"
+  | "created"
+  | "failed";
 export type AiStatus =
   | "not_started"
   | "generating"
@@ -25,6 +49,8 @@ export interface Env {
   DEMO_MODE?: string;
   DEMO_ACCESS_CODE?: string;
   PAYMENTS_ENABLED?: string;
+  PAYMENT_MODE?: "test" | "live";
+  SZAMLAZZ_TEST_ACCOUNT_CONFIRMED?: string;
   /** Seller information for invoice generation */
   SELLER_NAME?: string;
   SELLER_ADDRESS?: string;
@@ -63,6 +89,26 @@ export interface OrderRow {
   billing_source: "checkout" | "subscription";
   letter_history: string | null;
   letter_email_sent: number;
+  checkout_idempotency_key: string | null;
+  checkout_input_hash: string | null;
+  billing_name: string | null;
+  billing_email: string | null;
+  billing_country: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_address_line1: string | null;
+  invoice_status: InvoiceStatus;
+  invoice_provider: "szamlazz" | "internal" | null;
+  invoice_number: string | null;
+  invoice_external_id: string | null;
+  invoice_pdf_url: string | null;
+  invoice_error_code: string | null;
+  invoice_error_message: string | null;
+  invoice_retry_count: number;
+  invoice_last_attempted_at: string | null;
+  invoice_next_retry_at: string | null;
+  invoiced_at: string | null;
+  refund_invoice_status: RefundInvoiceStatus;
 }
 
 export interface SubscriptionRow {
@@ -101,4 +147,18 @@ export interface InvoiceRow {
   customer_email: string;
   issued_at: string;
   created_at: string;
+  provider: "szamlazz" | "internal";
+  external_id: string | null;
+  pdf_url: string | null;
+  updated_at: string | null;
+}
+
+export interface IndividualBillingDetails {
+  buyerType: BuyerType;
+  name: string;
+  email: string;
+  country: "HU";
+  postalCode: string;
+  city: string;
+  addressLine1: string;
 }

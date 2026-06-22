@@ -1,7 +1,10 @@
 import type {
   Env,
+  IndividualBillingDetails,
+  InvoiceStatus,
   OrderRow,
   PackageId,
+  PaymentStatus,
   SubscriptionRow,
   UsageRow,
 } from "./types";
@@ -25,17 +28,22 @@ export async function insertOrder(
     currency: string;
     billingSource?: "checkout" | "subscription";
     subscriptionId?: string | null;
-    paymentStatus?: string;
+    paymentStatus?: PaymentStatus;
+    checkoutIdempotencyKey?: string | null;
+    checkoutInputHash?: string | null;
+    billing?: IndividualBillingDetails | null;
   },
 ) {
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO orders (
+  const result = await env.DB.prepare(
+    `INSERT OR IGNORE INTO orders (
       id, public_id, result_token_hash, email, name, letter_type, recipient,
       problem_description, desired_result, tone, previous_messages, selected_package,
       server_calculated_price, currency, payment_status, ai_status, created_at,
-      updated_at, subscription_id, billing_source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      updated_at, subscription_id, billing_source, checkout_idempotency_key,
+      checkout_input_hash, billing_name, billing_email, billing_country,
+      billing_postal_code, billing_city, billing_address_line1
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       input.id,
@@ -58,8 +66,17 @@ export async function insertOrder(
       now,
       input.subscriptionId ?? null,
       input.billingSource ?? "checkout",
+      input.checkoutIdempotencyKey ?? null,
+      input.checkoutInputHash ?? null,
+      input.billing?.name ?? null,
+      input.billing?.email.toLowerCase() ?? null,
+      input.billing?.country ?? null,
+      input.billing?.postalCode ?? null,
+      input.billing?.city ?? null,
+      input.billing?.addressLine1 ?? null,
     )
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function getOrderById(env: Env, orderId: string) {
@@ -74,16 +91,33 @@ export async function getOrderByPublicId(env: Env, publicId: string) {
     .first<OrderRow>();
 }
 
+export async function getOrderByCheckoutIdempotencyKey(env: Env, key: string) {
+  return env.DB.prepare("SELECT * FROM orders WHERE checkout_idempotency_key = ?")
+    .bind(key)
+    .first<OrderRow>();
+}
+
+export async function getOrderByPaymentIntentId(env: Env, paymentIntentId: string) {
+  return env.DB.prepare("SELECT * FROM orders WHERE stripe_payment_intent_id = ? LIMIT 1")
+    .bind(paymentIntentId)
+    .first<OrderRow>();
+}
+
 export async function attachStripeSession(
   env: Env,
   orderId: string,
   stripeSessionId: string,
 ) {
-  await env.DB.prepare(
-    "UPDATE orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?",
+  const result = await env.DB.prepare(
+    `UPDATE orders
+     SET stripe_session_id = ?, payment_status = 'checkout_created', updated_at = ?
+     WHERE id = ?
+       AND payment_status IN ('pending', 'checkout_created')
+       AND (stripe_session_id IS NULL OR stripe_session_id = ?)`,
   )
-    .bind(stripeSessionId, new Date().toISOString(), orderId)
+    .bind(stripeSessionId, new Date().toISOString(), orderId, stripeSessionId)
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function markOrderPaid(
@@ -95,29 +129,56 @@ export async function markOrderPaid(
   },
 ) {
   const now = new Date().toISOString();
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `UPDATE orders
      SET payment_status = 'paid',
          paid_at = ?,
          stripe_session_id = ?,
          stripe_payment_intent_id = ?,
+         invoice_status = CASE
+           WHEN billing_source = 'checkout' THEN 'pending'
+           ELSE invoice_status
+         END,
+         invoice_error_code = NULL,
+         invoice_error_message = NULL,
          updated_at = ?
-     WHERE id = ? AND payment_status = 'pending'`,
+     WHERE id = ?
+       AND payment_status IN ('pending', 'checkout_created', 'failed')`,
   )
     .bind(now, input.stripeSessionId, input.stripePaymentIntentId, now, orderId)
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function markOrderPaymentStatus(
   env: Env,
   orderId: string,
-  status: "failed" | "expired" | "refunded",
+  status:
+    | "failed"
+    | "cancelled"
+    | "expired"
+    | "amount_mismatch"
+    | "currency_mismatch"
+    | "partially_refunded"
+    | "refunded",
 ) {
-  await env.DB.prepare(
-    "UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?",
+  const allowedFrom: Record<typeof status, PaymentStatus[]> = {
+    failed: ["pending", "checkout_created", "failed"],
+    cancelled: ["pending", "checkout_created", "failed"],
+    expired: ["pending", "checkout_created", "failed"],
+    amount_mismatch: ["pending", "checkout_created", "failed"],
+    currency_mismatch: ["pending", "checkout_created", "failed"],
+    partially_refunded: ["paid", "partially_refunded"],
+    refunded: ["paid", "partially_refunded"],
+  };
+  const placeholders = allowedFrom[status].map(() => "?").join(", ");
+  const result = await env.DB.prepare(
+    `UPDATE orders SET payment_status = ?, updated_at = ?
+     WHERE id = ? AND payment_status IN (${placeholders})`,
   )
-    .bind(status, new Date().toISOString(), orderId)
+    .bind(status, new Date().toISOString(), orderId, ...allowedFrom[status])
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function beginRegeneration(
@@ -218,14 +279,205 @@ export async function claimStripeEvent(
   env: Env,
   eventId: string,
   eventType: string,
+  objectId = "",
 ) {
-  const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO processed_stripe_events (event_id, event_type, processed_at)
-     VALUES (?, ?, ?)`,
+  const now = new Date().toISOString();
+  const inserted = await env.DB.prepare(
+    `INSERT OR IGNORE INTO processed_stripe_events
+       (event_id, event_type, object_id, status, attempts, processed_at, updated_at)
+     VALUES (?, ?, ?, 'processing', 1, ?, ?)`,
   )
-    .bind(eventId, eventType, new Date().toISOString())
+    .bind(eventId, eventType, objectId || null, now, now)
     .run();
-  return result.meta.changes === 1;
+  if (inserted.meta.changes === 1) return true;
+
+  const stale = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const retried = await env.DB.prepare(
+    `UPDATE processed_stripe_events
+     SET status = 'processing', attempts = attempts + 1, last_error = NULL, updated_at = ?
+     WHERE event_id = ?
+       AND (status = 'failed' OR (status = 'processing' AND updated_at < ?))`,
+  )
+    .bind(now, eventId, stale)
+    .run();
+  return retried.meta.changes === 1;
+}
+
+export async function completeStripeEvent(env: Env, eventId: string) {
+  await env.DB.prepare(
+    `UPDATE processed_stripe_events
+     SET status = 'completed', processed_at = ?, updated_at = ?, last_error = NULL
+     WHERE event_id = ?`,
+  )
+    .bind(new Date().toISOString(), new Date().toISOString(), eventId)
+    .run();
+}
+
+export async function failStripeEvent(env: Env, eventId: string, errorCode: string) {
+  await env.DB.prepare(
+    `UPDATE processed_stripe_events
+     SET status = 'failed', last_error = ?, updated_at = ?
+     WHERE event_id = ?`,
+  )
+    .bind(errorCode.slice(0, 120), new Date().toISOString(), eventId)
+    .run();
+}
+
+export async function claimInvoiceProcessing(env: Env, orderId: string) {
+  const now = new Date().toISOString();
+  const stale = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE orders
+     SET invoice_status = 'processing',
+         invoice_retry_count = invoice_retry_count + 1,
+         invoice_last_attempted_at = ?,
+         invoice_next_retry_at = NULL,
+         invoice_error_code = NULL,
+         invoice_error_message = NULL,
+         updated_at = ?
+     WHERE id = ?
+       AND payment_status = 'paid'
+       AND billing_source = 'checkout'
+       AND invoice_retry_count < 5
+       AND (
+         invoice_status = 'pending'
+         OR (invoice_status = 'retry_required' AND (invoice_next_retry_at IS NULL OR invoice_next_retry_at <= ?))
+         OR (invoice_status = 'processing' AND invoice_last_attempted_at < ?)
+       )`,
+  )
+    .bind(now, now, orderId, now, stale)
+    .run();
+  if (result.meta.changes !== 1) return null;
+  return getOrderById(env, orderId);
+}
+
+export async function persistCreatedInvoice(
+  env: Env,
+  order: Pick<
+    OrderRow,
+    | "id"
+    | "server_calculated_price"
+    | "currency"
+    | "billing_name"
+    | "billing_email"
+  >,
+  invoice: {
+    id: string;
+    invoiceNumber: string;
+    provider: "szamlazz" | "internal";
+    externalId: string;
+    pdfUrl: string | null;
+    issuedAt: string;
+    status: "created" | "already_created";
+  },
+) {
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO invoices
+       (id, order_id, invoice_number, amount, currency, customer_name, customer_email,
+        issued_at, created_at, provider, external_id, pdf_url, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      invoice.id,
+      order.id,
+      invoice.invoiceNumber,
+      order.server_calculated_price,
+      order.currency,
+      order.billing_name,
+      order.billing_email,
+      invoice.issuedAt,
+      now,
+      invoice.provider,
+      invoice.externalId,
+      invoice.pdfUrl,
+      now,
+    ),
+    env.DB.prepare(
+      `UPDATE orders
+       SET invoice_status = ?, invoice_provider = ?, invoice_number = ?,
+           invoice_external_id = ?, invoice_pdf_url = ?, invoiced_at = ?,
+           refund_invoice_status = CASE
+             WHEN payment_status IN ('refunded', 'partially_refunded') THEN 'manual_required'
+             ELSE refund_invoice_status
+           END,
+           invoice_error_code = NULL, invoice_error_message = NULL, updated_at = ?
+       WHERE id = ? AND invoice_status = 'processing'`,
+    ).bind(
+      invoice.status,
+      invoice.provider,
+      invoice.invoiceNumber,
+      invoice.externalId,
+      invoice.pdfUrl,
+      invoice.issuedAt,
+      now,
+      order.id,
+    ),
+  ]);
+}
+
+export async function markInvoiceAttemptFailed(
+  env: Env,
+  orderId: string,
+  input: { retryable: boolean; errorCode: string; errorMessage: string; retryCount: number },
+) {
+  const exhausted = input.retryCount >= 5;
+  const status: InvoiceStatus = input.retryable && !exhausted ? "retry_required" : "failed";
+  const retryDelaysMinutes = [5, 30, 120, 720];
+  const delay = retryDelaysMinutes[Math.min(Math.max(input.retryCount - 1, 0), 3)];
+  const nextRetry = status === "retry_required"
+    ? new Date(Date.now() + delay * 60 * 1000).toISOString()
+    : null;
+  await env.DB.prepare(
+    `UPDATE orders
+     SET invoice_status = ?, invoice_error_code = ?, invoice_error_message = ?,
+         invoice_next_retry_at = ?, updated_at = ?
+     WHERE id = ? AND invoice_status = 'processing'`,
+  )
+    .bind(
+      status,
+      input.errorCode.slice(0, 80),
+      input.errorMessage.slice(0, 300),
+      nextRetry,
+      new Date().toISOString(),
+      orderId,
+    )
+    .run();
+  return status;
+}
+
+export async function getInvoiceRetryCandidates(env: Env, limit = 20) {
+  const now = new Date().toISOString();
+  const stale = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const result = await env.DB.prepare(
+    `SELECT * FROM orders
+     WHERE payment_status = 'paid'
+       AND billing_source = 'checkout'
+       AND invoice_retry_count < 5
+       AND (
+         (invoice_status = 'retry_required' AND (invoice_next_retry_at IS NULL OR invoice_next_retry_at <= ?))
+         OR (invoice_status = 'processing' AND invoice_last_attempted_at < ?)
+       )
+     ORDER BY COALESCE(invoice_next_retry_at, invoice_last_attempted_at) ASC
+     LIMIT ?`,
+  )
+    .bind(now, stale, limit)
+    .all<OrderRow>();
+  return result.results;
+}
+
+export async function markRefundInvoiceManualRequired(env: Env, orderId: string) {
+  await env.DB.prepare(
+    `UPDATE orders
+     SET refund_invoice_status = CASE
+       WHEN invoice_status IN ('created', 'already_created') THEN 'manual_required'
+       ELSE 'not_required'
+     END,
+     updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(new Date().toISOString(), orderId)
+    .run();
 }
 
 export async function insertContactMessage(
@@ -547,6 +799,7 @@ export async function cleanupExpiredData(env: Env) {
     env.DB.prepare(
       `DELETE FROM orders
        WHERE created_at < ?
+         AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
          AND id NOT IN (SELECT order_id FROM invoices)`,
     ).bind(cutoff),
   ]);

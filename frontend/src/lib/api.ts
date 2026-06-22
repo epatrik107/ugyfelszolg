@@ -49,6 +49,14 @@ export function getOrderResult(publicId: string, token: string) {
   return request<OrderResult>(`/api/orders/${publicId}/result`, {}, token);
 }
 
+export function cancelCheckoutSession(publicId: string, token: string) {
+  return request<{ paymentStatus: "cancelled" | "expired" }>(
+    `/api/orders/${publicId}/cancel-checkout`,
+    { method: "POST", body: "{}" },
+    token,
+  );
+}
+
 export function requestRegeneration(publicId: string, token: string, feedback: string) {
   return request<Record<string, never>>(
     `/api/orders/${publicId}/regenerate`,

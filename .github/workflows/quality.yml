@@ -1,0 +1,42 @@
+name: Quality checks
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:payment-smoke
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      - name: Secret scan
+        run: |
+          if git grep -nE 'sk_live_[A-Za-z0-9]{20,}|rk_live_[A-Za-z0-9]{20,}|whsec_[A-Za-z0-9]{24,}|AIza[0-9A-Za-z_-]{30,}' -- .; then
+            echo "Potential production credential found in tracked files."
+            exit 1
+          fi
+      - name: Migration dry-run
+        run: |
+          sqlite3 /tmp/ugyfelkozpont-ci.sqlite \
+            ".read worker/migrations/0001_initial.sql" \
+            ".read worker/migrations/0002_add_attached_letter.sql" \
+            ".read worker/migrations/0003_invoices.sql" \
+            ".read worker/migrations/0004_result_token.sql" \
+            ".read worker/migrations/0005_letter_history.sql" \
+            ".read worker/migrations/0006_clear_raw_result_tokens.sql" \
+            ".read worker/migrations/0007_payment_billing_hardening.sql" \
+            "PRAGMA integrity_check;"

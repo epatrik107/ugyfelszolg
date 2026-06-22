@@ -8,7 +8,10 @@
   ],
   "scripts": {
     "build": "npm run build --workspace frontend && npm run build --workspace worker",
+    "lint": "npm run typecheck",
     "test": "npm run test --workspace worker",
+    "test:payment-smoke": "npm run test --workspace worker -- --run test/paymentFlowIntegration.test.ts test/billingInvoice.test.ts test/invoicePipelineIntegration.test.ts",
+    "test:payment-env": "node scripts/check-payment-test-env.mjs",
     "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace worker"
   }
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { looksLikeBusinessName } from "./billing";
 
 const trimmed = (min: number, max: number) =>
   z.string().trim().min(min).max(max);
@@ -24,6 +25,27 @@ export const toneValues = [
 
 export const selectedPackageValues = ["basic", "premium", "premium_plus"] as const;
 
+const individualBillingSchema = z
+  .object({
+    buyerType: z.literal("individual"),
+    name: trimmed(2, 120),
+    email: z.string().trim().email().max(254),
+    country: z.literal("HU"),
+    postalCode: z.string().trim().regex(/^\d{4}$/),
+    city: trimmed(2, 100),
+    addressLine1: trimmed(3, 180),
+  })
+  .strict()
+  .superRefine((billing, ctx) => {
+    if (looksLikeBusinessName(billing.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["name"],
+        message: "Céges számlázási név nem engedélyezett.",
+      });
+    }
+  });
+
 export const checkoutSchema = z.object({
   name: trimmed(2, 120),
   email: z.string().trim().email().max(254),
@@ -34,10 +56,12 @@ export const checkoutSchema = z.object({
   tone: z.enum(toneValues),
   previousMessages: z.string().trim().max(3000).optional().default(""),
   selectedPackage: z.enum(selectedPackageValues),
+  checkoutAttemptId: z.string().uuid(),
+  billing: individualBillingSchema,
   legalAccepted: z.literal(true),
   turnstileToken: z.string().trim().max(2048).optional().default(""),
   demoAccessCode: z.string().trim().max(200).optional().default(""),
-});
+}).strict();
 
 export const contactSchema = z.object({
   name: trimmed(2, 120),

@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 
-const TERMS_VERSION = "1.0";
-const TERMS_DATE = "2025-01-15";
+const TERMS_VERSION = "1.1";
+const TERMS_DATE = "2026-06-22";
 
 export function TermsPage() {
   return (
@@ -31,7 +31,7 @@ export function TermsPage() {
       />
       <ContentBlock
         title="4. Megrendelés és fizetés"
-        text="A szolgáltatás igénybevételéhez a felhasználónak ki kell töltenie az adatlap minden kötelező mezőjét, el kell fogadnia az ÁSZF-et és az Adatkezelési tájékoztatót, majd sikeres bankkártyás fizetést kell végrehajtania. A fizetési folyamat a Stripe Checkout felületen zajlik – a bankkártya adatokat a Stripe dolgozza fel, azok nem kerülnek a Szolgáltató rendszereibe. A feltüntetett árak bruttó fogyasztói árak. Az ár megrendelés közben nem változtatható; a Szolgáltató kizárólag az általa meghatározott díjat fogadja el."
+        text="A szolgáltatás kizárólag magánszemély fogyasztók számára vehető igénybe; céges név, adószám vagy VAT ID nem adható meg. A felhasználónak ki kell töltenie az adatlap és a magánszemély számlázási adatok minden kötelező mezőjét, el kell fogadnia az ÁSZF-et és az Adatkezelési tájékoztatót, majd sikeres bankkártyás fizetést kell végrehajtania. A fizetési folyamat a Stripe Checkout felületen zajlik – a bankkártya adatokat a Stripe dolgozza fel, azok nem kerülnek a Szolgáltató rendszereibe. A feltüntetett árak bruttó fogyasztói árak. Az ár megrendelés közben nem változtatható; a Szolgáltató kizárólag az általa meghatározott díjat fogadja el."
       />
       <ContentBlock
         title="5. Teljesítés és digitális tartalom"
@@ -43,11 +43,11 @@ export function TermsPage() {
       />
       <ContentBlock
         title="7. Panaszkezelés és számlázás"
-        text="Minőségi kifogás, számlaigény vagy egyéb panasz esetén a kapcsolat oldalon megadott elérhetőségeken veheti fel a felhasználó a kapcsolatot. A Szolgáltató 30 napon belül válaszol. Számla igény esetén a rendelési adatokat (rendelés azonosítója, e-mail cím) kell megadni. A számla elektronikus formában kerül kiállításra."
+        text="Minőségi kifogás, számlaigény vagy egyéb panasz esetén a kapcsolat oldalon megadott elérhetőségeken veheti fel a felhasználó a kapcsolatot. A Szolgáltató 30 napon belül válaszol. A sikeres fizetés után a Számlázz.hu automatikusan, kizárólag a megadott magánszemély adatokkal állítja ki az elektronikus számlát. Sikertelen, megszakított vagy lejárt fizetésre nem készül számla."
       />
       <ContentBlock
         title="8. Felelősségkorlátozás"
-        text="A Szolgáltató nem vállal felelősséget harmadik felek (Stripe, Cloudflare, Google, Resend) rendszer-leállásaiból fakadó késedelemért vagy kiesésért. A Szolgáltató felelőssége a megfizetett szolgáltatási díj összegére korlátozódik."
+        text="A Szolgáltató nem vállal felelősséget harmadik felek (Stripe, Számlázz.hu, Cloudflare, Google, Resend) rendszer-leállásaiból fakadó késedelemért vagy kiesésért. A Szolgáltató felelőssége a megfizetett szolgáltatási díj összegére korlátozódik."
       />
       <ContentBlock
         title="9. Irányadó jog"
