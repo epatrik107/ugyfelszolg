@@ -39,6 +39,29 @@ export interface StripeEvent<T = unknown> {
   };
 }
 
+const STRIPE_TWO_DECIMAL_CHARGE_CURRENCIES = new Set(["huf"]);
+
+export function toStripeMinorAmount(amount: number, currency: string) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("INVALID_STRIPE_AMOUNT");
+  }
+  const normalizedCurrency = currency.toLowerCase();
+  return STRIPE_TWO_DECIMAL_CHARGE_CURRENCIES.has(normalizedCurrency)
+    ? amount * 100
+    : amount;
+}
+
+export function fromStripeMinorAmount(amount: number | null, currency: string | null) {
+  if (amount === null || currency === null) return null;
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("INVALID_STRIPE_AMOUNT");
+  }
+  const normalizedCurrency = currency.toLowerCase();
+  return STRIPE_TWO_DECIMAL_CHARGE_CURRENCIES.has(normalizedCurrency)
+    ? amount / 100
+    : amount;
+}
+
 function assertStripeKeyMatchesMode(env: Env) {
   const expectedPrefix = env.PAYMENT_MODE === "live" ? "sk_live_" : "sk_test_";
   if (!env.PAYMENT_MODE || !env.STRIPE_SECRET_KEY.startsWith(expectedPrefix)) {
@@ -99,7 +122,10 @@ export async function createCheckoutSession(
   params.set("metadata[selectedPackage]", input.packageId);
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", input.currency);
-  params.set("line_items[0][price_data][unit_amount]", String(input.amount));
+  params.set(
+    "line_items[0][price_data][unit_amount]",
+    String(toStripeMinorAmount(input.amount, input.currency)),
+  );
   params.set("line_items[0][price_data][tax_behavior]", "inclusive");
   params.set("line_items[0][price_data][product_data][name]", input.packageName);
 

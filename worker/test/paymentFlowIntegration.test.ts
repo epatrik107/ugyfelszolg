@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   markRefundInvoiceManualRequired: vi.fn(),
   generateLetterForPaidOrder: vi.fn(),
   processInvoiceForOrder: vi.fn(),
+  fromStripeMinorAmount: vi.fn((amount: number | null, currency: string | null) => {
+    if (amount === null || currency === null) return null;
+    return currency.toLowerCase() === "huf" ? amount / 100 : amount;
+  }),
   retrieveCheckoutSession: vi.fn(),
   verifyStripeWebhook: vi.fn(),
   sendCheckoutExpiredEmail: vi.fn(),
@@ -39,6 +43,7 @@ vi.mock("../src/lib/invoice", () => ({
   processInvoiceForOrder: mocks.processInvoiceForOrder,
 }));
 vi.mock("../src/lib/stripe", () => ({
+  fromStripeMinorAmount: mocks.fromStripeMinorAmount,
   retrieveCheckoutSession: mocks.retrieveCheckoutSession,
   verifyStripeWebhook: mocks.verifyStripeWebhook,
 }));
@@ -117,7 +122,7 @@ describe("Stripe webhook business flow", () => {
       mode: "payment",
       status: "complete",
       payment_status: "paid",
-      amount_total: 890,
+      amount_total: 89000,
       currency: "huf",
       customer: null,
       payment_intent: "pi_test_1",
