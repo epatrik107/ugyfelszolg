@@ -1,7 +1,7 @@
-import { ArrowRight, CheckCircle2, Star } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
-import { generatedLetterExamples, userComments } from "../lib/marketing";
+import { generatedLetterExamples } from "../lib/marketing";
 
 const categories = [
   "Panaszlevél",
@@ -106,58 +106,6 @@ export function HomePage() {
                   {example.excerpt}
                 </p>
               </article>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-5">
-          <h2 className="text-2xl font-semibold">Vélemények</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {userComments.slice(0, 3).map((t) => (
-              <div
-                className="rounded-lg border border-slate-200 bg-white p-6"
-                key={t.name}
-              >
-                <div className="mb-3 flex gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      size={16}
-                      className="fill-mint-500 text-mint-500"
-                    />
-                  ))}
-                </div>
-                <p className="mb-4 text-sm leading-6 text-slate-700">
-                  &ldquo;{t.comment}&rdquo;
-                </p>
-                <p className="text-sm font-semibold text-navy-900">
-                  — {t.name}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {userComments.slice(3).map((t) => (
-              <div
-                className="rounded-lg border border-slate-200 bg-white p-6"
-                key={t.name}
-              >
-                <div className="mb-3 flex gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      size={16}
-                      className="fill-mint-500 text-mint-500"
-                    />
-                  ))}
-                </div>
-                <p className="mb-4 text-sm leading-6 text-slate-700">
-                  &ldquo;{t.comment}&rdquo;
-                </p>
-                <p className="text-sm font-semibold text-navy-900">
-                  — {t.name}
-                </p>
-              </div>
             ))}
           </div>
         </div>

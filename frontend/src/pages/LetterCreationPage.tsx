@@ -1,18 +1,19 @@
-import { CheckCircle2, MessageCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, KeyRound, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LetterForm } from "../components/LetterForm";
 import { LegalNotice } from "../components/LegalNotice";
-import { createCheckoutSession } from "../lib/api";
+import { ApiRequestError, createCheckoutSession } from "../lib/api";
 import { DEMO_MODE } from "../lib/config";
 import { packages } from "../lib/constants";
-import { generatedLetterExamples, userComments } from "../lib/marketing";
+import { generatedLetterExamples } from "../lib/marketing";
 import type { LetterFormValues } from "../lib/types";
 
 export function LetterCreationPage() {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<LetterFormValues | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
   const serverErrorRef = useRef<HTMLDivElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
@@ -39,13 +40,19 @@ export function LetterCreationPage() {
     }
     setBusy(true);
     setServerError(null);
+    setServerErrorCode(null);
     try {
       const response = await createCheckoutSession(summary);
       window.location.href = response.checkoutUrl;
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Ismeretlen hiba.");
+      setServerErrorCode(error instanceof ApiRequestError ? error.code ?? null : null);
       setBusy(false);
     }
+  }
+
+  function updateDemoAccessCode(demoAccessCode: string) {
+    setSummary((current) => current ? { ...current, demoAccessCode } : current);
   }
 
   return (
@@ -73,7 +80,6 @@ export function LetterCreationPage() {
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-24">
           <ExamplesPanel />
-          <CommentsPanel />
         </aside>
       </div>
 
@@ -81,7 +87,9 @@ export function LetterCreationPage() {
         busy={busy}
         onChangePackage={() => navigate("/arak")}
         onContinue={continueToPayment}
+        onDemoAccessCodeChange={updateDemoAccessCode}
         serverError={serverError}
+        serverErrorCode={serverErrorCode}
         serverErrorRef={serverErrorRef}
         summary={summary}
         summaryRef={summaryRef}
@@ -126,33 +134,13 @@ function ExamplesPanel() {
   );
 }
 
-function CommentsPanel() {
-  return (
-    <section className="rounded-2xl border border-mint-200 bg-mint-50 p-5">
-      <div className="flex items-center gap-2">
-        <MessageCircle className="text-mint-700" size={18} />
-        <h2 className="text-lg font-semibold">Rövid visszajelzések</h2>
-      </div>
-      <div className="mt-4 space-y-3">
-        {userComments.slice(0, 3).map((item) => (
-          <blockquote
-            className="rounded-xl bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm"
-            key={item.name}
-          >
-            “{item.comment}”
-            <footer className="mt-2 font-semibold text-navy-900">— {item.name}</footer>
-          </blockquote>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function PaymentSummary({
   busy,
   onChangePackage,
   onContinue,
+  onDemoAccessCodeChange,
   serverError,
+  serverErrorCode,
   serverErrorRef,
   summary,
   summaryRef,
@@ -160,11 +148,18 @@ function PaymentSummary({
   busy: boolean;
   onChangePackage: () => void;
   onContinue: () => void;
+  onDemoAccessCodeChange: (demoAccessCode: string) => void;
   serverError: string | null;
+  serverErrorCode: string | null;
   serverErrorRef: React.RefObject<HTMLDivElement | null>;
   summary: LetterFormValues | null;
   summaryRef: React.RefObject<HTMLElement | null>;
 }) {
+  const shouldShowDemoCodeField = DEMO_MODE || serverErrorCode === "DEMO_ONLY";
+  const primaryActionLabel = shouldShowDemoCodeField
+    ? "Demó levélírás indítása"
+    : "Biztonságos fizetés";
+
   return (
     <section
       ref={summaryRef}
@@ -234,9 +229,29 @@ function PaymentSummary({
                 {serverError}
               </div>
             )}
+            {shouldShowDemoCodeField && (
+              <label className="mt-4 grid gap-2 text-sm font-medium text-slate-700">
+                <span className="flex items-center gap-2">
+                  <KeyRound size={16} />
+                  Demó hozzáférési kód
+                </span>
+                <input
+                  autoComplete="off"
+                  className="input"
+                  maxLength={200}
+                  placeholder="Írja be a teszteléshez kapott kódot"
+                  type="password"
+                  value={summary.demoAccessCode ?? ""}
+                  onChange={(event) => onDemoAccessCodeChange(event.target.value)}
+                />
+                <span className="text-xs leading-5 text-slate-500">
+                  Csak demó / teszt üzemmódban szükséges. Valós fizetésnél nem kell kitölteni.
+                </span>
+              </label>
+            )}
             <div className="mt-4 grid gap-3">
               <button className="button-primary w-full" disabled={busy} onClick={onContinue}>
-                {DEMO_MODE ? "Levélírás kipróbálása" : "Biztonságos fizetés"}
+                {primaryActionLabel}
               </button>
               <button className="button-secondary w-full" onClick={onChangePackage}>
                 Árak újra megtekintése
