@@ -11,7 +11,11 @@ import {
   InvoiceProviderError,
   issueSzamlazzInvoice,
 } from "../src/lib/szamlazz";
-import { createCheckoutSession } from "../src/lib/stripe";
+import {
+  createCheckoutSession,
+  fromStripeMinorAmount,
+  toStripeMinorAmount,
+} from "../src/lib/stripe";
 import type { Env } from "../src/lib/types";
 import { checkoutSchema } from "../src/lib/validation";
 import { orderFixture } from "./fixtures";
@@ -151,6 +155,11 @@ describe("server-side price and VAT calculations", () => {
 });
 
 describe("Stripe Checkout request", () => {
+  it("converts HUF checkout amounts to Stripe minor units without changing business amounts", () => {
+    expect(toStripeMinorAmount(890, "huf")).toBe(89000);
+    expect(fromStripeMinorAmount(89000, "huf")).toBe(890);
+  });
+
   it("uses only server values in line items and keeps business data out of metadata", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ id: "cs_test", url: "https://checkout.stripe.test", status: "open" }), {
@@ -178,7 +187,7 @@ describe("Stripe Checkout request", () => {
 
     const init = fetchSpy.mock.calls[0][1]!;
     const params = init.body as URLSearchParams;
-    expect(params.get("line_items[0][price_data][unit_amount]")).toBe("890");
+    expect(params.get("line_items[0][price_data][unit_amount]")).toBe("89000");
     expect(params.get("line_items[0][price_data][currency]")).toBe("huf");
     expect(params.get("line_items[0][price_data][tax_behavior]")).toBe("inclusive");
     expect(params.get("payment_method_types[0]")).toBe("card");

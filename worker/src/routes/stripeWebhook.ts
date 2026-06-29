@@ -14,7 +14,11 @@ import { sendCheckoutExpiredEmail, sendPaymentFailedEmail } from "../lib/email";
 import { generateLetterForPaidOrder } from "../lib/ai";
 import { processInvoiceForOrder } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
-import { retrieveCheckoutSession, verifyStripeWebhook } from "../lib/stripe";
+import {
+  fromStripeMinorAmount,
+  retrieveCheckoutSession,
+  verifyStripeWebhook,
+} from "../lib/stripe";
 import type { Env, OrderRow, PaymentStatus } from "../lib/types";
 
 type WorkerContext = Context<{ Bindings: Env }>;
@@ -91,14 +95,15 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
     logEvent("payment_not_settled", { orderId });
     return;
   }
-  if (session.amount_total !== order.server_calculated_price) {
-    await markOrderPaymentStatus(c.env, order.id, "amount_mismatch");
-    logEvent("amount_mismatch", { orderId });
-    return;
-  }
   if (session.currency?.toLowerCase() !== order.currency.toLowerCase()) {
     await markOrderPaymentStatus(c.env, order.id, "currency_mismatch");
     logEvent("currency_mismatch", { orderId });
+    return;
+  }
+  const paidAmount = fromStripeMinorAmount(session.amount_total, session.currency);
+  if (paidAmount !== order.server_calculated_price) {
+    await markOrderPaymentStatus(c.env, order.id, "amount_mismatch");
+    logEvent("amount_mismatch", { orderId });
     return;
   }
 
