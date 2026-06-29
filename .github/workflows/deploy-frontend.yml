@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   build:
+    environment:
+      name: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +30,7 @@ jobs:
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL || 'https://ügyfelszolgalat.hu' }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADUXwSqJjEYq4JaR' }}
-          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'true' }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'false' }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

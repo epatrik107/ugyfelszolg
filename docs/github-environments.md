@@ -56,6 +56,16 @@ Mindkét environmenthez külön változóként állítsd be:
 - `SELLER_TAX_NUMBER`
 - opcionálisan a `GEMINI_MODEL`, `GEMINI_MODEL_PREMIUM`, `GEMINI_REVIEW_MODEL` értékeket
 
+A `production` Environment frontendhez használt publikus változói:
+
+- `VITE_API_BASE_URL`
+- `VITE_BASE_PATH`
+- `VITE_SITE_URL`
+- `VITE_TURNSTILE_SITE_KEY`
+- `VITE_DEMO_MODE=false`
+
+A frontend build a `production` Environment változóit olvassa, majd a GitHub Pages saját `github-pages` Environmentjén keresztül publikál. Stripe vagy Számlázz.hu secret nem kerülhet frontend változóba.
+
 A sandboxnak külön Worker, D1 és KV erőforrást kell használnia. A workflow csak olyan sandbox nevet fogad el, amely tartalmazza a `sandbox` vagy `test` szót, például:
 
 - `WORKER_NAME=ugyfelkozpont-api-sandbox`
