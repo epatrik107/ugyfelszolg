@@ -5,6 +5,16 @@ type ApiSuccess<T> = { ok: true; data: T };
 type ApiError = { ok: false; error: { code: string; message: string } };
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -28,9 +38,11 @@ async function request<T>(
 
   const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
   if (!response.ok) {
-    const errMsg =
-      (payload as ApiError | null)?.error?.message || "Ismeretlen hiba.";
-    throw new Error(errMsg);
+    const apiError = (payload as ApiError | null)?.error;
+    throw new ApiRequestError(
+      apiError?.message || "Ismeretlen hiba.",
+      apiError?.code,
+    );
   }
   return ((payload as ApiSuccess<T> | null)?.data ?? payload) as T;
 }
