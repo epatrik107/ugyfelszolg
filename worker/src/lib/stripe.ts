@@ -116,6 +116,10 @@ export async function createCheckoutSession(
   params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}&token=${input.resultToken}`);
   params.set("customer_email", input.email);
   params.set("client_reference_id", input.orderId);
+  // Keep the checkout constrained to card payments. Stripe Hosted Checkout can
+  // still render eligible card wallets (Apple Pay / Google Pay) when the
+  // customer's browser, device and wallet setup supports them, while avoiding
+  // accidental non-card payment methods from Dashboard configuration drift.
   params.set("payment_method_types[0]", "card");
   params.set("metadata[orderId]", input.orderId);
   params.set("metadata[publicId]", input.publicId);

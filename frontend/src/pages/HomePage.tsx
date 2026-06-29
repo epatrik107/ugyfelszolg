@@ -1,6 +1,7 @@
 import { ArrowRight, CheckCircle2, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
+import { generatedLetterExamples, userComments } from "../lib/marketing";
 
 const categories = [
   "Panaszlevél",
@@ -11,34 +12,6 @@ const categories = [
   "Hivatalos válaszlevél",
   "Bérleti ügyintéző levél",
   "Munkahelyi hivatalos levél",
-];
-
-const testimonials = [
-  {
-    name: "Kovács Csaba",
-    comment:
-      "Nagyon jól működik a program! Pár perc alatt kaptam egy profi panaszlevelet, amit azonnal el is tudtam küldeni a szolgáltatónak.",
-  },
-  {
-    name: "Nagy Erika",
-    comment:
-      "Egyszerűen zseniális! Nem kellett nekem fogalmaznom, az AI mindent megírt helyettem. A közműszolgáltató azonnal reagált is a levélre.",
-  },
-  {
-    name: "Tóth Márton",
-    comment:
-      "Kicsit szkeptikus voltam, de tényleg egy korrekt, hivatalos levelet generált. Sok időt és idegeskedést spórolt meg nekem.",
-  },
-  {
-    name: "Szabó Judit",
-    comment:
-      "A webáruházas reklamációmat gyönyörűen megírták. Már másnap visszahívtak az üzletből, hogy intézik a visszatérítést. Szuper szolgáltatás!",
-  },
-  {
-    name: "Horváth Péter",
-    comment:
-      "Fizetési felszólítást generáltattam, profi munka volt. A levél határozott, de udvarias stílusban készült el. Bátran ajánlom bárkinek.",
-  },
 ];
 
 export function HomePage() {
@@ -112,9 +85,35 @@ export function HomePage() {
         </div>
 
         <div className="space-y-5">
+          <div>
+            <h2 className="text-2xl font-semibold">Példák az elkészült levelekből</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              A rendszer hivatalos, udvarias és határozott szöveget készít. Az
+              alábbi minták rövidített példák, nem minősülnek jogi tanácsadásnak.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {generatedLetterExamples.map((example) => (
+              <article
+                className="rounded-lg border border-slate-200 bg-slate-50 p-5"
+                key={example.title}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-azure-700">
+                  {example.title}
+                </p>
+                <h3 className="mt-2 text-base font-semibold">{example.subject}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {example.excerpt}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-5">
           <h2 className="text-2xl font-semibold">Vélemények</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {testimonials.slice(0, 3).map((t) => (
+            {userComments.slice(0, 3).map((t) => (
               <div
                 className="rounded-lg border border-slate-200 bg-white p-6"
                 key={t.name}
@@ -138,7 +137,7 @@ export function HomePage() {
             ))}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {testimonials.slice(3).map((t) => (
+            {userComments.slice(3).map((t) => (
               <div
                 className="rounded-lg border border-slate-200 bg-white p-6"
                 key={t.name}

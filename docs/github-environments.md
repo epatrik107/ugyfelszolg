@@ -30,6 +30,7 @@ Mindkét environmentben külön add meg:
 - `STRIPE_SECRET_KEY`: kizárólag `sk_test_…`
 - `STRIPE_WEBHOOK_SECRET`: a sandbox endpoint `whsec_…` signing secretje
 - `SZAMLAZZ_AGENT_KEY`: kizárólag külön Számlázz.hu tesztfiók kulcsa
+- `RESEND_API_KEY`: kizárólag sandbox/test email küldésre használt kulcs
 - a többi külső szolgáltatásnál is fejlesztői/test credential
 
 `production` értékek:
@@ -37,6 +38,7 @@ Mindkét environmentben külön add meg:
 - `STRIPE_SECRET_KEY`: kizárólag `sk_live_…`
 - `STRIPE_WEBHOOK_SECRET`: a live endpoint külön `whsec_…` signing secretje
 - `SZAMLAZZ_AGENT_KEY`: az éles számlázási fiók külön, ehhez a webshophoz létrehozott Agent kulcsa
+- `RESEND_API_KEY`: éles tranzakciós email kulcs, sandbox kulccsal nem lehet azonos
 
 A Stripe publishable key nem szükséges, mert a frontend Hosted Checkout URL-re irányít; Stripe secret soha nem kerül frontend változóba.
 

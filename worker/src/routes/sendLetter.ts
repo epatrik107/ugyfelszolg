@@ -59,12 +59,13 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
   }
 
   try {
-    await sendLetterReadyEmail(c.env, order, letterToSend, bearerToken, idempotencyKeySuffix);
+    const emailResult = await sendLetterReadyEmail(c.env, order, letterToSend, bearerToken, idempotencyKeySuffix);
     await markLetterEmailSent(c.env, order.id);
     logEvent("letter_email_sent_manual", {
       orderId: order.id,
       generationCount: order.generation_count,
       versionIndex: body.versionIndex ?? "current",
+      providerMessageId: emailResult.providerMessageId,
     });
   } catch (err) {
     logEvent("letter_email_send_failed", {

@@ -5,6 +5,8 @@ import {
   markInvoiceAttemptFailed,
   persistCreatedInvoice,
 } from "./db";
+import { sendInvoiceEmail } from "./email";
+import { logEvent } from "./logger";
 import {
   buildSzamlazzPayload,
   InvoiceProviderError,
@@ -15,6 +17,8 @@ import type { Env, InvoiceRow, OrderRow } from "./types";
 type InvoiceableOrder = Pick<
   OrderRow,
   | "id"
+  | "email"
+  | "name"
   | "billing_name"
   | "billing_email"
   | "billing_country"
@@ -27,6 +31,31 @@ type InvoiceableOrder = Pick<
   | "selected_package"
   | "invoice_retry_count"
 >;
+
+async function sendInvoiceEmailIfConfigured(
+  env: Env,
+  order: InvoiceableOrder,
+  invoice: InvoiceRow,
+) {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+    return;
+  }
+
+  try {
+    const emailResult = await sendInvoiceEmail(env, order, invoice);
+    logEvent("invoice_email_sent", {
+      orderId: order.id,
+      invoiceNumber: invoice.invoice_number,
+      providerMessageId: emailResult?.providerMessageId ?? null,
+    });
+  } catch (error) {
+    logEvent("invoice_email_send_failed", {
+      orderId: order.id,
+      invoiceNumber: invoice.invoice_number,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
+}
 
 function getYear(iso: string): number {
   return new Date(iso).getUTCFullYear();
@@ -120,7 +149,8 @@ export async function processInvoiceForOrder(env: Env, orderId: string) {
   }
 
   try {
-    await createInvoice(env, claimedOrder);
+    const invoice = await createInvoice(env, claimedOrder);
+    await sendInvoiceEmailIfConfigured(env, claimedOrder, invoice);
     return (await getOrderById(env, orderId))?.invoice_status ?? "created";
   } catch (error) {
     const providerError = error instanceof InvoiceProviderError

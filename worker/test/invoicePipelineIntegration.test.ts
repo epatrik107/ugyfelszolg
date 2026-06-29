@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   persistCreatedInvoice: vi.fn(),
   buildSzamlazzPayload: vi.fn(),
   issueSzamlazzInvoice: vi.fn(),
+  sendInvoiceEmail: vi.fn(),
 }));
 
 vi.mock("../src/lib/db", () => ({
@@ -26,6 +27,9 @@ vi.mock("../src/lib/szamlazz", async (importOriginal) => {
     issueSzamlazzInvoice: mocks.issueSzamlazzInvoice,
   };
 });
+vi.mock("../src/lib/email", () => ({
+  sendInvoiceEmail: mocks.sendInvoiceEmail,
+}));
 
 const { processInvoiceForOrder } = await import("../src/lib/invoice");
 const { InvoiceProviderError } = await import("../src/lib/szamlazz");
@@ -50,6 +54,7 @@ describe("idempotent invoice processing pipeline", () => {
     });
     mocks.persistCreatedInvoice.mockResolvedValue(undefined);
     mocks.markInvoiceAttemptFailed.mockResolvedValue("retry_required");
+    mocks.sendInvoiceEmail.mockResolvedValue(undefined);
   });
 
   it("issues and persists exactly one invoice after an atomic claim", async () => {
@@ -68,6 +73,42 @@ describe("idempotent invoice processing pipeline", () => {
         status: "created",
       }),
     );
+    expect(mocks.sendInvoiceEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends the invoice email after a successful invoice when email is configured", async () => {
+    const status = await processInvoiceForOrder(
+      {
+        SZAMLAZZ_AGENT_KEY: "test-agent-key",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      } as never,
+      "order_1",
+    );
+    expect(status).toBe("created");
+    expect(mocks.sendInvoiceEmail).toHaveBeenCalledOnce();
+    expect(mocks.sendInvoiceEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "order_1", email: "kapcsolat@example.com" }),
+      expect.objectContaining({
+        invoice_number: "E-TST-2026-1",
+        pdf_url: "https://www.szamlazz.hu/invoice/test",
+      }),
+    );
+  });
+
+  it("does not fail invoice creation when invoice email delivery fails", async () => {
+    mocks.sendInvoiceEmail.mockRejectedValue(new Error("Resend API error (500)"));
+    const status = await processInvoiceForOrder(
+      {
+        SZAMLAZZ_AGENT_KEY: "test-agent-key",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      } as never,
+      "order_1",
+    );
+    expect(status).toBe("created");
+    expect(mocks.markInvoiceAttemptFailed).not.toHaveBeenCalled();
   });
 
   it("does not call the provider when another webhook already owns or completed the claim", async () => {
