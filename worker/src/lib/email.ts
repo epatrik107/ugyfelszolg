@@ -1,6 +1,7 @@
 import {
   checkoutExpiredEmailHtml,
   invoiceEmailHtml,
+  letterDeliveryEmailHtml,
   letterReadyEmailHtml,
   paymentFailedEmailHtml,
   refundEmailHtml,
@@ -49,7 +50,12 @@ async function sendEmail(
       body,
     });
 
-    if (response.ok) return;
+    if (response.ok) {
+      const responseBody = await response.json().catch(() => null) as { id?: unknown } | null;
+      return {
+        providerMessageId: typeof responseBody?.id === "string" ? responseBody.id : null,
+      };
+    }
 
     const isTransient = response.status >= 500;
     if (!isTransient || attempt === 1) {
@@ -60,6 +66,8 @@ async function sendEmail(
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
+
+  return { providerMessageId: null };
 }
 
 export async function sendInvoiceEmail(
@@ -79,12 +87,13 @@ export async function sendInvoiceEmail(
     serviceName,
     amount: invoice.amount,
     currency: invoice.currency,
+    invoicePdfUrl: invoice.pdf_url,
     sellerName,
     sellerAddress,
     sellerTaxNumber,
   });
 
-  await sendEmail(
+  return sendEmail(
     env,
     order.email,
     `Számla – ${invoice.invoice_number}`,
@@ -111,7 +120,7 @@ export async function sendRefundEmail(
     sellerAddress,
   });
 
-  await sendEmail(
+  return sendEmail(
     env,
     order.email,
     "Visszatérítési értesítő",
@@ -134,7 +143,7 @@ export async function sendPaymentFailedEmail(
     sellerAddress,
   });
 
-  await sendEmail(
+  return sendEmail(
     env,
     order.email,
     "A fizetés nem sikerült – Ügyfélszolgálat",
@@ -155,7 +164,7 @@ export async function sendCheckoutExpiredEmail(
     sellerAddress,
   });
 
-  await sendEmail(
+  return sendEmail(
     env,
     order.email,
     "A fizetési munkamenet lejárt – Ügyfélszolgálat",
@@ -186,11 +195,35 @@ export async function sendLetterReadyEmail(
     ? `letter-ready-${order.id}-${idempotencyKeySuffix}`
     : `letter-ready-${order.id}-g${generationCount}`;
 
-  await sendEmail(
+  return sendEmail(
     env,
     order.email,
     "Elkészült a levele – Ügyfélszolgálat",
     html,
     idempotencyKey,
+  );
+}
+
+export async function sendGeneratedLetterEmail(
+  env: Env,
+  order: Pick<OrderRow, "id" | "email" | "name" | "generation_count">,
+  letter: string,
+) {
+  const { sellerName, sellerAddress } = getSellerInfo(env);
+  const generationCount = order.generation_count ?? 1;
+  const html = letterDeliveryEmailHtml({
+    customerName: order.name,
+    letterText: letter,
+    siteUrl: env.SITE_URL,
+    sellerName,
+    sellerAddress,
+  });
+
+  return sendEmail(
+    env,
+    order.email,
+    "Elkészült a levele – Ügyfélszolgálat",
+    html,
+    `generated-letter-${order.id}-g${generationCount}`,
   );
 }

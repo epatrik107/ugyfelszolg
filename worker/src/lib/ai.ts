@@ -2,11 +2,12 @@ import {
   commitReservedQuota,
   completeGeneration,
   failGeneration,
+  markLetterEmailSent,
   markOrderPaymentStatus,
   markRefundInvoiceManualRequired,
   releaseReservedQuota,
 } from "./db";
-import { sendRefundEmail } from "./email";
+import { sendGeneratedLetterEmail, sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
@@ -71,6 +72,30 @@ function isTimeoutError(error: unknown) {
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendGeneratedLetterEmailIfConfigured(
+  env: Env,
+  order: OrderRow,
+  letter: string,
+) {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM || order.letter_email_sent === 1) {
+    return;
+  }
+
+  try {
+    const emailResult = await sendGeneratedLetterEmail(env, order, letter);
+    await markLetterEmailSent(env, order.id);
+    logEvent("letter_email_sent_auto", {
+      orderId: order.id,
+      providerMessageId: emailResult?.providerMessageId ?? null,
+    });
+  } catch (error) {
+    logEvent("letter_email_send_failed", {
+      orderId: order.id,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 function parseAiReviewJson(raw: string): AiReviewResult {
@@ -415,6 +440,7 @@ export async function generateLetterForPaidOrder(
         if (order.subscription_id) {
           await commitReservedQuota(env, order.subscription_id);
         }
+        await sendGeneratedLetterEmailIfConfigured(env, order, safeLetter);
         logEvent("ai_generation_completed", { orderId: order.id });
         return;
       }

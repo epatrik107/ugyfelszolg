@@ -7,6 +7,7 @@ import {
   completeGeneration,
   failGeneration,
   commitReservedQuota,
+  markLetterEmailSent,
   releaseReservedQuota,
 } from "../src/lib/db";
 import type { Env, OrderRow } from "../src/lib/types";
@@ -15,12 +16,14 @@ vi.mock("../src/lib/db", () => ({
   commitReservedQuota: vi.fn(),
   completeGeneration: vi.fn(),
   failGeneration: vi.fn(),
+  markLetterEmailSent: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
   markRefundInvoiceManualRequired: vi.fn(),
   releaseReservedQuota: vi.fn(),
 }));
 
 vi.mock("../src/lib/email", () => ({
+  sendGeneratedLetterEmail: vi.fn(),
   sendRefundEmail: vi.fn(),
 }));
 
@@ -228,6 +231,57 @@ describe("secondary AI review gate", () => {
 
     expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null);
     expect(failGeneration).not.toHaveBeenCalled();
+  });
+
+  it("emails the generated letter after successful generation when email is configured", async () => {
+    const { sendGeneratedLetterEmail } = await import("../src/lib/email");
+    fetchMock(geminiResponse(safeLetter), reviewResponse({ ok: true, issues: [] }));
+
+    await generateLetterForPaidOrder(
+      {
+        ...env,
+        SITE_URL: "https://example.com",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      },
+      order,
+    );
+
+    expect(completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      }),
+      order.id,
+      safeLetter,
+      null,
+    );
+    expect(sendGeneratedLetterEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: order.id, email: order.email }),
+      safeLetter,
+    );
+    expect(markLetterEmailSent).toHaveBeenCalledWith(expect.anything(), order.id);
+  });
+
+  it("does not fail generation when generated letter email delivery fails", async () => {
+    const { sendGeneratedLetterEmail } = await import("../src/lib/email");
+    vi.mocked(sendGeneratedLetterEmail).mockRejectedValue(new Error("Resend API error (500)"));
+    fetchMock(geminiResponse(safeLetter), reviewResponse({ ok: true, issues: [] }));
+
+    await generateLetterForPaidOrder(
+      {
+        ...env,
+        SITE_URL: "https://example.com",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      },
+      order,
+    );
+
+    expect(completeGeneration).toHaveBeenCalled();
+    expect(failGeneration).not.toHaveBeenCalled();
+    expect(markLetterEmailSent).not.toHaveBeenCalled();
   });
 
   it("prevents completion when valid review output blocks both generation attempts", async () => {

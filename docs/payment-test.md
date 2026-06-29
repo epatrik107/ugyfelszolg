@@ -8,6 +8,7 @@ Ez a folyamat kizárólag Stripe sandbox/test módot és külön Számlázz.hu t
 - A Stripe `sk_test_…`, a Stripe CLI által kiírt `whsec_…` és a Számlázz.hu tesztfiók kisbetűs Agent kulcsa csak a gitignore-olt `worker/.dev.vars` fájlba kerüljön.
 - A frontendbe Stripe secret vagy Agent kulcs soha nem kerülhet.
 - Teszt módban a Worker letiltja a Számlázz.hu vevői email-küldését.
+- Tranzakciós emailt kizárólag sandbox email providerrel tesztelj. Resend esetén a `RESEND_API_KEY` sandbox secret, az `EMAIL_FROM` pedig sandbox environment variable legyen validált teszt feladóval.
 - `PAYMENT_MODE=test` mellett a Worker elutasítja az `sk_live_…` kulcsot és a `livemode=true` webhook eseményt.
 
 Kiinduló minták:
@@ -76,6 +77,24 @@ Minden Stripe tesztkártyához használható jövőbeli lejárat, tetszőleges h
 5. Ismételd meg ugyanazt a webhook eventet; nem készülhet második számla vagy aktiválás.
 6. Paid rendelésen új checkout nem indulhat.
 7. Ellenőrizd a Számlázz.hu tesztfiókban a nevet, címet, HUF összeget és 27% ÁFÁ-t, valamint hogy nincs cégnév/adószám/VAT ID.
-8. Ellenőrizd, hogy a rendszer nem küldött valódi emailt.
+8. Ha `RESEND_API_KEY` és `EMAIL_FROM` be van állítva sandboxban, ellenőrizd, hogy a megadott vevői email címre megérkezik:
+   - az elkészült generált levél szövege;
+   - a számlaértesítő, Számlázz.hu PDF/link adattal, ha a szolgáltató visszaadta.
+9. Ha sandbox email provider nincs beállítva, ellenőrizd, hogy a fizetés, aktiválás és számlázás email nélkül is sikeresen végigmegy.
 
 A Számlázz.hu tesztkörnyezet dokumentált limitje maximum 100 tesztszámla óránként.
+
+## Apple Pay és Google Pay sandbox ellenőrzés
+
+A rendszer Stripe Hosted Checkoutot használ. A Worker kifejezetten `payment_method_types=['card']` értéket küld, hogy a checkout kártyás fizetésre korlátozódjon. A Stripe Hosted Checkout ezen belül jogosult böngészőben/eszközön Apple Payt és Google Payt is meg tud jeleníteni card walletként.
+
+Ellenőrzési lépések:
+
+1. Stripe sandboxban a Payment methods beállításoknál engedélyezd a wallet fizetéseket a card payment methodhoz.
+2. Apple Pay teszthez használj támogatott Apple eszközt/Safarit, Apple Walletben mentett tesztelhető kártyával.
+3. Google Pay teszthez használj Chrome-ot, Google Payre alkalmas profilt és engedélyezett mentett fizetési mód ellenőrzést.
+4. Ne privát/incognito ablakban tesztelj.
+5. Indíts sandbox checkoutot, majd ellenőrizd, hogy a Stripe Checkout oldalon jogosult környezetben megjelenik az Apple Pay vagy Google Pay opció.
+6. Ha a Stripe demóban látszik a wallet, de a saját Checkoutban nem, ellenőrizd a Stripe Payment Method Domains beállítást külön sandbox és live környezetre is.
+
+Apple Pay / Google Pay megjelenése böngésző-, eszköz-, régió- és walletfüggő, ezért ezt nem lehet megbízhatóan headless CI-ból bizonyítani. A CI azt védi, hogy a backend kártyás Checkout Sessiont hozzon létre, ami wallet-kompatibilis, és közben ne engedjen nem-kártyás fizetési módokat véletlen Dashboard konfigurációból.

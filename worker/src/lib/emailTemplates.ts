@@ -108,6 +108,7 @@ export interface InvoiceEmailData {
   serviceName: string;
   amount: number;
   currency: string;
+  invoicePdfUrl?: string | null;
   sellerName: string;
   sellerAddress: string;
   sellerTaxNumber: string;
@@ -123,6 +124,18 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
   const customerEmail = escapeHtml(data.customerEmail);
   const serviceName = escapeHtml(data.serviceName);
   const amount = escapeHtml(formatAmount(data.amount, data.currency));
+  const invoiceDownloadBlock = data.invoicePdfUrl
+    ? `
+    <p style="margin:0 0 24px;font-size:14px;color:#334155;line-height:1.6;">
+      A számla online megnyitható és letölthető az alábbi linken.
+    </p>
+    <a href="${safeHtmlUrl(data.invoicePdfUrl)}" style="display:inline-block;margin-bottom:24px;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Számla megnyitása</a>
+  `
+    : `
+    <p style="margin:0 0 24px;font-size:13px;color:#64748b;line-height:1.6;">
+      A számla adatai alább láthatók. Amennyiben kérdése van, kérjük, vegye fel velünk a kapcsolatot.
+    </p>
+  `;
 
   const body = `
     <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">Számla</h2>
@@ -189,6 +202,8 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
       </tfoot>
     </table>
     <p style="margin:0 0 24px;font-size:12px;color:#64748b;">Fizetési mód: Bankkártyás fizetés (Stripe) &mdash; Teljesítés dátuma: ${issuedAt}</p>
+
+    ${invoiceDownloadBlock}
 
     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
       A generált levél a fizetés visszaigazolásával egyidejűleg elérhető a rendelési oldalon.<br>
