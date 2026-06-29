@@ -170,28 +170,35 @@ describe("checkout AI availability preflight", () => {
     expect(createStripeCheckoutSession).not.toHaveBeenCalled();
   });
 
-  it("uses the server catalog price and individual billing email for a paid checkout", async () => {
-    vi.mocked(checkAiServiceAvailable).mockResolvedValue(true);
-    const response = await app().fetch(
-      new Request("https://worker.test/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }),
-      env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
-      { waitUntil: vi.fn() } as unknown as ExecutionContext,
-    );
-    expect(response.status).toBe(200);
-    expect(createStripeCheckoutSession).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        packageId: "premium",
-        amount: 3900,
-        currency: "huf",
-        email: "patrik@example.com",
-      }),
-    );
-  });
+  it.each([
+    ["basic", 890],
+    ["premium", 3900],
+    ["premium_plus", 10900],
+  ] as const)(
+    "uses the server catalog price and individual billing email for %s checkout",
+    async (selectedPackage, amount) => {
+      vi.mocked(checkAiServiceAvailable).mockResolvedValue(true);
+      const response = await app().fetch(
+        new Request("https://worker.test/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, selectedPackage }),
+        }),
+        env({ DEMO_MODE: "false", PAYMENTS_ENABLED: "true" }),
+        { waitUntil: vi.fn() } as unknown as ExecutionContext,
+      );
+      expect(response.status).toBe(200);
+      expect(createStripeCheckoutSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          packageId: selectedPackage,
+          amount,
+          currency: "huf",
+          email: "patrik@example.com",
+        }),
+      );
+    },
+  );
 
   it("does not start a second payment for an already paid idempotent order", async () => {
     const fingerprint = await hashToken(
