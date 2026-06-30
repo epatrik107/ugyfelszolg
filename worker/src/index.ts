@@ -2,9 +2,9 @@ import { Hono } from "hono";
 import { addSecurityHeaders, bodySizeGuard, corsGuard, requireJsonContentType } from "./lib/security";
 import {
   cleanupExpiredData,
+  failGeneration,
   getStuckGeneratingOrders,
   markOrderPaymentStatus,
-  markRefundInvoiceManualRequired,
 } from "./lib/db";
 import { sendRefundEmail } from "./lib/email";
 import {
@@ -15,7 +15,7 @@ import {
 import { getInvoiceByOrderId, retryDueInvoices } from "./lib/invoice";
 import { logEvent } from "./lib/logger";
 import { errorJson } from "./lib/response";
-import { createRefund } from "./lib/stripe";
+import { createRefund, fromStripeMinorAmount } from "./lib/stripe";
 import type { Env } from "./lib/types";
 import { contactRoute } from "./routes/contact";
 import { cancelCheckoutSessionRoute } from "./routes/cancelCheckoutSession";
@@ -67,18 +67,26 @@ async function resolveStuckOrders(env: Env) {
 
   for (const order of stuckOrders) {
     try {
-      await env.DB.prepare(
-        "UPDATE orders SET ai_status = 'failed', ai_error = ?, updated_at = ? WHERE id = ?",
-      )
-        .bind("Automatikusan lezárva: generálás időtúllépés.", new Date().toISOString(), order.id)
-        .run();
+      await failGeneration(
+        env,
+        order.id,
+        "failed",
+        "Automatikusan lezárva: generálás időtúllépés.",
+        order.subscription_id,
+      );
 
       logEvent("stuck_order_resolved", { orderId: order.id });
 
       if (order.stripe_payment_intent_id && order.billing_source === "checkout") {
-        await createRefund(env, order.stripe_payment_intent_id);
-        await markOrderPaymentStatus(env, order.id, "refunded");
-        await markRefundInvoiceManualRequired(env, order.id);
+        const refund = await createRefund(env, order.stripe_payment_intent_id);
+        const refundAmount = typeof refund.amount === "number" && refund.currency
+          ? fromStripeMinorAmount(refund.amount, refund.currency)
+          : order.server_calculated_price;
+        await markOrderPaymentStatus(env, order.id, "refunded", {
+          source: "cron",
+          refundAmount,
+          refundStripeId: refund.id,
+        });
         logEvent("stuck_order_refunded", { orderId: order.id });
 
         const invoice = await getInvoiceByOrderId(env, order.id);

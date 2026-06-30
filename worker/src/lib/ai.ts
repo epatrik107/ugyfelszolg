@@ -2,10 +2,10 @@ import {
   commitReservedQuota,
   completeGeneration,
   failGeneration,
+  getLetterEmailVersionKey,
+  hasLetterEmailVersionSent,
   markLetterEmailSent,
   markOrderPaymentStatus,
-  markRefundInvoiceManualRequired,
-  releaseReservedQuota,
 } from "./db";
 import { sendGeneratedLetterEmail, sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
@@ -13,7 +13,7 @@ import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewLetterWithRules } from "./review";
-import { createRefund } from "./stripe";
+import { createRefund, fromStripeMinorAmount } from "./stripe";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
@@ -79,13 +79,17 @@ async function sendGeneratedLetterEmailIfConfigured(
   order: OrderRow,
   letter: string,
 ) {
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM || order.letter_email_sent === 1) {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+    return;
+  }
+  const versionKey = await getLetterEmailVersionKey(letter);
+  if (hasLetterEmailVersionSent(order, versionKey)) {
     return;
   }
 
   try {
     const emailResult = await sendGeneratedLetterEmail(env, order, letter);
-    await markLetterEmailSent(env, order.id);
+    await markLetterEmailSent(env, order.id, versionKey);
     logEvent("letter_email_sent_auto", {
       orderId: order.id,
       providerMessageId: emailResult?.providerMessageId ?? null,
@@ -220,7 +224,7 @@ const GEMINI_MAX_RETRIES = 2;
 const GEMINI_RETRY_BASE_MS = 2000;
 
 async function callGemini(env: Env, model: string, input: string) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = JSON.stringify({
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: "user", parts: [{ text: input }] }],
@@ -239,7 +243,10 @@ async function callGemini(env: Env, model: string, input: string) {
     try {
       response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": env.GEMINI_API_KEY,
+        },
         signal: AbortSignal.timeout(GEMINI_GENERATION_TIMEOUT_MS),
         body,
       });
@@ -280,12 +287,15 @@ async function callGemini(env: Env, model: string, input: string) {
 
 async function reviewWithAiOnce(env: Env, letter: string): Promise<AiReviewResult> {
   const model = getReviewModel(env);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": env.GEMINI_API_KEY,
+      },
       signal: AbortSignal.timeout(AI_REVIEW_TIMEOUT_MS),
       body: JSON.stringify({
         system_instruction: {
@@ -365,19 +375,22 @@ export async function generateLetterForPaidOrder(
   const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
-    await failGeneration(env, order.id, status, message);
-    if (order.subscription_id) {
-      await releaseReservedQuota(env, order.subscription_id);
-    }
+    await failGeneration(env, order.id, status, message, order.subscription_id);
     logEvent("ai_generation_failed", { orderId: order.id, reason });
 
     // Auto-refund for one-time checkout payments only (skip for user-initiated regenerations
     // where generation_count > 1 — the user already received at least one successful letter)
     if (order.generation_count <= 1 && order.stripe_payment_intent_id && order.billing_source === "checkout") {
       try {
-        await createRefund(env, order.stripe_payment_intent_id);
-        await markOrderPaymentStatus(env, order.id, "refunded");
-        await markRefundInvoiceManualRequired(env, order.id);
+        const refund = await createRefund(env, order.stripe_payment_intent_id);
+        const refundAmount = typeof refund.amount === "number" && refund.currency
+          ? fromStripeMinorAmount(refund.amount, refund.currency)
+          : order.server_calculated_price;
+        await markOrderPaymentStatus(env, order.id, "refunded", {
+          source: "ai",
+          refundAmount,
+          refundStripeId: refund.id,
+        });
         logEvent("auto_refund_issued", { orderId: order.id });
 
         const invoice = await getInvoiceByOrderId(env, order.id);

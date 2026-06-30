@@ -8,7 +8,6 @@ import {
   failGeneration,
   commitReservedQuota,
   markLetterEmailSent,
-  releaseReservedQuota,
 } from "../src/lib/db";
 import type { Env, OrderRow } from "../src/lib/types";
 
@@ -16,10 +15,11 @@ vi.mock("../src/lib/db", () => ({
   commitReservedQuota: vi.fn(),
   completeGeneration: vi.fn(),
   failGeneration: vi.fn(),
+  getLetterEmailVersionKey: vi.fn(async () => "sha256:test-letter"),
+  hasLetterEmailVersionSent: vi.fn(() => false),
   markLetterEmailSent: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
   markRefundInvoiceManualRequired: vi.fn(),
-  releaseReservedQuota: vi.fn(),
 }));
 
 vi.mock("../src/lib/email", () => ({
@@ -104,6 +104,9 @@ const order: OrderRow = {
   invoice_next_retry_at: null,
   invoiced_at: "2026-01-01T00:00:00.000Z",
   refund_invoice_status: "not_required",
+  refund_amount: null,
+  refund_stripe_id: null,
+  letter_email_sent_versions: null,
 };
 
 function geminiResponse(text: string) {
@@ -174,6 +177,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
     );
   });
 
@@ -192,6 +196,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
     );
   });
 
@@ -207,6 +212,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
     );
   });
 
@@ -221,6 +227,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
     );
   });
 
@@ -261,7 +268,11 @@ describe("secondary AI review gate", () => {
       expect.objectContaining({ id: order.id, email: order.email }),
       safeLetter,
     );
-    expect(markLetterEmailSent).toHaveBeenCalledWith(expect.anything(), order.id);
+    expect(markLetterEmailSent).toHaveBeenCalledWith(
+      expect.anything(),
+      order.id,
+      "sha256:test-letter",
+    );
   });
 
   it("does not fail generation when generated letter email delivery fails", async () => {
@@ -300,6 +311,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       "Automatikus minőségellenőrzés sikertelen.",
+      null,
     );
   });
 
@@ -318,6 +330,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
     );
     const persistedError = vi.mocked(failGeneration).mock.calls[0][3];
     expect(persistedError).not.toContain(providerBody);
@@ -343,7 +356,13 @@ describe("secondary AI review gate", () => {
       billing_source: "subscription",
     });
 
-    expect(releaseReservedQuota).toHaveBeenCalledWith(env, "sub_1");
+    expect(failGeneration).toHaveBeenCalledWith(
+      env,
+      order.id,
+      "failed_review",
+      AI_REVIEW_UNAVAILABLE_MESSAGE,
+      "sub_1",
+    );
     expect(commitReservedQuota).not.toHaveBeenCalled();
   });
 });

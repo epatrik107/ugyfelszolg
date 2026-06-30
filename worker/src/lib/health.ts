@@ -22,8 +22,11 @@ export async function checkAiServiceAvailable(
     const responses = await Promise.all(
       [...models].map((model) =>
         fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${env.GEMINI_API_KEY}`,
-          { signal: AbortSignal.timeout(5000) },
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}`,
+          {
+            headers: { "x-goog-api-key": env.GEMINI_API_KEY },
+            signal: AbortSignal.timeout(5000),
+          },
         ),
       ),
     );

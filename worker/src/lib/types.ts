@@ -30,6 +30,14 @@ export type AiStatus =
   | "completed"
   | "failed"
   | "failed_review";
+export type OrderStatusChangeSource =
+  | "app"
+  | "checkout"
+  | "webhook"
+  | "cron"
+  | "ai"
+  | "user"
+  | "manual";
 
 export interface Env {
   DB: D1Database;
@@ -109,6 +117,9 @@ export interface OrderRow {
   invoice_next_retry_at: string | null;
   invoiced_at: string | null;
   refund_invoice_status: RefundInvoiceStatus;
+  refund_amount: number | null;
+  refund_stripe_id: string | null;
+  letter_email_sent_versions: string | null;
 }
 
 export interface SubscriptionRow {

@@ -14,7 +14,7 @@ export async function cancelCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     ? authHeader.slice(7)
     : "";
   if (!token) return errorJson(c, "UNAUTHORIZED", "Hiányzó token.", 401);
-  if (await isRateLimited(c.env, "result-ip", getClientIp(c))) {
+  if (await isRateLimited(c.env, "cancel-checkout-ip", getClientIp(c))) {
     return errorJson(c, "RATE_LIMITED", "Túl sok próbálkozás.", 429);
   }
 
@@ -41,7 +41,7 @@ export async function cancelCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     }
   }
 
-  await markOrderPaymentStatus(c.env, order.id, "cancelled");
+  await markOrderPaymentStatus(c.env, order.id, "cancelled", { source: "user" });
   logEvent("checkout_cancelled", { orderId: order.id });
   return okJson(c, { paymentStatus: "cancelled" });
 }

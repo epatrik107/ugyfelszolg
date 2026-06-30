@@ -68,6 +68,7 @@ describe("authenticated Checkout cancellation", () => {
       expect.anything(),
       "order_1",
       "cancelled",
+      { source: "user" },
     );
   });
 

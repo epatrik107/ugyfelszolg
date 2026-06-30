@@ -54,7 +54,10 @@ describe("Gemini service availability", () => {
     await expect(checkAiServiceAvailable(env)).resolves.toBe(true);
 
     expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0][0]).toContain(`/models/${DEFAULT_GEMINI_MODEL}?`);
+    expect(fetch.mock.calls[0][0]).toContain(`/models/${DEFAULT_GEMINI_MODEL}`);
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      headers: { "x-goog-api-key": env.GEMINI_API_KEY },
+    });
   });
 
   it("returns false when the configured generation model does not exist", async () => {
@@ -79,7 +82,11 @@ describe("Gemini service availability", () => {
 
     const urls = fetch.mock.calls.map(([url]) => String(url));
     expect(urls).toHaveLength(2);
-    expect(urls.some((url) => url.includes(`/models/${DEFAULT_GEMINI_PREMIUM_MODEL}?`))).toBe(true);
-    expect(urls.some((url) => url.includes(`/models/${DEFAULT_GEMINI_MODEL}?`))).toBe(true);
+    expect(urls.some((url) => url.includes(`/models/${DEFAULT_GEMINI_PREMIUM_MODEL}`))).toBe(true);
+    expect(urls.some((url) => url.includes(`/models/${DEFAULT_GEMINI_MODEL}`))).toBe(true);
+    expect(fetch.mock.calls.every(([, init]) => {
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      return headers["x-goog-api-key"] === env.GEMINI_API_KEY;
+    })).toBe(true);
   });
 });

@@ -282,6 +282,9 @@ describe("regeneration feedback", () => {
       invoice_next_retry_at: null,
       invoiced_at: null,
       refund_invoice_status: "not_required",
+      refund_amount: null,
+      refund_stripe_id: null,
+      letter_email_sent_versions: null,
     } satisfies OrderRow;
 
     const feedback = "Legyen rövidebb és barátságosabb.";

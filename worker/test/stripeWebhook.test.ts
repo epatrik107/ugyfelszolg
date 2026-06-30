@@ -233,6 +233,9 @@ describe("markOrderPaid guards against non-pending orders", () => {
             },
           };
         },
+        async batch(statements: Array<{ run: () => Promise<{ meta: { changes: number } }> }>) {
+          return Promise.all(statements.map((statement) => statement.run()));
+        },
       },
     } as unknown as Env;
 

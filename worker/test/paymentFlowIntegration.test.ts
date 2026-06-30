@@ -167,6 +167,7 @@ describe("Stripe webhook business flow", () => {
       expect.anything(),
       "order_1",
       "amount_mismatch",
+      { source: "webhook" },
     );
     expect(mocks.markOrderPaid).not.toHaveBeenCalled();
     expect(mocks.beginGeneration).not.toHaveBeenCalled();
@@ -183,6 +184,7 @@ describe("Stripe webhook business flow", () => {
       expect.anything(),
       "order_1",
       "currency_mismatch",
+      { source: "webhook" },
     );
     expect(mocks.markOrderPaid).not.toHaveBeenCalled();
     expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
@@ -218,6 +220,7 @@ describe("Stripe webhook business flow", () => {
       expect.anything(),
       "order_1",
       status,
+      { source: "webhook" },
     );
     expect(mocks.beginGeneration).not.toHaveBeenCalled();
     expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
@@ -239,8 +242,17 @@ describe("Stripe webhook business flow", () => {
       }),
     );
     await deliver([]);
-    expect(mocks.markOrderPaymentStatus).toHaveBeenCalledWith(expect.anything(), "order_1", status);
-    expect(mocks.markRefundInvoiceManualRequired).toHaveBeenCalledWith(expect.anything(), "order_1");
+    expect(mocks.markOrderPaymentStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      status,
+      {
+        source: "webhook",
+        refundAmount: refundedAmount,
+        refundStripeId: null,
+      },
+    );
+    expect(mocks.markRefundInvoiceManualRequired).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid signature without claiming the event", async () => {

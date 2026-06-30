@@ -52,6 +52,9 @@ export function orderFixture(overrides: Partial<OrderRow> = {}): OrderRow {
     invoice_next_retry_at: null,
     invoiced_at: null,
     refund_invoice_status: "not_required",
+    refund_amount: null,
+    refund_stripe_id: null,
+    letter_email_sent_versions: null,
     ...overrides,
   };
 }
