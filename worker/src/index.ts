@@ -76,13 +76,17 @@ async function resolveStuckOrders(env: Env) {
 
   for (const order of stuckOrders) {
     try {
-      await failGeneration(
+      const failureRecorded = await failGeneration(
         env,
         order.id,
         "failed",
         "Automatikusan lezárva: generálás időtúllépés.",
         order.subscription_id,
       );
+      if (!failureRecorded) {
+        logEvent("stuck_order_state_unchanged", { orderId: order.id });
+        continue;
+      }
 
       logEvent("stuck_order_resolved", { orderId: order.id });
 

@@ -63,8 +63,15 @@ jobs:
           const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
           const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
           const adminApiToken = (process.env.ADMIN_API_TOKEN || "").trim();
+          const emailFrom = (process.env.EMAIL_FROM || "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>").trim();
+          const sellerName = (process.env.SELLER_NAME || (deployEnv === "production" ? "Engelbrecht Zoltán" : "Test")).trim();
+          const sellerAddress = (process.env.SELLER_ADDRESS || (deployEnv === "production" ? "2500 Esztergom, Bánomi út 4." : "Test")).trim();
+          const sellerTaxNumber = (process.env.SELLER_TAX_NUMBER || (deployEnv === "production" ? "91250960-1-31" : "00000XXXXXX")).trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
+          const isPlaceholder = (value) => {
+            return !value || /^(test|teszt|example|placeholder|replace|replace_with|todo|tbd)$/i.test(value) || /REPLACE_WITH|PASTE|ADD_/i.test(value) || /^0+X+$/i.test(value);
+          };
 
           if (!d1Id) errors.push("CLOUDFLARE_D1_DATABASE_ID is required but not set.");
           else if (!d1DatabaseIdPattern.test(d1Id)) {
@@ -124,6 +131,10 @@ jobs:
             if ([siteUrl, ...allowedOrigins.split(",")].some(value => value.trim().startsWith("http://"))) {
               errors.push("Production SITE_URL and ALLOWED_ORIGINS must use HTTPS.");
             }
+            if (isPlaceholder(sellerName)) errors.push("Production SELLER_NAME must be the legal seller name.");
+            if (isPlaceholder(sellerAddress)) errors.push("Production SELLER_ADDRESS must be the legal seller address.");
+            if (isPlaceholder(sellerTaxNumber)) errors.push("Production SELLER_TAX_NUMBER must be the legal seller tax number.");
+            if (isPlaceholder(emailFrom) || /example\.com/i.test(emailFrom)) errors.push("Production EMAIL_FROM must be a real sender address.");
           }
 
           if (errors.length > 0) {
@@ -148,6 +159,10 @@ jobs:
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          SELLER_NAME: ${{ vars.SELLER_NAME }}
+          SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
+          SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
       - name: Create Worker config
         env:
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
@@ -174,6 +189,9 @@ jobs:
           const defaultDemoMode = deployEnv === "production" ? "false" : "true";
           const defaultPaymentsEnabled = deployEnv === "production" ? "true" : "false";
           const defaultPaymentMode = deployEnv === "production" ? "live" : "test";
+          const defaultSellerName = deployEnv === "production" ? "Engelbrecht Zoltán" : "Test";
+          const defaultSellerAddress = deployEnv === "production" ? "2500 Esztergom, Bánomi út 4." : "Test";
+          const defaultSellerTaxNumber = deployEnv === "production" ? "91250960-1-31" : "00000XXXXXX";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
@@ -202,9 +220,9 @@ jobs:
           PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", defaultPaymentsEnabled))}
           PAYMENT_MODE = ${tomlString(value("PAYMENT_MODE", defaultPaymentMode))}
           SZAMLAZZ_TEST_ACCOUNT_CONFIRMED = ${tomlString(value("SZAMLAZZ_TEST_ACCOUNT_CONFIRMED", "false"))}
-          SELLER_NAME = ${tomlString(value("SELLER_NAME", "Test"))}
-          SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", "Test"))}
-          SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", "00000XXXXXX"))}
+          SELLER_NAME = ${tomlString(value("SELLER_NAME", defaultSellerName))}
+          SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", defaultSellerAddress))}
+          SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", defaultSellerTaxNumber))}
 
           [triggers]
           crons = [ "17 2 * * *" ]

@@ -315,8 +315,9 @@ export async function completeGeneration(
   previousLetter?: string | null,
 ) {
   const now = new Date().toISOString();
+  let result: D1Result;
   if (previousLetter) {
-    await env.DB.prepare(
+    result = await env.DB.prepare(
       `UPDATE orders
        SET ai_status = 'completed',
            generated_letter = ?,
@@ -332,19 +333,24 @@ export async function completeGeneration(
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ? AND ai_status = 'generating'`,
+       WHERE id = ?
+         AND ai_status = 'generating'
+         AND payment_status IN ('paid', 'partially_refunded')`,
     ).bind(generatedLetter, previousLetter, now, now, orderId).run();
   } else {
-    await env.DB.prepare(
+    result = await env.DB.prepare(
       `UPDATE orders
        SET ai_status = 'completed',
            generated_letter = ?,
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ? AND ai_status = 'generating'`,
+       WHERE id = ?
+         AND ai_status = 'generating'
+         AND payment_status IN ('paid', 'partially_refunded')`,
     ).bind(generatedLetter, now, now, orderId).run();
   }
+  return result.meta.changes === 1;
 }
 
 export async function failGeneration(
@@ -361,18 +367,16 @@ export async function failGeneration(
          error_message = ?,
          updated_at = ?
      WHERE id = ?
-       AND ai_status IN ('generating', 'not_started')`,
+       AND ai_status IN ('generating', 'not_started')
+       AND payment_status IN ('paid', 'partially_refunded')`,
   )
     .bind(status, errorMessage, now, orderId);
 
-  if (!subscriptionId) {
-    const result = await failStatement.run();
-    return result.meta.changes === 1;
-  }
+  const result = await failStatement.run();
+  if (result.meta.changes !== 1) return false;
 
-  const [result] = await env.DB.batch([
-    failStatement,
-    env.DB.prepare(
+  if (subscriptionId) {
+    await env.DB.prepare(
       `UPDATE subscription_usage
        SET reserved_count = CASE WHEN reserved_count > 0 THEN reserved_count - 1 ELSE 0 END,
            updated_at = ?
@@ -382,9 +386,10 @@ export async function failGeneration(
          ORDER BY period_start DESC
          LIMIT 1
        )`,
-    ).bind(now, subscriptionId),
-  ]);
-  return result.meta.changes === 1;
+    ).bind(now, subscriptionId).run();
+  }
+
+  return true;
 }
 
 export async function claimStripeEvent(
@@ -1093,6 +1098,7 @@ export async function getStuckGeneratingOrders(env: Env, staleMinutes = 15) {
   const result = await env.DB.prepare(
     `SELECT * FROM orders
      WHERE ai_status = 'generating'
+       AND payment_status IN ('paid', 'partially_refunded')
        AND updated_at < ?`,
   )
     .bind(cutoff)

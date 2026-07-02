@@ -375,7 +375,11 @@ export async function generateLetterForPaidOrder(
   const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
-    await failGeneration(env, order.id, status, message, order.subscription_id);
+    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id);
+    if (!failureRecorded) {
+      logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason });
+      return;
+    }
     logEvent("ai_generation_failed", { orderId: order.id, reason });
 
     // Auto-refund for one-time checkout payments only (skip for user-initiated regenerations
@@ -449,7 +453,11 @@ export async function generateLetterForPaidOrder(
 
       if (ruleReview.ok && aiBlockers.length === 0) {
         const safeLetter = validateAiOutput(letter);
-        await completeGeneration(env, order.id, safeLetter, order.generated_letter);
+        const completed = await completeGeneration(env, order.id, safeLetter, order.generated_letter);
+        if (!completed) {
+          logEvent("ai_generation_completion_state_unchanged", { orderId: order.id });
+          return;
+        }
         if (order.subscription_id) {
           await commitReservedQuota(env, order.subscription_id);
         }

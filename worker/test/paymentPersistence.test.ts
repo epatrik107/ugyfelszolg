@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   attachStripeSession,
   claimInvoiceProcessing,
+  completeGeneration,
+  failGeneration,
   markInvoiceAttemptFailed,
   markOrderPaid,
   markOrderPaymentStatus,
@@ -110,5 +112,39 @@ describe("database-level payment and invoice guards", () => {
     ).resolves.toBe("failed");
     expect(calls[0].args[0]).toBe("failed");
     expect(calls[0].args[3]).toBeNull();
+  });
+
+  it("completes generation only while the paid order is still active", async () => {
+    const { env, calls } = singleStatementEnv();
+    await expect(completeGeneration(env, "order_1", "Kész levél.")).resolves.toBe(true);
+    expect(calls[0].sql).toContain("ai_status = 'generating'");
+    expect(calls[0].sql).toContain("payment_status IN ('paid', 'partially_refunded')");
+  });
+
+  it("does not release subscription quota when generation failure was not persisted", async () => {
+    const calls: string[] = [];
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          calls.push(sql);
+          return {
+            bind(..._args: unknown[]) {
+              return {
+                async run() {
+                  return { meta: { changes: 0 } };
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown as Env;
+
+    await expect(
+      failGeneration(env, "order_1", "failed", "Generálási hiba.", "sub_1"),
+    ).resolves.toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("payment_status IN ('paid', 'partially_refunded')");
+    expect(calls[0]).not.toContain("subscription_usage");
   });
 });

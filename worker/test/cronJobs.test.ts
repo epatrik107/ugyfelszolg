@@ -54,6 +54,7 @@ function env(): Env {
 describe("scheduled cron jobs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.failGeneration.mockResolvedValue(true);
     mocks.retryDueInvoices.mockResolvedValue([{ orderId: "order_invoice", status: "created" }]);
     mocks.getStuckGeneratingOrders.mockResolvedValue([]);
     mocks.createRefund.mockResolvedValue({ id: "re_1", amount: 89000, currency: "huf", status: "succeeded" });
@@ -118,5 +119,35 @@ describe("scheduled cron jobs", () => {
       "sub_1",
     );
     expect(mocks.createRefund).not.toHaveBeenCalled();
+  });
+
+  it("does not refund when a stuck order state changed before cron could fail it", async () => {
+    mocks.failGeneration.mockResolvedValueOnce(false);
+    mocks.getStuckGeneratingOrders.mockResolvedValue([
+      orderFixture({
+        ai_status: "generating",
+        payment_status: "paid",
+        stripe_payment_intent_id: "pi_1",
+        billing_source: "checkout",
+      }),
+    ]);
+
+    await app.scheduled({} as ScheduledController, env());
+
+    expect(mocks.failGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      "failed",
+      "Automatikusan lezárva: generálás időtúllépés.",
+      null,
+    );
+    expect(mocks.createRefund).not.toHaveBeenCalled();
+    expect(mocks.markOrderPaymentStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      "refunded",
+      expect.anything(),
+    );
+    expect(mocks.sendRefundEmail).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ import {
   commitReservedQuota,
   markLetterEmailSent,
 } from "../src/lib/db";
+import { createRefund } from "../src/lib/stripe";
 import type { Env, OrderRow } from "../src/lib/types";
 
 vi.mock("../src/lib/db", () => ({
@@ -33,6 +34,10 @@ vi.mock("../src/lib/invoice", () => ({
 
 vi.mock("../src/lib/stripe", () => ({
   createRefund: vi.fn(),
+  fromStripeMinorAmount: vi.fn((amount: number | null, currency: string | null) => {
+    if (amount === null || currency === null) return null;
+    return currency.toLowerCase() === "huf" ? amount / 100 : amount;
+  }),
 }));
 
 const safeLetter = `Tárgy: Reklamáció hibás szolgáltatás miatt
@@ -151,6 +156,8 @@ describe("secondary AI review gate", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(completeGeneration).mockResolvedValue(true);
+    vi.mocked(failGeneration).mockResolvedValue(true);
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -286,6 +293,31 @@ describe("secondary AI review gate", () => {
     );
   });
 
+  it("does not send email or commit quota if completion lost the state race", async () => {
+    const { sendGeneratedLetterEmail } = await import("../src/lib/email");
+    vi.mocked(completeGeneration).mockResolvedValueOnce(false);
+    fetchMock(geminiResponse(safeLetter), reviewResponse({ ok: true, issues: [] }));
+
+    await generateLetterForPaidOrder(
+      {
+        ...env,
+        SITE_URL: "https://example.com",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "Sandbox <noreply@example.com>",
+      },
+      {
+        ...order,
+        subscription_id: "sub_1",
+        billing_source: "subscription",
+      },
+    );
+
+    expect(completeGeneration).toHaveBeenCalledWith(expect.anything(), order.id, safeLetter, null);
+    expect(commitReservedQuota).not.toHaveBeenCalled();
+    expect(sendGeneratedLetterEmail).not.toHaveBeenCalled();
+    expect(markLetterEmailSent).not.toHaveBeenCalled();
+  });
+
   it("does not fail generation when generated letter email delivery fails", async () => {
     const { sendGeneratedLetterEmail } = await import("../src/lib/email");
     vi.mocked(sendGeneratedLetterEmail).mockRejectedValue(new Error("Resend API error (500)"));
@@ -375,5 +407,29 @@ describe("secondary AI review gate", () => {
       "sub_1",
     );
     expect(commitReservedQuota).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-refund if failure persistence lost the state race", async () => {
+    vi.mocked(failGeneration).mockResolvedValueOnce(false);
+    fetchMock(
+      geminiResponse(safeLetter),
+      new DOMException("timed out", "TimeoutError"),
+      new DOMException("timed out again", "TimeoutError"),
+    );
+
+    await generateLetterForPaidOrder(env, {
+      ...order,
+      stripe_payment_intent_id: "pi_test_1",
+      billing_source: "checkout",
+    });
+
+    expect(failGeneration).toHaveBeenCalledWith(
+      env,
+      order.id,
+      "failed_review",
+      AI_REVIEW_UNAVAILABLE_MESSAGE,
+      null,
+    );
+    expect(createRefund).not.toHaveBeenCalled();
   });
 });
