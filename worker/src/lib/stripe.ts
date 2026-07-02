@@ -171,7 +171,7 @@ export async function retrieveSubscription(env: Env, subscriptionId: string) {
 
 export async function createRefund(env: Env, paymentIntentId: string) {
   const params = new URLSearchParams({ payment_intent: paymentIntentId });
-  return stripeRequest<{ id: string; status: string }>(env, "/refunds", {
+  return stripeRequest<{ id: string; status: string; amount?: number; currency?: string }>(env, "/refunds", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

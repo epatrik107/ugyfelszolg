@@ -29,8 +29,8 @@ function singleStatementEnv(changes = 1) {
           },
         };
       },
-      async batch(_statements: unknown[]) {
-        return [];
+      async batch(statements: Array<{ run: () => Promise<{ meta: { changes: number } }> }>) {
+        return Promise.all(statements.map((statement) => statement.run()));
       },
     },
   } as unknown as Env;
@@ -41,8 +41,9 @@ describe("database-level payment and invoice guards", () => {
   it("attaches one Checkout session only to pre-payment states", async () => {
     const { env, calls } = singleStatementEnv();
     await expect(attachStripeSession(env, "order_1", "cs_test_1")).resolves.toBe(true);
-    expect(calls[0].sql).toContain("payment_status IN ('pending', 'checkout_created')");
-    expect(calls[0].sql).toContain("stripe_session_id IS NULL OR stripe_session_id = ?");
+    expect(calls[0].sql).toContain("INSERT INTO order_status_log");
+    expect(calls[1].sql).toContain("payment_status IN ('pending', 'checkout_created')");
+    expect(calls[1].sql).toContain("stripe_session_id IS NULL OR stripe_session_id = ?");
   });
 
   it("marks paid with a conditional update and starts invoice pending atomically", async () => {
@@ -53,16 +54,17 @@ describe("database-level payment and invoice guards", () => {
         stripePaymentIntentId: "pi_test_1",
       }),
     ).resolves.toBe(true);
-    expect(calls[0].sql).toContain("payment_status IN ('pending', 'checkout_created', 'failed')");
-    expect(calls[0].sql).toContain("invoice_status = CASE");
-    expect(calls[0].sql).toContain("THEN 'pending'");
+    expect(calls[0].sql).toContain("INSERT INTO order_status_log");
+    expect(calls[1].sql).toContain("payment_status IN ('pending', 'checkout_created', 'failed')");
+    expect(calls[1].sql).toContain("invoice_status = CASE");
+    expect(calls[1].sql).toContain("THEN 'pending'");
   });
 
   it("never allows a later failed/expired event to downgrade paid", async () => {
     const { env, calls } = singleStatementEnv(0);
     await expect(markOrderPaymentStatus(env, "order_1", "failed")).resolves.toBe(false);
-    expect(calls[0].args).not.toContain("paid");
-    expect(calls[0].args).not.toContain("refunded");
+    expect(calls[1].args).not.toContain("paid");
+    expect(calls[1].args).not.toContain("refunded");
   });
 
   it("claims invoice work only for paid checkout orders and at most five attempts", async () => {

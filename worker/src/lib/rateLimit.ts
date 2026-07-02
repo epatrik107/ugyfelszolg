@@ -5,6 +5,7 @@ import { logEvent } from "./logger";
 export type RateLimitScope =
   | "create-checkout-ip"
   | "create-checkout-email"
+  | "cancel-checkout-ip"
   | "result-ip"
   | "contact-ip"
   | "contact-email"
@@ -17,6 +18,7 @@ export const RATE_LIMITS: Record<
 > = {
   "create-checkout-ip": { limit: 5, windowSeconds: 600 },
   "create-checkout-email": { limit: 5, windowSeconds: 600 },
+  "cancel-checkout-ip": { limit: 10, windowSeconds: 600 },
   "result-ip": { limit: 60, windowSeconds: 600 },
   "contact-ip": { limit: 3, windowSeconds: 600 },
   "contact-email": { limit: 3, windowSeconds: 600 },

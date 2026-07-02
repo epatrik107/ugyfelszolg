@@ -1,11 +1,17 @@
 import type { Context } from "hono";
-import { getOrderByPublicId, markLetterEmailSent } from "../lib/db";
+import {
+  getLetterEmailVersionKey,
+  getOrderByPublicId,
+  hasLetterEmailVersionSent,
+  markLetterEmailSent,
+} from "../lib/db";
 import { sendLetterReadyEmail } from "../lib/email";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
+import { sendLetterSchema } from "../lib/validation";
 
 export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
   const publicId = c.req.param("publicId") ?? "";
@@ -37,10 +43,15 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
 
   // Determine which version to send (optional versionIndex = history index)
   let letterToSend = order.generated_letter;
-  let idempotencyKeySuffix: string | undefined;
 
-  const body = await c.req.json<{ versionIndex?: number }>().catch(() => ({} as { versionIndex?: number }));
-  if (typeof body.versionIndex === "number") {
+  const rawBody = await c.req.json().catch(() => ({}));
+  const parsedBody = sendLetterSchema.safeParse(rawBody ?? {});
+  if (!parsedBody.success) {
+    return errorJson(c, "INVALID_INPUT", "Hibás emailküldési kérés.", 400);
+  }
+  const body = parsedBody.data;
+
+  if (body.versionIndex !== undefined) {
     if (!order.letter_history) {
       return errorJson(c, "NOT_FOUND", "Nincs korábbi változat.", 404);
     }
@@ -55,12 +66,17 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
       return errorJson(c, "NOT_FOUND", "A kért változat nem található.", 404);
     }
     letterToSend = version;
-    idempotencyKeySuffix = `g${body.versionIndex + 1}-send`;
+  }
+
+  const versionKey = await getLetterEmailVersionKey(letterToSend);
+  if (hasLetterEmailVersionSent(order, versionKey)) {
+    return okJson(c, { alreadySent: true });
   }
 
   try {
+    const idempotencyKeySuffix = `v-${versionKey.slice(-16)}`;
     const emailResult = await sendLetterReadyEmail(c.env, order, letterToSend, bearerToken, idempotencyKeySuffix);
-    await markLetterEmailSent(c.env, order.id);
+    await markLetterEmailSent(c.env, order.id, versionKey);
     logEvent("letter_email_sent_manual", {
       orderId: order.id,
       generationCount: order.generation_count,

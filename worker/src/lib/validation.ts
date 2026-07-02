@@ -68,7 +68,7 @@ export const contactSchema = z.object({
   email: z.string().trim().email().max(254),
   message: trimmed(10, 3000),
   turnstileToken: trimmed(1, 2048),
-});
+}).strict();
 
 export const accessLinkSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -81,4 +81,8 @@ export const exchangeMagicLinkSchema = z.object({
 
 export const regenerationSchema = z.object({
   feedback: trimmed(5, 1200),
-});
+}).strict();
+
+export const sendLetterSchema = z.object({
+  versionIndex: z.number().int().min(0).optional(),
+}).strict();

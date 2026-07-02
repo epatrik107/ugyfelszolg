@@ -2,12 +2,53 @@ import type {
   Env,
   IndividualBillingDetails,
   InvoiceStatus,
+  OrderStatusChangeSource,
   OrderRow,
   PackageId,
   PaymentStatus,
   SubscriptionRow,
   UsageRow,
 } from "./types";
+
+type MutablePaymentStatus =
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "amount_mismatch"
+  | "currency_mismatch"
+  | "partially_refunded"
+  | "refunded";
+
+function paymentStatusLogStatement(
+  env: Env,
+  input: {
+    orderId: string;
+    toStatus: PaymentStatus;
+    allowedFrom: PaymentStatus[];
+    source: OrderStatusChangeSource;
+    now: string;
+  },
+) {
+  const placeholders = input.allowedFrom.map(() => "?").join(", ");
+  return env.DB.prepare(
+    `INSERT INTO order_status_log
+       (id, order_id, from_status, to_status, source, changed_at)
+     SELECT ?, id, payment_status, ?, ?, ?
+     FROM orders
+     WHERE id = ?
+       AND payment_status IN (${placeholders})
+       AND payment_status <> ?`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      input.toStatus,
+      input.source,
+      input.now,
+      input.orderId,
+      ...input.allowedFrom,
+      input.toStatus,
+    );
+}
 
 export async function insertOrder(
   env: Env,
@@ -107,16 +148,25 @@ export async function attachStripeSession(
   env: Env,
   orderId: string,
   stripeSessionId: string,
+  source: OrderStatusChangeSource = "checkout",
 ) {
-  const result = await env.DB.prepare(
-    `UPDATE orders
-     SET stripe_session_id = ?, payment_status = 'checkout_created', updated_at = ?
-     WHERE id = ?
-       AND payment_status IN ('pending', 'checkout_created')
-       AND (stripe_session_id IS NULL OR stripe_session_id = ?)`,
-  )
-    .bind(stripeSessionId, new Date().toISOString(), orderId, stripeSessionId)
-    .run();
+  const now = new Date().toISOString();
+  const [, result] = await env.DB.batch([
+    paymentStatusLogStatement(env, {
+      orderId,
+      toStatus: "checkout_created",
+      allowedFrom: ["pending", "checkout_created"],
+      source,
+      now,
+    }),
+    env.DB.prepare(
+      `UPDATE orders
+       SET stripe_session_id = ?, payment_status = 'checkout_created', updated_at = ?
+       WHERE id = ?
+         AND payment_status IN ('pending', 'checkout_created')
+         AND (stripe_session_id IS NULL OR stripe_session_id = ?)`,
+    ).bind(stripeSessionId, now, orderId, stripeSessionId),
+  ]);
   return result.meta.changes === 1;
 }
 
@@ -126,43 +176,49 @@ export async function markOrderPaid(
   input: {
     stripeSessionId: string;
     stripePaymentIntentId: string | null;
+    source?: OrderStatusChangeSource;
   },
 ) {
   const now = new Date().toISOString();
-  const result = await env.DB.prepare(
-    `UPDATE orders
-     SET payment_status = 'paid',
-         paid_at = ?,
-         stripe_session_id = ?,
-         stripe_payment_intent_id = ?,
-         invoice_status = CASE
-           WHEN billing_source = 'checkout' THEN 'pending'
-           ELSE invoice_status
-         END,
-         invoice_error_code = NULL,
-         invoice_error_message = NULL,
-         updated_at = ?
-     WHERE id = ?
-       AND payment_status IN ('pending', 'checkout_created', 'failed')`,
-  )
-    .bind(now, input.stripeSessionId, input.stripePaymentIntentId, now, orderId)
-    .run();
+  const [, result] = await env.DB.batch([
+    paymentStatusLogStatement(env, {
+      orderId,
+      toStatus: "paid",
+      allowedFrom: ["pending", "checkout_created", "failed"],
+      source: input.source ?? "webhook",
+      now,
+    }),
+    env.DB.prepare(
+      `UPDATE orders
+       SET payment_status = 'paid',
+           paid_at = ?,
+           stripe_session_id = ?,
+           stripe_payment_intent_id = ?,
+           invoice_status = CASE
+             WHEN billing_source = 'checkout' THEN 'pending'
+             ELSE invoice_status
+           END,
+           invoice_error_code = NULL,
+           invoice_error_message = NULL,
+           updated_at = ?
+       WHERE id = ?
+         AND payment_status IN ('pending', 'checkout_created', 'failed')`,
+    ).bind(now, input.stripeSessionId, input.stripePaymentIntentId, now, orderId),
+  ]);
   return result.meta.changes === 1;
 }
 
 export async function markOrderPaymentStatus(
   env: Env,
   orderId: string,
-  status:
-    | "failed"
-    | "cancelled"
-    | "expired"
-    | "amount_mismatch"
-    | "currency_mismatch"
-    | "partially_refunded"
-    | "refunded",
+  status: MutablePaymentStatus,
+  options: {
+    source?: OrderStatusChangeSource;
+    refundAmount?: number | null;
+    refundStripeId?: string | null;
+  } = {},
 ) {
-  const allowedFrom: Record<typeof status, PaymentStatus[]> = {
+  const allowedFrom: Record<MutablePaymentStatus, PaymentStatus[]> = {
     failed: ["pending", "checkout_created", "failed"],
     cancelled: ["pending", "checkout_created", "failed"],
     expired: ["pending", "checkout_created", "failed"],
@@ -171,13 +227,37 @@ export async function markOrderPaymentStatus(
     partially_refunded: ["paid", "partially_refunded"],
     refunded: ["paid", "partially_refunded"],
   };
-  const placeholders = allowedFrom[status].map(() => "?").join(", ");
-  const result = await env.DB.prepare(
-    `UPDATE orders SET payment_status = ?, updated_at = ?
-     WHERE id = ? AND payment_status IN (${placeholders})`,
-  )
-    .bind(status, new Date().toISOString(), orderId, ...allowedFrom[status])
-    .run();
+  const fromStatuses = allowedFrom[status];
+  const placeholders = fromStatuses.map(() => "?").join(", ");
+  const now = new Date().toISOString();
+  const refundStatus = status === "partially_refunded" || status === "refunded";
+  const refundColumns = refundStatus
+    ? `, refund_amount = COALESCE(?, refund_amount),
+         refund_stripe_id = COALESCE(?, refund_stripe_id),
+         refund_invoice_status = CASE
+           WHEN invoice_status IN ('created', 'already_created') THEN 'manual_required'
+           ELSE refund_invoice_status
+         END`
+    : "";
+  const updateBindings: unknown[] = [status, now];
+  if (refundStatus) {
+    updateBindings.push(options.refundAmount ?? null, options.refundStripeId ?? null);
+  }
+  updateBindings.push(orderId, ...fromStatuses);
+
+  const [, result] = await env.DB.batch([
+    paymentStatusLogStatement(env, {
+      orderId,
+      toStatus: status,
+      allowedFrom: fromStatuses,
+      source: options.source ?? "app",
+      now,
+    }),
+    env.DB.prepare(
+      `UPDATE orders SET payment_status = ?, updated_at = ?${refundColumns}
+       WHERE id = ? AND payment_status IN (${placeholders})`,
+    ).bind(...updateBindings),
+  ]);
   return result.meta.changes === 1;
 }
 
@@ -191,6 +271,7 @@ export async function beginRegeneration(
     `UPDATE orders
      SET ai_status = 'generating',
          generation_count = generation_count + 1,
+         letter_email_sent = 0,
          updated_at = ?
      WHERE id = ?
        AND payment_status = 'paid'
@@ -228,23 +309,24 @@ export async function completeGeneration(
 ) {
   const now = new Date().toISOString();
   if (previousLetter) {
-    const row = await env.DB.prepare(
-      "SELECT letter_history FROM orders WHERE id = ?",
-    ).bind(orderId).first<{ letter_history: string | null }>();
-    const existing: string[] = row?.letter_history
-      ? (JSON.parse(row.letter_history) as string[])
-      : [];
-    const newHistory = JSON.stringify([...existing, previousLetter]);
     await env.DB.prepare(
       `UPDATE orders
        SET ai_status = 'completed',
            generated_letter = ?,
-           letter_history = ?,
+           letter_history = json_insert(
+             CASE
+               WHEN letter_history IS NULL THEN '[]'
+               WHEN json_valid(letter_history) THEN letter_history
+               ELSE '[]'
+             END,
+             '$[#]',
+             ?
+           ),
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ?`,
-    ).bind(generatedLetter, newHistory, now, now, orderId).run();
+       WHERE id = ? AND ai_status = 'generating'`,
+    ).bind(generatedLetter, previousLetter, now, now, orderId).run();
   } else {
     await env.DB.prepare(
       `UPDATE orders
@@ -253,7 +335,7 @@ export async function completeGeneration(
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ?`,
+       WHERE id = ? AND ai_status = 'generating'`,
     ).bind(generatedLetter, now, now, orderId).run();
   }
 }
@@ -263,16 +345,39 @@ export async function failGeneration(
   orderId: string,
   status: "failed" | "failed_review",
   errorMessage: string,
+  subscriptionId?: string | null,
 ) {
-  await env.DB.prepare(
+  const now = new Date().toISOString();
+  const failStatement = env.DB.prepare(
     `UPDATE orders
      SET ai_status = ?,
          error_message = ?,
          updated_at = ?
-     WHERE id = ?`,
+     WHERE id = ?
+       AND ai_status IN ('generating', 'not_started')`,
   )
-    .bind(status, errorMessage, new Date().toISOString(), orderId)
-    .run();
+    .bind(status, errorMessage, now, orderId);
+
+  if (!subscriptionId) {
+    const result = await failStatement.run();
+    return result.meta.changes === 1;
+  }
+
+  const [result] = await env.DB.batch([
+    failStatement,
+    env.DB.prepare(
+      `UPDATE subscription_usage
+       SET reserved_count = CASE WHEN reserved_count > 0 THEN reserved_count - 1 ELSE 0 END,
+           updated_at = ?
+       WHERE id = (
+         SELECT id FROM subscription_usage
+         WHERE subscription_id = ?
+         ORDER BY period_start DESC
+         LIMIT 1
+       )`,
+    ).bind(now, subscriptionId),
+  ]);
+  return result.meta.changes === 1;
 }
 
 export async function claimStripeEvent(
@@ -304,23 +409,26 @@ export async function claimStripeEvent(
 }
 
 export async function completeStripeEvent(env: Env, eventId: string) {
-  await env.DB.prepare(
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
     `UPDATE processed_stripe_events
      SET status = 'completed', processed_at = ?, updated_at = ?, last_error = NULL
-     WHERE event_id = ?`,
+     WHERE event_id = ? AND status = 'processing'`,
   )
-    .bind(new Date().toISOString(), new Date().toISOString(), eventId)
+    .bind(now, now, eventId)
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function failStripeEvent(env: Env, eventId: string, errorCode: string) {
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `UPDATE processed_stripe_events
      SET status = 'failed', last_error = ?, updated_at = ?
-     WHERE event_id = ?`,
+     WHERE event_id = ? AND status = 'processing'`,
   )
     .bind(errorCode.slice(0, 120), new Date().toISOString(), eventId)
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function claimInvoiceProcessing(env: Env, orderId: string) {
@@ -676,48 +784,35 @@ export async function touchSubscriptionSession(env: Env, id: string) {
 }
 
 export async function ensureUsagePeriod(env: Env, subscription: SubscriptionRow) {
-  const existing = await env.DB.prepare(
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO subscription_usage
+     (id, subscription_id, period_start, period_end, quota, used_count, reserved_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      subscription.id,
+      subscription.current_period_start,
+      subscription.current_period_end,
+      subscription.quota_per_period,
+      0,
+      0,
+      now,
+      now,
+    )
+    .run();
+
+  const usage = await env.DB.prepare(
     `SELECT * FROM subscription_usage
      WHERE subscription_id = ? AND period_start = ?`,
   )
     .bind(subscription.id, subscription.current_period_start)
     .first<UsageRow>();
 
-  if (existing) {
-    return existing;
+  if (!usage) {
+    throw new Error("USAGE_PERIOD_NOT_FOUND");
   }
-
-  const now = new Date().toISOString();
-  const usage: UsageRow = {
-    id: crypto.randomUUID(),
-    subscription_id: subscription.id,
-    period_start: subscription.current_period_start,
-    period_end: subscription.current_period_end,
-    quota: subscription.quota_per_period,
-    used_count: 0,
-    reserved_count: 0,
-    created_at: now,
-    updated_at: now,
-  };
-
-  await env.DB.prepare(
-    `INSERT INTO subscription_usage
-     (id, subscription_id, period_start, period_end, quota, used_count, reserved_count, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      usage.id,
-      usage.subscription_id,
-      usage.period_start,
-      usage.period_end,
-      usage.quota,
-      usage.used_count,
-      usage.reserved_count,
-      usage.created_at,
-      usage.updated_at,
-    )
-    .run();
-
   return usage;
 }
 
@@ -782,10 +877,59 @@ export async function getCurrentUsage(env: Env, subscriptionId: string) {
     .first<UsageRow>();
 }
 
-export async function markLetterEmailSent(env: Env, orderId: string) {
+export async function getLetterEmailVersionKey(letter: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(letter),
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `sha256:${hex}`;
+}
+
+export function hasLetterEmailVersionSent(
+  order: Pick<OrderRow, "letter_email_sent" | "letter_email_sent_versions">,
+  versionKey: string,
+) {
+  if (!order.letter_email_sent_versions) return order.letter_email_sent === 1;
+  try {
+    const versions = JSON.parse(order.letter_email_sent_versions) as unknown;
+    return Array.isArray(versions) && versions.includes(versionKey);
+  } catch {
+    return order.letter_email_sent === 1;
+  }
+}
+
+export async function markLetterEmailSent(
+  env: Env,
+  orderId: string,
+  versionKey = "current",
+) {
   await env.DB.prepare(
-    "UPDATE orders SET letter_email_sent = 1, updated_at = ? WHERE id = ?",
-  ).bind(new Date().toISOString(), orderId).run();
+    `UPDATE orders
+     SET letter_email_sent = 1,
+         letter_email_sent_versions = CASE
+           WHEN letter_email_sent_versions IS NULL THEN json_array(?)
+           WHEN NOT json_valid(letter_email_sent_versions) THEN json_array(?)
+           WHEN EXISTS (
+             SELECT 1 FROM json_each(letter_email_sent_versions)
+             WHERE value = ?
+           ) THEN letter_email_sent_versions
+           ELSE json_insert(letter_email_sent_versions, '$[#]', ?)
+         END,
+         updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      versionKey,
+      versionKey,
+      versionKey,
+      versionKey,
+      new Date().toISOString(),
+      orderId,
+    )
+    .run();
 }
 
 export async function cleanupExpiredData(env: Env) {

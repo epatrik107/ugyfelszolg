@@ -8,7 +8,6 @@ import {
   getOrderByPaymentIntentId,
   markOrderPaid,
   markOrderPaymentStatus,
-  markRefundInvoiceManualRequired,
 } from "../lib/db";
 import { sendCheckoutExpiredEmail, sendPaymentFailedEmail } from "../lib/email";
 import { generateLetterForPaidOrder } from "../lib/ai";
@@ -96,13 +95,13 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
     return;
   }
   if (session.currency?.toLowerCase() !== order.currency.toLowerCase()) {
-    await markOrderPaymentStatus(c.env, order.id, "currency_mismatch");
+    await markOrderPaymentStatus(c.env, order.id, "currency_mismatch", { source: "webhook" });
     logEvent("currency_mismatch", { orderId });
     return;
   }
   const paidAmount = fromStripeMinorAmount(session.amount_total, session.currency);
   if (paidAmount !== order.server_calculated_price) {
-    await markOrderPaymentStatus(c.env, order.id, "amount_mismatch");
+    await markOrderPaymentStatus(c.env, order.id, "amount_mismatch", { source: "webhook" });
     logEvent("amount_mismatch", { orderId });
     return;
   }
@@ -110,6 +109,7 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
   const changed = await markOrderPaid(c.env, order.id, {
     stripeSessionId: session.id,
     stripePaymentIntentId: session.payment_intent,
+    source: "webhook",
   });
   order = (await getOrderById(c.env, order.id)) ?? order;
   if (changed) {
@@ -146,7 +146,7 @@ async function handlePaymentFailure(
 ) {
   const orderId = await resolveOrderIdForPaymentIntent(c, paymentIntent);
   if (!orderId) return;
-  const changed = await markOrderPaymentStatus(c.env, orderId, "failed");
+  const changed = await markOrderPaymentStatus(c.env, orderId, "failed", { source: "webhook" });
   if (!changed) return;
   logEvent("payment_failed", { orderId });
   if (c.env.RESEND_API_KEY) {
@@ -164,7 +164,7 @@ async function handleExpired(c: WorkerContext, object: {
 }) {
   const orderId = object.metadata?.orderId ?? object.client_reference_id;
   if (!orderId) return;
-  const changed = await markOrderPaymentStatus(c.env, orderId, "expired");
+  const changed = await markOrderPaymentStatus(c.env, orderId, "expired", { source: "webhook" });
   if (!changed) return;
   logEvent("checkout_expired", { orderId });
   if (c.env.RESEND_API_KEY) {
@@ -176,11 +176,14 @@ async function handleExpired(c: WorkerContext, object: {
 }
 
 async function handleRefund(c: WorkerContext, charge: {
+  id?: string;
   amount?: number;
   amount_refunded?: number;
+  currency?: string | null;
   refunded?: boolean;
   payment_intent?: string | null;
   metadata?: Record<string, string>;
+  refunds?: { data?: Array<{ id?: string; amount?: number }> };
 }) {
   let orderId = charge.metadata?.orderId ?? null;
   if (!orderId && charge.payment_intent) {
@@ -191,9 +194,16 @@ async function handleRefund(c: WorkerContext, charge: {
     charge.refunded || (charge.amount && charge.amount_refunded >= charge.amount)
       ? "refunded"
       : "partially_refunded";
-  const changed = await markOrderPaymentStatus(c.env, orderId, status);
+  const refundAmount = charge.currency
+    ? fromStripeMinorAmount(charge.amount_refunded, charge.currency)
+    : charge.amount_refunded;
+  const refundStripeId = charge.refunds?.data?.find((refund) => refund.id)?.id ?? null;
+  const changed = await markOrderPaymentStatus(c.env, orderId, status, {
+    source: "webhook",
+    refundAmount,
+    refundStripeId,
+  });
   if (!changed) return;
-  await markRefundInvoiceManualRequired(c.env, orderId);
   logEvent(status, { orderId });
   logEvent("refund_invoice_manual_required", { orderId, refundType: status });
 }
@@ -261,11 +271,14 @@ export async function stripeWebhookRoute(c: WorkerContext) {
         await handleRefund(
           c,
           event.data.object as {
+            id?: string;
             amount?: number;
             amount_refunded?: number;
+            currency?: string | null;
             refunded?: boolean;
             payment_intent?: string | null;
             metadata?: Record<string, string>;
+            refunds?: { data?: Array<{ id?: string; amount?: number }> };
           },
         );
         break;
