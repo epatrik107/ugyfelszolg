@@ -19,7 +19,12 @@ const coreRequiredKeys = [
 /** Keys only required when not in demo-only mode (demo bypasses Turnstile via access code) */
 const nonDemoRequiredKeys = [
   "TURNSTILE_SECRET_KEY",
+  "RATE_LIMIT_KV",
 ] as const;
+
+const MIN_TOKEN_HASH_SECRET_LENGTH = 32;
+const MIN_DEMO_ACCESS_CODE_LENGTH = 16;
+const MIN_ADMIN_API_TOKEN_LENGTH = 32;
 
 function hasValue(value: unknown) {
   return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
@@ -31,6 +36,21 @@ function missingKeys(env: Env, keys: readonly (keyof Env)[]) {
 
 function isPaymentsEnabled(env: Env) {
   return env.PAYMENTS_ENABLED === "true";
+}
+
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function allowedOrigins(env: Env) {
+  return String(env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 function validatePaymentMode(env: Env) {
@@ -77,14 +97,32 @@ export function validateEnv(env: Env): EnvValidationResult {
     missing.push(...missingKeys(env, nonDemoRequiredKeys));
   }
 
+  if (
+    hasValue(env.TOKEN_HASH_SECRET) &&
+    String(env.TOKEN_HASH_SECRET).length < MIN_TOKEN_HASH_SECRET_LENGTH
+  ) {
+    missing.push("TOKEN_HASH_SECRET_MIN_LENGTH");
+  }
+
+  if (env.DEMO_MODE === "true" && isPaymentsEnabled(env)) {
+    missing.push("DEMO_MODE_WITH_PAYMENTS_ENABLED");
+  }
+
   if (isPaymentsEnabled(env)) {
     missing.push(
       ...missingKeys(env, [
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
         "SZAMLAZZ_AGENT_KEY",
+        "ADMIN_API_TOKEN",
       ]),
     );
+    if (
+      hasValue(env.ADMIN_API_TOKEN) &&
+      String(env.ADMIN_API_TOKEN).length < MIN_ADMIN_API_TOKEN_LENGTH
+    ) {
+      missing.push("ADMIN_API_TOKEN_MIN_LENGTH");
+    }
     if (
       typeof env.SZAMLAZZ_AGENT_KEY === "string" &&
       env.SZAMLAZZ_AGENT_KEY !== env.SZAMLAZZ_AGENT_KEY.toLowerCase()
@@ -92,10 +130,25 @@ export function validateEnv(env: Env): EnvValidationResult {
       missing.push("SZAMLAZZ_AGENT_KEY_LOWERCASE");
     }
     missing.push(...validatePaymentMode(env));
+
+    if (env.PAYMENT_MODE === "live") {
+      if (hasValue(env.SITE_URL) && !isHttpsUrl(String(env.SITE_URL))) {
+        missing.push("SITE_URL_HTTPS_REQUIRED");
+      }
+      if (allowedOrigins(env).some((origin) => !isHttpsUrl(origin))) {
+        missing.push("ALLOWED_ORIGINS_HTTPS_REQUIRED");
+      }
+    }
   }
 
   if (isDemoOnlyMode(env)) {
     missing.push(...missingKeys(env, ["DEMO_ACCESS_CODE"]));
+    if (
+      hasValue(env.DEMO_ACCESS_CODE) &&
+      String(env.DEMO_ACCESS_CODE).length < MIN_DEMO_ACCESS_CODE_LENGTH
+    ) {
+      missing.push("DEMO_ACCESS_CODE_MIN_LENGTH");
+    }
   }
 
   return { ok: missing.length === 0, missing };

@@ -24,6 +24,11 @@ import { getOrderResultRoute } from "./routes/getOrderResult";
 import { regenerateOrderRoute } from "./routes/regenerateOrder";
 import { sendLetterRoute } from "./routes/sendLetter";
 import { stripeWebhookRoute } from "./routes/stripeWebhook";
+import {
+  adminInvoiceStatusRoute,
+  adminRetryInvoiceEmailRoute,
+  adminRetryInvoiceRoute,
+} from "./routes/adminInvoice";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -38,6 +43,9 @@ app.get("/api/orders/:publicId/result", getOrderResultRoute);
 app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
 app.post("/api/orders/:publicId/send-letter", sendLetterRoute);
 app.post("/api/contact", contactRoute);
+app.get("/api/admin/orders/:publicId/invoice", adminInvoiceStatusRoute);
+app.post("/api/admin/orders/:publicId/invoice/retry", adminRetryInvoiceRoute);
+app.post("/api/admin/orders/:publicId/invoice/email/retry", adminRetryInvoiceEmailRoute);
 app.get("/api/health", async (c) => {
   const validation = validateEnv(c.env);
   logEnvValidationFailure(validation, "health");
@@ -54,6 +62,7 @@ app.notFound((c) => errorJson(c, "NOT_FOUND", "Nem található.", 404));
 app.onError((error, c) => {
   logEvent("unhandled_error", {
     path: new URL(c.req.url).pathname,
+    method: c.req.method,
     message: error instanceof Error ? error.message : "unknown",
   });
   return errorJson(c, "INTERNAL_ERROR", "Váratlan szerverhiba.", 500);

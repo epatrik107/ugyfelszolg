@@ -78,6 +78,24 @@ describe("getOrderResult route", () => {
     expect(payload.data.generatedLetter).toBeUndefined();
   });
 
+  it("does not expose completed letters or history after full refund", async () => {
+    mocks.getOrderByPublicId.mockResolvedValue(
+      orderFixture({
+        result_token_hash: await hashToken("owner-token", "token-secret"),
+        payment_status: "refunded",
+        ai_status: "completed",
+        generated_letter: "Korábban elkészült levél.",
+        letter_history: JSON.stringify(["Korábbi verzió"]),
+      }),
+    );
+
+    const response = await request("owner-token");
+    const payload = await response.json() as { data: { generatedLetter?: string; letterHistory: string[] } };
+    expect(response.status).toBe(200);
+    expect(payload.data.generatedLetter).toBeUndefined();
+    expect(payload.data.letterHistory).toEqual([]);
+  });
+
   it("applies result rate limiting before token lookup", async () => {
     mocks.isRateLimited.mockResolvedValue(true);
     const response = await request("owner-token");

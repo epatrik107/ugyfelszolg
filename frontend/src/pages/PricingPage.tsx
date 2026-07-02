@@ -9,7 +9,7 @@ export function PricingPage() {
         <h1 className="text-3xl font-semibold">Árak</h1>
         <p className="mt-3 text-slate-600">
           Válassza azt a csomagot, amelyik legjobban illik az ügyéhez.
-          Jelenleg kizárólag magánszemélyek részére érhető el a szolgáltatás.
+          A számlázás magánszemély és magyar adószámos céges vásárló számára is elérhető.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">

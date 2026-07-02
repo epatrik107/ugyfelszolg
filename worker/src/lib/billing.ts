@@ -1,4 +1,4 @@
-import type { IndividualBillingDetails, PackageId } from "./types";
+import type { BillingDetails, PackageId } from "./types";
 import { getPackage } from "./packages";
 
 const BUSINESS_NAME_PATTERN =
@@ -27,6 +27,17 @@ const BUSINESS_KEYS = new Set([
   "cégnév",
 ]);
 
+const ALLOWED_BILLING_BUSINESS_KEYS = new Set([
+  "buyertype",
+  "name",
+  "email",
+  "country",
+  "postalcode",
+  "city",
+  "addressline1",
+  "taxnumber",
+]);
+
 const PRICE_KEYS = new Set([
   "price",
   "amount",
@@ -48,22 +59,44 @@ export type SuspiciousCheckoutInput =
   | "manipulated_price"
   | null;
 
-export function detectSuspiciousCheckoutInput(value: unknown): SuspiciousCheckoutInput {
-  if (!value || typeof value !== "object") return null;
+export function isValidHungarianTaxNumber(value: string) {
+  return /^\d{8}-\d-\d{2}$/u.test(value.trim());
+}
 
-  for (const [rawKey, child] of Object.entries(value as Record<string, unknown>)) {
+export function detectSuspiciousCheckoutInput(
+  value: unknown,
+  path: string[] = [],
+): SuspiciousCheckoutInput {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+
+  for (const [rawKey, child] of Object.entries(record)) {
     const key = normalizeKey(rawKey);
-    if (TAX_KEYS.has(key)) return "tax_data";
-    if (BUSINESS_KEYS.has(key)) return "business_data";
+    const childPath = [...path, key];
+    const isBillingField = path.length === 1 && path[0] === "billing";
+    const isAllowedBusinessTaxNumber =
+      isBillingField &&
+      key === "taxnumber" &&
+      typeof record.buyerType === "string" &&
+      record.buyerType.toLocaleLowerCase("en-US") === "business";
+    if (
+      TAX_KEYS.has(key) &&
+      (!isAllowedBusinessTaxNumber || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))
+    ) {
+      return "tax_data";
+    }
+    if (BUSINESS_KEYS.has(key) && (!isBillingField || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))) {
+      return "business_data";
+    }
     if (PRICE_KEYS.has(key)) return "manipulated_price";
     if (
       key === "buyertype" &&
       typeof child === "string" &&
-      child.toLocaleLowerCase("en-US") !== "individual"
+      !["individual", "business"].includes(child.toLocaleLowerCase("en-US"))
     ) {
       return "business_buyer_type";
     }
-    const nested = detectSuspiciousCheckoutInput(child);
+    const nested = detectSuspiciousCheckoutInput(child, childPath);
     if (nested) return nested;
   }
   return null;
@@ -73,9 +106,12 @@ export function looksLikeBusinessName(name: string) {
   return BUSINESS_NAME_PATTERN.test(name.trim());
 }
 
-export function assertIndividualBilling(details: IndividualBillingDetails) {
-  if (details.buyerType !== "individual" || looksLikeBusinessName(details.name)) {
+export function assertBillingDetails(details: BillingDetails) {
+  if (details.buyerType === "individual" && looksLikeBusinessName(details.name)) {
     throw new Error("BUSINESS_BUYER_NOT_ALLOWED");
+  }
+  if (details.buyerType === "business" && !isValidHungarianTaxNumber(details.taxNumber)) {
+    throw new Error("INVALID_BUSINESS_TAX_NUMBER");
   }
   if (details.country !== "HU") {
     // Prices currently contain Hungarian VAT. Restricting the market to HU is

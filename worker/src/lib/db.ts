@@ -1,6 +1,7 @@
 import type {
   Env,
-  IndividualBillingDetails,
+  BillingDetails,
+  InvoiceEmailStatus,
   InvoiceStatus,
   OrderStatusChangeSource,
   OrderRow,
@@ -72,7 +73,7 @@ export async function insertOrder(
     paymentStatus?: PaymentStatus;
     checkoutIdempotencyKey?: string | null;
     checkoutInputHash?: string | null;
-    billing?: IndividualBillingDetails | null;
+    billing?: BillingDetails | null;
   },
 ) {
   const now = new Date().toISOString();
@@ -82,9 +83,10 @@ export async function insertOrder(
       problem_description, desired_result, tone, previous_messages, selected_package,
       server_calculated_price, currency, payment_status, ai_status, created_at,
       updated_at, subscription_id, billing_source, checkout_idempotency_key,
-      checkout_input_hash, billing_name, billing_email, billing_country,
-      billing_postal_code, billing_city, billing_address_line1
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      checkout_input_hash, customer_email, billing_buyer_type, billing_name,
+      billing_email, billing_country, billing_postal_code, billing_city,
+      billing_address_line1, billing_tax_number
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       input.id,
@@ -109,12 +111,15 @@ export async function insertOrder(
       input.billingSource ?? "checkout",
       input.checkoutIdempotencyKey ?? null,
       input.checkoutInputHash ?? null,
+      input.billing?.email.toLowerCase() ?? input.email,
+      input.billing?.buyerType ?? "individual",
       input.billing?.name ?? null,
       input.billing?.email.toLowerCase() ?? null,
       input.billing?.country ?? null,
       input.billing?.postalCode ?? null,
       input.billing?.city ?? null,
       input.billing?.addressLine1 ?? null,
+      input.billing?.buyerType === "business" ? input.billing.taxNumber : null,
     )
     .run();
   return result.meta.changes === 1;
@@ -176,6 +181,7 @@ export async function markOrderPaid(
   input: {
     stripeSessionId: string;
     stripePaymentIntentId: string | null;
+    paidAmount: number;
     source?: OrderStatusChangeSource;
   },
 ) {
@@ -194,6 +200,7 @@ export async function markOrderPaid(
            paid_at = ?,
            stripe_session_id = ?,
            stripe_payment_intent_id = ?,
+           paid_amount = ?,
            invoice_status = CASE
              WHEN billing_source = 'checkout' THEN 'pending'
              ELSE invoice_status
@@ -203,7 +210,7 @@ export async function markOrderPaid(
            updated_at = ?
        WHERE id = ?
          AND payment_status IN ('pending', 'checkout_created', 'failed')`,
-    ).bind(now, input.stripeSessionId, input.stripePaymentIntentId, now, orderId),
+    ).bind(now, input.stripeSessionId, input.stripePaymentIntentId, input.paidAmount, now, orderId),
   ]);
   return result.meta.changes === 1;
 }
@@ -408,6 +415,15 @@ export async function claimStripeEvent(
   return retried.meta.changes === 1;
 }
 
+export async function getProcessedStripeEventStatus(env: Env, eventId: string) {
+  const row = await env.DB.prepare(
+    "SELECT status FROM processed_stripe_events WHERE event_id = ? LIMIT 1",
+  )
+    .bind(eventId)
+    .first<{ status: "processing" | "completed" | "failed" }>();
+  return row?.status ?? null;
+}
+
 export async function completeStripeEvent(env: Env, eventId: string) {
   const now = new Date().toISOString();
   const result = await env.DB.prepare(
@@ -468,15 +484,21 @@ export async function persistCreatedInvoice(
     | "currency"
     | "billing_name"
     | "billing_email"
+    | "billing_tax_number"
+    | "stripe_session_id"
+    | "stripe_payment_intent_id"
   >,
   invoice: {
     id: string;
     invoiceNumber: string;
-    provider: "szamlazz" | "internal";
+    provider: "szamlazz_hu" | "internal";
     externalId: string;
     pdfUrl: string | null;
     issuedAt: string;
     status: "created" | "already_created";
+    emailStatus: InvoiceEmailStatus;
+    sentToEmail: string | null;
+    sentAt: string | null;
   },
 ) {
   const now = new Date().toISOString();
@@ -484,8 +506,11 @@ export async function persistCreatedInvoice(
     env.DB.prepare(
       `INSERT OR IGNORE INTO invoices
        (id, order_id, invoice_number, amount, currency, customer_name, customer_email,
-        issued_at, created_at, provider, external_id, pdf_url, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        issued_at, created_at, provider, external_id, pdf_url, updated_at,
+        stripe_checkout_session_id, stripe_payment_intent_id, invoice_status,
+        sent_to_email, sent_at, email_status, email_error_message, email_retry_count,
+        billing_tax_number)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       invoice.id,
       order.id,
@@ -500,11 +525,33 @@ export async function persistCreatedInvoice(
       invoice.externalId,
       invoice.pdfUrl,
       now,
+      order.stripe_session_id,
+      order.stripe_payment_intent_id,
+      invoice.status,
+      invoice.sentToEmail,
+      invoice.sentAt,
+      invoice.emailStatus,
+      null,
+      0,
+      order.billing_tax_number,
     ),
     env.DB.prepare(
       `UPDATE orders
        SET invoice_status = ?, invoice_provider = ?, invoice_number = ?,
            invoice_external_id = ?, invoice_pdf_url = ?, invoiced_at = ?,
+           szamlazz_invoice_id = CASE
+             WHEN ? = 'szamlazz_hu' THEN ?
+             ELSE szamlazz_invoice_id
+           END,
+           szamlazz_invoice_number = CASE
+             WHEN ? = 'szamlazz_hu' THEN ?
+             ELSE szamlazz_invoice_number
+           END,
+           invoice_created_at = COALESCE(invoice_created_at, ?),
+           invoice_sent_to_email = ?,
+           invoice_sent_at = ?,
+           invoice_email_status = ?,
+           invoice_email_error_message = NULL,
            refund_invoice_status = CASE
              WHEN payment_status IN ('refunded', 'partially_refunded') THEN 'manual_required'
              ELSE refund_invoice_status
@@ -518,10 +565,91 @@ export async function persistCreatedInvoice(
       invoice.externalId,
       invoice.pdfUrl,
       invoice.issuedAt,
+      invoice.provider,
+      invoice.externalId,
+      invoice.provider,
+      invoice.invoiceNumber,
+      now,
+      invoice.sentToEmail,
+      invoice.sentAt,
+      invoice.emailStatus,
       now,
       order.id,
     ),
   ]);
+}
+
+export async function markInvoiceEmailSent(
+  env: Env,
+  orderId: string,
+  input: { sentToEmail: string; sentAt?: string },
+) {
+  const sentAt = input.sentAt ?? new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE orders
+       SET invoice_email_status = 'sent',
+           invoice_sent_to_email = ?,
+           invoice_sent_at = ?,
+           invoice_email_error_message = NULL,
+           updated_at = ?
+       WHERE id = ?`,
+    ).bind(input.sentToEmail, sentAt, sentAt, orderId),
+    env.DB.prepare(
+      `UPDATE invoices
+       SET email_status = 'sent',
+           sent_to_email = ?,
+           sent_at = ?,
+           email_error_message = NULL,
+           updated_at = ?
+       WHERE order_id = ?`,
+    ).bind(input.sentToEmail, sentAt, sentAt, orderId),
+  ]);
+}
+
+export async function markInvoiceEmailFailed(
+  env: Env,
+  orderId: string,
+  errorMessage: string,
+) {
+  const now = new Date().toISOString();
+  const message = errorMessage.slice(0, 300);
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE orders
+       SET invoice_email_status = 'failed',
+           invoice_email_error_message = ?,
+           updated_at = ?
+       WHERE id = ?`,
+    ).bind(message, now, orderId),
+    env.DB.prepare(
+      `UPDATE invoices
+       SET email_status = 'failed',
+           email_error_message = ?,
+           email_retry_count = email_retry_count + 1,
+           updated_at = ?
+       WHERE order_id = ?`,
+    ).bind(message, now, orderId),
+  ]);
+}
+
+export async function resetInvoiceForManualRetry(env: Env, orderId: string) {
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE orders
+     SET invoice_status = 'pending',
+         invoice_error_code = NULL,
+         invoice_error_message = NULL,
+         invoice_next_retry_at = NULL,
+         updated_at = ?
+     WHERE id = ?
+       AND payment_status = 'paid'
+       AND billing_source = 'checkout'
+       AND invoice_status IN ('failed', 'retry_required')`,
+  )
+    .bind(now, orderId)
+    .run();
+  return result.meta.changes === 1;
 }
 
 export async function markInvoiceAttemptFailed(
@@ -935,9 +1063,15 @@ export async function markLetterEmailSent(
 export async function cleanupExpiredData(env: Env) {
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const eventCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM subscription_magic_links WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM subscription_sessions WHERE expires_at < ?").bind(now),
+    // Completed Stripe events older than 30 days — failed/processing events are
+    // kept for manual investigation.
+    env.DB.prepare(
+      "DELETE FROM processed_stripe_events WHERE status = 'completed' AND processed_at < ?",
+    ).bind(eventCutoff),
     // Only delete orders that have no invoice — invoices require 8-year retention under
     // Hungarian accounting law (2000. évi C. törvény 169. §).
     env.DB.prepare(

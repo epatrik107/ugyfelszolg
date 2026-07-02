@@ -54,6 +54,7 @@ requireValue(worker, "TOKEN_HASH_SECRET");
 requireValue(worker, "STRIPE_SECRET_KEY");
 requireValue(worker, "STRIPE_WEBHOOK_SECRET");
 requireValue(worker, "SZAMLAZZ_AGENT_KEY");
+requireValue(worker, "ADMIN_API_TOKEN");
 
 if (worker.STRIPE_SECRET_KEY && !worker.STRIPE_SECRET_KEY.startsWith("sk_test_")) {
   errors.push("A STRIPE_SECRET_KEY nem Stripe test kulcs (sk_test_…).");
@@ -73,6 +74,9 @@ if (
 if ((worker.TOKEN_HASH_SECRET?.length ?? 0) < 32) {
   errors.push("A TOKEN_HASH_SECRET legyen legalább 32 karakteres random érték.");
 }
+if ((worker.ADMIN_API_TOKEN?.length ?? 0) < 32) {
+  errors.push("Az ADMIN_API_TOKEN legyen legalább 32 karakteres random érték.");
+}
 
 requireExact(frontend, "VITE_API_BASE_URL", "http://127.0.0.1:8787");
 requireExact(frontend, "VITE_SITE_URL", "http://localhost:5173");
@@ -90,6 +94,7 @@ console.log("Payment test konfiguráció rendben:");
 console.log("  ✓ Stripe test mód, live kulcs nélkül");
 console.log("  ✓ Stripe webhook signing secret beállítva");
 console.log("  ✓ Számlázz.hu tesztfiók explicit megerősítve");
+console.log("  ✓ Admin invoice retry API token beállítva");
 console.log("  ✓ Vevői számlaemail test módban letiltva");
 console.log("  ✓ Cloudflare Turnstile hivatalos tesztkulcsok");
 console.log("A parancs egyetlen secret értéket sem írt ki.");

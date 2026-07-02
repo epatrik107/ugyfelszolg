@@ -103,6 +103,22 @@ describe("checkout AI availability preflight", () => {
     expect(checkAiServiceAvailable).not.toHaveBeenCalled();
   });
 
+  it("does not allow demo-code payment bypass when payments are enabled", async () => {
+    const response = await app().fetch(
+      new Request("https://worker.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      env({ DEMO_MODE: "true", PAYMENTS_ENABLED: "true" }),
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(response.status).toBe(503);
+    expect(checkAiServiceAvailable).toHaveBeenCalledWith(expect.anything(), true);
+    expect(createStripeCheckoutSession).not.toHaveBeenCalled();
+  });
+
   it("still blocks a paid checkout before charging when AI preflight fails", async () => {
     const response = await app().fetch(
       new Request("https://worker.test/", {

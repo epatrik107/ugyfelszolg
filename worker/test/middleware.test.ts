@@ -70,6 +70,20 @@ describe("API middleware", () => {
       {} as ExecutionContext,
     );
     expect(tooLarge.status).toBe(413);
+
+    const tooLargeWithoutContentLength = await app.fetch(
+      new Request("https://worker.test/api/contact", {
+        method: "POST",
+        headers: {
+          Origin: "https://example.com",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: "x".repeat(65 * 1024) }),
+      }),
+      env(),
+      {} as ExecutionContext,
+    );
+    expect(tooLargeWithoutContentLength.status).toBe(413);
   });
 
   it("adds security headers and returns the JSON 404 handler", async () => {
@@ -84,6 +98,8 @@ describe("API middleware", () => {
     expect(payload.error.code).toBe("NOT_FOUND");
     expect(response.headers.get("X-Frame-Options")).toBe("DENY");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+    expect(response.headers.get("Permissions-Policy")).toContain("geolocation=()");
     expect(response.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
   });
 });

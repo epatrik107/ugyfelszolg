@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
   getInvoiceRetryCandidates: vi.fn(),
   getOrderById: vi.fn(),
   markInvoiceAttemptFailed: vi.fn(),
+  markInvoiceEmailFailed: vi.fn(),
+  markInvoiceEmailSent: vi.fn(),
   persistCreatedInvoice: vi.fn(),
+  resetInvoiceForManualRetry: vi.fn(),
   buildSzamlazzPayload: vi.fn(),
   issueSzamlazzInvoice: vi.fn(),
   sendInvoiceEmail: vi.fn(),
@@ -17,7 +20,10 @@ vi.mock("../src/lib/db", () => ({
   getInvoiceRetryCandidates: mocks.getInvoiceRetryCandidates,
   getOrderById: mocks.getOrderById,
   markInvoiceAttemptFailed: mocks.markInvoiceAttemptFailed,
+  markInvoiceEmailFailed: mocks.markInvoiceEmailFailed,
+  markInvoiceEmailSent: mocks.markInvoiceEmailSent,
   persistCreatedInvoice: mocks.persistCreatedInvoice,
+  resetInvoiceForManualRetry: mocks.resetInvoiceForManualRetry,
 }));
 vi.mock("../src/lib/szamlazz", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/lib/szamlazz")>();
@@ -178,6 +184,7 @@ describe("idempotent invoice processing pipeline", () => {
       expect.anything(),
       expect.anything(),
       true,
+      false,
     );
     expect(mocks.persistCreatedInvoice).toHaveBeenCalledWith(
       expect.anything(),

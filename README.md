@@ -13,7 +13,7 @@ Az **Ügyfélközpont** egy magyar nyelvű, fizetős levélíró MVP. A felhaszn
 - Cloudflare D1 adatbázis
 - opcionális Cloudflare KV rate limithez
 - Stripe Checkout fizetés
-- Számlázz.hu automatikus B2C e-számla
+- Számlázz.hu automatikus e-számla magánszemély és magyar céges vásárlóknak
 - Gemini (Google) alapú levélgenerálás és hibrid minőségellenőrzés
 
 ## 2. Architektúra
@@ -105,8 +105,8 @@ A létrejött namespace ID kerüljön a `worker/wrangler.toml` megfelelő bindin
 - Alapcsomag, prémium és prémium plusz: egyszeri fizetés
 - Pénznem: `HUF`
 - A frontend csak `packageId`-t küld; az ár minden esetben szerveroldalon dől el.
-- A checkout kizárólag magyarországi magánszemély számlázási adatokkal indítható.
-- Cégnév, adószám, VAT ID, céges buyer type és kliensoldali ár API-szinten is tiltott.
+- A checkout kizárólag magyarországi számlázási adatokkal indítható.
+- Magánszemély és magyar adószámos céges vevő támogatott; VAT/EU VAT ID és kliensoldali ár API-szinten tiltott.
 
 ## 10. Stripe webhook beállítás
 
@@ -274,6 +274,7 @@ Teszteléshez állítsa be:
 Ilyenkor a levélkészítő oldalon megjelenik a demó hozzáférési kód mező. A backend csak helyes kóddal hagyja ki a Stripe fizetést, szerveroldalon `paid` állapotú tesztrendelést hoz létre, majd elindítja a próba levélírást. Ezt éles környezetben csak átmeneti tesztre használja, erős, nem kitalálható kóddal.
 
 Ha `PAYMENTS_ENABLED=false`, akkor a Stripe Checkout és a Stripe webhook útvonal szerveroldalon le van tiltva. Így a demó alatt nincs bankkártyás fizetés.
+Ha `PAYMENTS_ENABLED=true`, a Worker akkor sem fogad el demó hozzáférési kódot, ha a `DEMO_MODE` véletlenül `true` maradt; payment deploynál a demó bypass fail-closed módon tiltott.
 
 ## GitHub Pages + Cloudflare Worker demó deploy
 
@@ -477,13 +478,16 @@ default-src 'self';
 script-src 'self' https://challenges.cloudflare.com;
 style-src 'self';
 frame-src https://challenges.cloudflare.com;
-connect-src 'self' https://ugyfelkozpont-api.epatrik107.workers.dev https://challenges.cloudflare.com;
+connect-src 'self' %VITE_API_BASE_URL% https://api.xn--gyfelszolgalat-fsb.hu https://ugyfelkozpont-api.epatrik107.workers.dev https://challenges.cloudflare.com;
 img-src 'self' data:;
 object-src 'none';
 base-uri 'none';
 frame-ancestors 'none';
 form-action 'self';
 ```
+
+`connect-src` esetén production buildben az aktuális `VITE_API_BASE_URL` és az
+`api.xn--gyfelszolgalat-fsb.hu` API domain is engedélyezett.
 
 A Stripe Checkout jelenlegi integrációja top-level redirectet használ, nem HTML
 form POST-ot, ezért Stripe origin nincs a `form-action` direktívában.

@@ -1,5 +1,5 @@
 export type PackageId = "basic" | "premium" | "premium_plus";
-export type BuyerType = "individual";
+export type BuyerType = "individual" | "business";
 export type PaymentStatus =
   | "pending"
   | "checkout_created"
@@ -23,6 +23,11 @@ export type RefundInvoiceStatus =
   | "not_required"
   | "manual_required"
   | "created"
+  | "failed";
+export type InvoiceEmailStatus =
+  | "not_required"
+  | "pending"
+  | "sent"
   | "failed";
 export type AiStatus =
   | "not_started"
@@ -65,6 +70,8 @@ export interface Env {
   SELLER_TAX_NUMBER?: string;
   /** szamlazz.hu agent key – presence activates production invoicing via szamlazz.hu */
   SZAMLAZZ_AGENT_KEY?: string;
+  /** Bearer token for protected backend/admin invoice operations. */
+  ADMIN_API_TOKEN?: string;
 }
 
 export interface OrderRow {
@@ -99,17 +106,28 @@ export interface OrderRow {
   letter_email_sent: number;
   checkout_idempotency_key: string | null;
   checkout_input_hash: string | null;
+  paid_amount: number | null;
+  customer_email: string | null;
+  billing_buyer_type: BuyerType;
   billing_name: string | null;
   billing_email: string | null;
   billing_country: string | null;
   billing_postal_code: string | null;
   billing_city: string | null;
   billing_address_line1: string | null;
+  billing_tax_number: string | null;
   invoice_status: InvoiceStatus;
-  invoice_provider: "szamlazz" | "internal" | null;
+  invoice_provider: "szamlazz" | "szamlazz_hu" | "internal" | null;
   invoice_number: string | null;
   invoice_external_id: string | null;
   invoice_pdf_url: string | null;
+  szamlazz_invoice_id: string | null;
+  szamlazz_invoice_number: string | null;
+  invoice_sent_to_email: string | null;
+  invoice_sent_at: string | null;
+  invoice_created_at: string | null;
+  invoice_email_status: InvoiceEmailStatus;
+  invoice_email_error_message: string | null;
   invoice_error_code: string | null;
   invoice_error_message: string | null;
   invoice_retry_count: number;
@@ -158,14 +176,23 @@ export interface InvoiceRow {
   customer_email: string;
   issued_at: string;
   created_at: string;
-  provider: "szamlazz" | "internal";
+  provider: "szamlazz" | "szamlazz_hu" | "internal";
   external_id: string | null;
   pdf_url: string | null;
   updated_at: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  invoice_status: InvoiceStatus;
+  sent_to_email: string | null;
+  sent_at: string | null;
+  email_status: InvoiceEmailStatus;
+  email_error_message: string | null;
+  email_retry_count: number;
+  billing_tax_number: string | null;
 }
 
 export interface IndividualBillingDetails {
-  buyerType: BuyerType;
+  buyerType: "individual";
   name: string;
   email: string;
   country: "HU";
@@ -173,3 +200,16 @@ export interface IndividualBillingDetails {
   city: string;
   addressLine1: string;
 }
+
+export interface BusinessBillingDetails {
+  buyerType: "business";
+  name: string;
+  email: string;
+  country: "HU";
+  postalCode: string;
+  city: string;
+  addressLine1: string;
+  taxNumber: string;
+}
+
+export type BillingDetails = IndividualBillingDetails | BusinessBillingDetails;

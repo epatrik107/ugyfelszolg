@@ -39,4 +39,6 @@ jobs:
             ".read worker/migrations/0005_letter_history.sql" \
             ".read worker/migrations/0006_clear_raw_result_tokens.sql" \
             ".read worker/migrations/0007_payment_billing_hardening.sql" \
+            ".read worker/migrations/0008_production_hardening.sql" \
+            ".read worker/migrations/0009_invoice_email_business_admin.sql" \
             "PRAGMA integrity_check;"

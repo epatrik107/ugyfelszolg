@@ -23,8 +23,9 @@ EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 PAYMENT_MODE = "test"
-# SZAMLAZZ_AGENT_KEY must be added as a secret (wrangler secret put SZAMLAZZ_AGENT_KEY)
-# in production – its presence switches invoice issuing to szamlazz.hu.
+# SZAMLAZZ_AGENT_KEY and ADMIN_API_TOKEN must be added as secrets in payment
+# environments. SZAMLAZZ_AGENT_KEY switches invoice issuing to Számlázz.hu;
+# ADMIN_API_TOKEN protects invoice status/retry admin endpoints.
 
 [triggers]
 crons = [ "17 2 * * *" ]

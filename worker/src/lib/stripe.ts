@@ -10,6 +10,8 @@ export interface StripeCheckoutSession {
   amount_total: number | null;
   currency: string | null;
   customer: string | null;
+  customer_email?: string | null;
+  customer_details?: { email?: string | null } | null;
   payment_intent: string | null;
   subscription: string | null;
   metadata: Record<string, string>;
@@ -150,7 +152,7 @@ export async function createCheckoutSession(
 export async function retrieveCheckoutSession(env: Env, sessionId: string) {
   return stripeRequest<StripeCheckoutSession>(
     env,
-    `/checkout/sessions/${sessionId}`,
+    `/checkout/sessions/${encodeURIComponent(sessionId)}`,
   );
 }
 

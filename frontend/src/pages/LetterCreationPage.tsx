@@ -178,7 +178,7 @@ function PaymentSummary({
         </div>
         <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-mint-700">
           <CheckCircle2 size={17} />
-          Csak magánszemély számlázás
+          Számla automatikus kiküldéssel
         </div>
       </div>
 
@@ -194,7 +194,14 @@ function PaymentSummary({
           <div className="grid gap-3 text-sm md:grid-cols-2">
             <SummaryRow label="Név" value={summary.name} />
             <SummaryRow label="Email" value={summary.email} />
+            <SummaryRow
+              label="Vásárló típusa"
+              value={summary.billing.buyerType === "business" ? "Céges vásárló" : "Magánszemély"}
+            />
             <SummaryRow label="Számlázási név" value={summary.billing.name} />
+            {summary.billing.buyerType === "business" && (
+              <SummaryRow label="Adószám" value={summary.billing.taxNumber} />
+            )}
             <SummaryRow
               label="Számlázási cím"
               value={`${summary.billing.postalCode} ${summary.billing.city}, ${summary.billing.addressLine1}`}

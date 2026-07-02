@@ -2,19 +2,20 @@
 
 ## Hatókör és üzleti szabályok
 
-- A checkout kizárólag B2C, magyarországi magánszemély vásárlót fogad.
-- A `buyerType` egyetlen elfogadott értéke `individual`.
-- Cégnév, adószám, VAT/EU VAT ID, szervezeti buyer type és szervezetet jelző számlázási név elutasításra kerül.
+- A checkout magyarországi magánszemély és magyar adószámmal rendelkező céges vásárlót fogad.
+- A `buyerType` elfogadott értékei: `individual` és `business`.
+- Céges vásárlónál a cégnév és magyar adószám kötelező; VAT/EU VAT ID, nem támogatott szervezeti buyer type és kliensoldali adó/ármező elutasításra kerül.
 - A kliens nem küldhet árat, pénznemet, kupont vagy kedvezményt. A fizetendő bruttó HUF összeg kizárólag a backend csomagkatalógusából származik.
 - A jelenlegi szolgáltatás nem támogat kupont vagy promóciót (`discountAmount = 0`).
 - A piac HU-only, mert az ár 27% magyar ÁFÁ-t tartalmaz. Külföldi fogyasztó addig nem engedhető, amíg az OSS/célországi ÁFA szabály nincs implementálva.
 - Aktiválás és számlázás kizárólag Stripe által aláírt, szerveroldalon visszaolvasott, `paid` állapotú, pontos összegű és pénznemű Checkout Session után indul.
 - A `PAYMENT_MODE=test|live` explicit környezetválasztás kötelező. A Stripe secret kulcs prefixének és a webhook `livemode` jelzőjének egyeznie kell vele.
+- Fizetős deployban a demó bypass tiltott: `DEMO_MODE=true` és `PAYMENTS_ENABLED=true` kombinációt a Worker hibás konfigurációnak kezeli.
 - `failed`, `cancelled`, `expired`, `amount_mismatch` és `currency_mismatch` állapotban nincs aktiválás és nincs számla.
 
 ## Stripe flow
 
-1. A frontend egy UUID `checkoutAttemptId`-t küld a szigorúan validált B2C adatokkal.
+1. A frontend egy UUID `checkoutAttemptId`-t küld a szigorúan validált számlázási adatokkal.
 2. D1 egyedi index és Stripe `Idempotency-Key` védi a retry/double-click versenyhelyzetet.
 3. A Worker állítja elő az árat, a line itemet és a metadata engedélyezett mezőit (`orderId`, `publicId`, `selectedPackage`). Számlázási vagy céges adat nem kerül metadata-ba.
 4. A Checkout kizárólag `card` fizetési módot használ; a hosted Checkout kezeli az SCA/3DS folyamatot.
@@ -28,12 +29,13 @@
 - Sikeres fizetéskor az order `invoice_status=pending` lesz; az aktiválás ettől függetlenül elindul.
 - A számlázási worker atomikusan `processing` állapotot foglal. Párhuzamos webhook csak az egyik hívást engedi a providerhez.
 - A Számla Agent kérés hivatalos `action-xmlagentxmlfile` multipart mezőt és aktuális XSD-sorrendet használ.
-- A vevő `<adoalany>-1</adoalany>` (nincs adószám); `<adoszam>`, `<adoszamEU>` és céges mező nincs a payloadban.
-- HUF B2C kerekítés bruttó alapú: `áfa = round(bruttó / 127 * 27)`, `nettó = bruttó - áfa`.
+- Magánszemély vevőnél `<adoalany>-1</adoalany>` kerül a payloadba; céges vevőnél a validált magyar `<adoszam>` kerül átadásra. `<adoszamEU>` nincs támogatva.
+- HUF 27% ÁFA kerekítés bruttó alapú: `áfa = round(bruttó / 127 * 27)`, `nettó = bruttó - áfa`.
 - A `szamlaKulsoAzon` és `rendelesSzam` az order ID. Ambiguus timeout után a retry előbb ezzel az azonosítóval kérdezi le a már elkészült számlát, így nem állít ki duplikátumot.
 - Retry-olható hiba `retry_required`, legfeljebb 5 próbálkozás, 5/30/120/720 perces backoff. Validáció/auth hiba `failed`, kézi javítást igényel.
 - Az ütemezett Worker feldolgozza a due és stale invoice állapotokat. A fizetés közben végig `paid` marad.
-- A Számlázz.hu vevői fiók/PDF linkje, ha érkezik, D1-be kerül; a Számlázz.hu küldi ki az e-számlát a validált számlázási emailre.
+- A Számlázz.hu vevői fiók/PDF linkje, ha érkezik, D1-be kerül; live módban a Számlázz.hu küldi ki az e-számlát a validált számlázási emailre. Teszt/sandbox módban a Számlázz.hu emailküldés kényszerítetten tiltott.
+- Admin API-n keresztül lekérdezhető a számla státusza, retry-zhető a sikertelen számlakészítés és retry-zhető a sikertelen számlaemail küldés. Az admin endpointok `ADMIN_API_TOKEN` bearer tokennel védettek.
 - `PAYMENT_MODE=test` esetén a Számlázz.hu vevői email küldése kényszerítetten ki van kapcsolva, és `SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true` szükséges.
 
 ## Refund szabály
@@ -50,6 +52,6 @@
 4. Számlázz.hu tesztfiókkal, Stripe test mode-dal végezzen kézi smoke tesztet; valódi kártyát és production adatot ne használjon.
 5. Ellenőrizze a számlaképet, eladói adatokat, 27% ÁFÁ-t, email-kézbesítést és a Számlázz.hu tesztfiók kikapcsolását csak a jóváhagyott go-live pillanatban.
 6. Alkalmazza a D1 migrációkat a Worker deploy előtt. Ne deployoljon mainen kívüli automatikával és ne merge-eljen ellenőrzés nélkül.
-7. Monitorozza: `payment_paid`, `payment_failed`, `duplicate_webhook_ignored`, `amount_mismatch`, `currency_mismatch`, `invoice_pending`, `invoice_created`, `invoice_retry_finished`, `refund_invoice_manual_required`, `rejected_business_buyer_attempt`, `rejected_tax_number_attempt`, `rejected_manipulated_price`.
+7. Monitorozza: `payment_paid`, `payment_failed`, `duplicate_webhook_ignored`, `amount_mismatch`, `currency_mismatch`, `invoice_pending`, `invoice_created`, `invoice_retry_finished`, `invoice_email_sent`, `invoice_email_send_failed`, `admin_invoice_retry`, `admin_invoice_email_retry`, `refund_invoice_manual_required`, `rejected_tax_number_attempt`, `rejected_manipulated_price`.
 
 A GitHub sandbox/production secret- és deploy-konfiguráció részletes leírása: [github-environments.md](github-environments.md).

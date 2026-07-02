@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { DEMO_MODE } from "../lib/config";
 import { letterTypes, tones } from "../lib/constants";
-import type { LetterFormValues, PackageId } from "../lib/types";
+import type { BillingDetails, LetterFormValues, PackageId } from "../lib/types";
 import { LegalNotice } from "./LegalNotice";
 import { PackageCard } from "./PackageCard";
 import { TurnstileField } from "./TurnstileField";
@@ -61,14 +61,43 @@ export function LetterForm({
     setValues((current) => ({ ...current, [key]: value }));
   }
 
-  function updateBilling<K extends keyof LetterFormValues["billing"]>(
-    key: K,
-    value: LetterFormValues["billing"][K],
+  function updateBilling(
+    key: "name" | "email" | "postalCode" | "city" | "addressLine1",
+    value: string,
   ) {
     setValues((current) => ({
       ...current,
       billing: { ...current.billing, [key]: value },
     }));
+  }
+
+  function updateBuyerType(buyerType: BillingDetails["buyerType"]) {
+    setValues((current) => {
+      const base = {
+        name: current.billing.name,
+        email: current.billing.email,
+        country: "HU" as const,
+        postalCode: current.billing.postalCode,
+        city: current.billing.city,
+        addressLine1: current.billing.addressLine1,
+      };
+      return {
+        ...current,
+        billing: buyerType === "business"
+          ? {
+              ...base,
+              buyerType: "business",
+              taxNumber: current.billing.buyerType === "business" ? current.billing.taxNumber : "",
+            }
+          : { ...base, buyerType: "individual" },
+      };
+    });
+  }
+
+  function updateBusinessTaxNumber(value: string) {
+    setValues((current) => current.billing.buyerType === "business"
+      ? { ...current, billing: { ...current.billing, taxNumber: value } }
+      : current);
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -97,11 +126,18 @@ export function LetterForm({
       !values.billing.city.trim() ||
       !values.billing.addressLine1.trim()
     ) {
-      setError("Kérjük, adja meg a teljes magánszemély számlázási adatokat.");
+      setError("Kérjük, adja meg a teljes számlázási adatokat.");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.billing.email)) {
       setError("Kérjük, adjon meg érvényes számlázási email címet.");
+      return;
+    }
+    if (
+      values.billing.buyerType === "business" &&
+      !/^\d{8}-\d-\d{2}$/.test(values.billing.taxNumber.trim())
+    ) {
+      setError("Céges számlázáshoz érvényes magyar adószám szükséges, pl. 12345678-1-42.");
       return;
     }
     if (!values.legalAccepted) {
@@ -207,7 +243,7 @@ export function LetterForm({
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Csomag kiválasztása</h2>
         <p className="text-sm text-slate-600">
-          Jelenleg kizárólag magánszemélyek részére érhető el a szolgáltatás.
+          A számla magánszemély vagy magyar adószámmal rendelkező céges vásárló adataiból készül.
         </p>
         <div className="grid gap-4 lg:grid-cols-3">
           {(["basic", "premium", "premium_plus"] as PackageId[]).map((packageId) => (
@@ -223,10 +259,26 @@ export function LetterForm({
 
       <section className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-5">
         <div>
-          <h2 className="text-lg font-semibold">Számlázási adatok – magánszemély</h2>
+          <h2 className="text-lg font-semibold">Számlázási adatok</h2>
           <p className="mt-1 text-sm text-slate-600">
-            A szolgáltatás kizárólag magánszemélyeknek érhető el. Cégnév és adószám nem adható meg.
+            A számlát a sikeres Stripe fizetés után automatikusan ezekkel az adatokkal állítjuk ki és küldjük ki.
           </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(["individual", "business"] as const).map((buyerType) => (
+            <button
+              key={buyerType}
+              className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${
+                values.billing.buyerType === buyerType
+                  ? "border-navy-900 bg-white text-navy-900 shadow-sm"
+                  : "border-slate-200 bg-slate-100 text-slate-600 hover:border-slate-300"
+              }`}
+              type="button"
+              onClick={() => updateBuyerType(buyerType)}
+            >
+              {buyerType === "individual" ? "Magánszemély" : "Céges vásárló"}
+            </button>
+          ))}
         </div>
         <div className="grid gap-5 md:grid-cols-2">
           <Field label="Számlázási név">
@@ -248,6 +300,17 @@ export function LetterForm({
             />
           </Field>
         </div>
+        {values.billing.buyerType === "business" && (
+          <Field label="Magyar adószám">
+            <input
+              className="input"
+              maxLength={13}
+              placeholder="12345678-1-42"
+              value={values.billing.taxNumber}
+              onChange={(event) => updateBusinessTaxNumber(event.target.value)}
+            />
+          </Field>
+        )}
         <div className="grid gap-5 md:grid-cols-3">
           <Field label="Ország">
             <input className="input" disabled value="Magyarország" />

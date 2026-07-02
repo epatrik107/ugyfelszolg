@@ -20,7 +20,7 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     } as unknown as D1Database,
     RATE_LIMIT_KV: {} as KVNamespace,
     GEMINI_API_KEY: "gemini-key",
-    TOKEN_HASH_SECRET: "token-secret",
+    TOKEN_HASH_SECRET: "token-secret-with-at-least-32-chars",
     SITE_URL: "https://example.com",
     ALLOWED_ORIGINS: "https://example.com",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
@@ -185,12 +185,28 @@ describe("environment validation", () => {
     expect(validateEnv(baseEnv()).ok).toBe(true);
   });
 
+  it("requires KV rate limiting outside demo-only mode", () => {
+    expect(validateEnv(baseEnv({ RATE_LIMIT_KV: undefined })).missing).toContain("RATE_LIMIT_KV");
+    expect(
+      validateEnv(
+        baseEnv({
+          DEMO_MODE: "true",
+          PAYMENTS_ENABLED: "false",
+          DEMO_ACCESS_CODE: "demo-code-with-32-random-chars",
+          RATE_LIMIT_KV: undefined,
+          TURNSTILE_SECRET_KEY: "",
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
   it("requires Stripe configuration only when payment mode is enabled", () => {
     expect(validateEnv(baseEnv({ PAYMENTS_ENABLED: "false" })).ok).toBe(true);
     expect(validateEnv(baseEnv({ PAYMENTS_ENABLED: "true" })).missing).toEqual([
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "SZAMLAZZ_AGENT_KEY",
+      "ADMIN_API_TOKEN",
       "PAYMENT_MODE",
     ]);
     expect(
@@ -201,10 +217,27 @@ describe("environment validation", () => {
           STRIPE_SECRET_KEY: "sk_test_secret",
           STRIPE_WEBHOOK_SECRET: "whsec_test",
           SZAMLAZZ_AGENT_KEY: "test-agent-key",
+          ADMIN_API_TOKEN: "admin-token-with-at-least-thirty-two-chars",
           SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
         }),
       ).ok,
     ).toBe(true);
+  });
+
+  it("requires a strong admin token when payment admin endpoints are enabled", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
+          SZAMLAZZ_AGENT_KEY: "test-agent-key",
+          ADMIN_API_TOKEN: "short",
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
+        }),
+      ).missing,
+    ).toContain("ADMIN_API_TOKEN_MIN_LENGTH");
   });
 
   it("keeps Stripe test and live credentials isolated", () => {
@@ -256,11 +289,57 @@ describe("environment validation", () => {
         baseEnv({
           DEMO_MODE: "true",
           PAYMENTS_ENABLED: "false",
-          DEMO_ACCESS_CODE: "demo-code",
+          DEMO_ACCESS_CODE: "demo-code-with-32-random-chars",
         }),
       ).ok,
     ).toBe(true);
     expect(validateEnv(baseEnv({ DEMO_MODE: "false", DEMO_ACCESS_CODE: "" })).ok).toBe(true);
+  });
+
+  it("rejects weak token secrets and demo bypass in payment mode", () => {
+    expect(validateEnv(baseEnv({ TOKEN_HASH_SECRET: "short" })).missing).toContain(
+      "TOKEN_HASH_SECRET_MIN_LENGTH",
+    );
+    expect(
+      validateEnv(
+        baseEnv({
+          DEMO_MODE: "true",
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "test",
+          STRIPE_SECRET_KEY: "sk_test_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_test",
+          SZAMLAZZ_AGENT_KEY: "test-agent-key",
+          SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
+        }),
+      ).missing,
+    ).toContain("DEMO_MODE_WITH_PAYMENTS_ENABLED");
+  });
+
+  it("requires HTTPS origins in live payment mode", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+          SITE_URL: "http://example.com",
+        }),
+      ).missing,
+    ).toContain("SITE_URL_HTTPS_REQUIRED");
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+          ALLOWED_ORIGINS: "https://example.com,http://example.org",
+        }),
+      ).missing,
+    ).toContain("ALLOWED_ORIGINS_HTTPS_REQUIRED");
   });
 
   it("rejects an uppercase Szamlazz.hu Agent key in payment mode", () => {

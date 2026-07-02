@@ -6,6 +6,7 @@ import {
   failStripeEvent,
   getOrderById,
   getOrderByPaymentIntentId,
+  getProcessedStripeEventStatus,
   markOrderPaid,
   markOrderPaymentStatus,
 } from "../lib/db";
@@ -48,6 +49,10 @@ function schedulePaidOrderSideEffects(c: WorkerContext, order: OrderRow) {
 }
 
 export async function handleCheckoutCompleted(c: WorkerContext, sessionId: string) {
+  if (!sessionId || !sessionId.startsWith("cs_")) {
+    logEvent("suspicious_payment_event", { reason: "invalid_session_id" });
+    return;
+  }
   const session = await retrieveCheckoutSession(c.env, sessionId);
   const orderId = session.metadata.orderId;
   if (!orderId) {
@@ -105,10 +110,20 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
     logEvent("amount_mismatch", { orderId });
     return;
   }
+  const stripeCustomerEmail = session.customer_details?.email ?? session.customer_email ?? null;
+  if (
+    stripeCustomerEmail &&
+    order.billing_email &&
+    stripeCustomerEmail.toLowerCase() !== order.billing_email.toLowerCase()
+  ) {
+    logEvent("suspicious_payment_event", { orderId, reason: "customer_email_mismatch" });
+    return;
+  }
 
   const changed = await markOrderPaid(c.env, order.id, {
     stripeSessionId: session.id,
     stripePaymentIntentId: session.payment_intent,
+    paidAmount,
     source: "webhook",
   });
   order = (await getOrderById(c.env, order.id)) ?? order;
@@ -240,8 +255,17 @@ export async function stripeWebhookRoute(c: WorkerContext) {
   const object = event.data.object as { id?: string };
   const firstTime = await claimStripeEvent(c.env, event.id, event.type, object.id ?? "");
   if (!firstTime) {
-    logEvent("duplicate_webhook_ignored", { eventId: event.id, eventType: event.type });
-    return c.text("Already processed", 200);
+    const eventStatus = await getProcessedStripeEventStatus(c.env, event.id);
+    if (eventStatus === "completed") {
+      logEvent("duplicate_webhook_ignored", { eventId: event.id, eventType: event.type });
+      return c.text("Already processed", 200);
+    }
+    logEvent("duplicate_webhook_processing", {
+      eventId: event.id,
+      eventType: event.type,
+      eventStatus: eventStatus ?? "unknown",
+    });
+    return c.text("Event processing", 409);
   }
 
   try {
