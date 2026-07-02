@@ -47,13 +47,45 @@ export function addSecurityHeaders(response: Response) {
 
 const maxJsonBodyBytes = 64 * 1024;
 const maxWebhookBodyBytes = 256 * 1024;
+const mutatingMethods = new Set(["POST", "PUT", "PATCH"]);
+
+async function bodyExceedsLimit(body: ReadableStream<Uint8Array> | null, limit: number) {
+  if (!body) return false;
+
+  const reader = body.getReader();
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return false;
+      received += value.byteLength;
+      if (received > limit) return true;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 export async function bodySizeGuard(c: Context<{ Bindings: Env }>, next: Next) {
-  const path = new URL(c.req.url).pathname;
-  const contentLength = Number(c.req.header("Content-Length") ?? "0");
-  const limit = path === "/api/stripe/webhook" ? maxWebhookBodyBytes : maxJsonBodyBytes;
+  if (!mutatingMethods.has(c.req.method)) {
+    await next();
+    return;
+  }
 
-  if (contentLength > limit) {
+  const path = new URL(c.req.url).pathname;
+  const limit = path === "/api/stripe/webhook" ? maxWebhookBodyBytes : maxJsonBodyBytes;
+  const contentLengthHeader = c.req.header("Content-Length");
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : null;
+
+  if (contentLength !== null) {
+    if (!Number.isFinite(contentLength) || contentLength < 0) {
+      return errorJson(c, "INVALID_CONTENT_LENGTH", "Hibás Content-Length fejléc.", 400);
+    }
+    if (contentLength > limit) {
+      return errorJson(c, "REQUEST_TOO_LARGE", "A kérés túl nagy.", 413);
+    }
+  }
+  if (contentLength === null && await bodyExceedsLimit(c.req.raw.clone().body, limit)) {
     return errorJson(c, "REQUEST_TOO_LARGE", "A kérés túl nagy.", 413);
   }
 

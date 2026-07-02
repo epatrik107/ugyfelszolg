@@ -243,6 +243,7 @@ describe("markOrderPaid guards against non-pending orders", () => {
     await markOrderPaid(fakeEnv, "order_1", {
       stripeSessionId: "cs_test",
       stripePaymentIntentId: "pi_test",
+      paidAmount: 890,
     });
 
     expect(updatedSqls.some((sql) => sql.includes("payment_status IN"))).toBe(true);

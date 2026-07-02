@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   failStripeEvent: vi.fn(),
   getOrderById: vi.fn(),
   getOrderByPaymentIntentId: vi.fn(),
+  getProcessedStripeEventStatus: vi.fn(),
   markOrderPaid: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
   markRefundInvoiceManualRequired: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("../src/lib/db", () => ({
   failStripeEvent: mocks.failStripeEvent,
   getOrderById: mocks.getOrderById,
   getOrderByPaymentIntentId: mocks.getOrderByPaymentIntentId,
+  getProcessedStripeEventStatus: mocks.getProcessedStripeEventStatus,
   markOrderPaid: mocks.markOrderPaid,
   markOrderPaymentStatus: mocks.markOrderPaymentStatus,
   markRefundInvoiceManualRequired: mocks.markRefundInvoiceManualRequired,
@@ -95,6 +97,7 @@ describe("Stripe webhook business flow", () => {
     mocks.claimStripeEvent.mockResolvedValue(true);
     mocks.completeStripeEvent.mockResolvedValue(undefined);
     mocks.failStripeEvent.mockResolvedValue(undefined);
+    mocks.getProcessedStripeEventStatus.mockResolvedValue("completed");
     mocks.getOrderById.mockImplementation(async () => currentOrder);
     mocks.getOrderByPaymentIntentId.mockResolvedValue(null);
     mocks.markOrderPaid.mockImplementation(async () => {
@@ -190,6 +193,17 @@ describe("Stripe webhook business flow", () => {
     expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
   });
 
+  it("rejects a Stripe customer email mismatch before fulfillment or invoicing", async () => {
+    mocks.retrieveCheckoutSession.mockResolvedValueOnce({
+      ...(await mocks.retrieveCheckoutSession()),
+      customer_details: { email: "attacker@example.com" },
+    });
+    await deliver([]);
+    expect(mocks.markOrderPaid).not.toHaveBeenCalled();
+    expect(mocks.beginGeneration).not.toHaveBeenCalled();
+    expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
+  });
+
   it("ignores a duplicate event id before any payment side effect", async () => {
     mocks.claimStripeEvent.mockResolvedValueOnce(false);
     const response = await deliver([]);
@@ -197,6 +211,16 @@ describe("Stripe webhook business flow", () => {
     expect(mocks.retrieveCheckoutSession).not.toHaveBeenCalled();
     expect(mocks.markOrderPaid).not.toHaveBeenCalled();
     expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
+  });
+
+  it("asks Stripe to retry when a duplicate event is still processing", async () => {
+    mocks.claimStripeEvent.mockResolvedValueOnce(false);
+    mocks.getProcessedStripeEventStatus.mockResolvedValueOnce("processing");
+    const response = await deliver([]);
+    expect(response.status).toBe(409);
+    expect(mocks.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(mocks.markOrderPaid).not.toHaveBeenCalled();
+    expect(mocks.completeStripeEvent).not.toHaveBeenCalled();
   });
 
   it("does not double-pay or double-activate for a second event on the same order", async () => {

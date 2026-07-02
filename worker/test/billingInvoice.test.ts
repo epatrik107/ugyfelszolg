@@ -47,7 +47,7 @@ const validCheckout = {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("B2C checkout validation", () => {
+describe("checkout billing validation", () => {
   it("accepts a complete Hungarian individual billing profile", () => {
     expect(checkoutSchema.safeParse(validCheckout).success).toBe(true);
   });
@@ -116,6 +116,30 @@ describe("B2C checkout validation", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts a Hungarian business buyer only with a valid tax number", () => {
+    const businessCheckout = {
+      ...validCheckout,
+      billing: {
+        buyerType: "business",
+        name: "Minta Kft.",
+        email: "szamla@minta.hu",
+        country: "HU",
+        postalCode: "1111",
+        city: "Budapest",
+        addressLine1: "Példa utca 1.",
+        taxNumber: "12345678-1-42",
+      },
+    };
+    expect(checkoutSchema.safeParse(businessCheckout).success).toBe(true);
+    expect(detectSuspiciousCheckoutInput(businessCheckout)).toBeNull();
+    expect(
+      checkoutSchema.safeParse({
+        ...businessCheckout,
+        billing: { ...businessCheckout.billing, taxNumber: "" },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("server-side price and VAT calculations", () => {
@@ -134,7 +158,7 @@ describe("server-side price and VAT calculations", () => {
     });
   });
 
-  it("uses documented gross-based whole-HUF B2C rounding", () => {
+  it("uses documented gross-based whole-HUF VAT rounding", () => {
     expect(calculateHufB2cVat(890)).toEqual({
       netAmount: 701,
       vatAmount: 189,
@@ -204,7 +228,7 @@ describe("Stripe Checkout request", () => {
   });
 });
 
-describe("Szamlazz.hu B2C payload", () => {
+describe("Szamlazz.hu invoice payload", () => {
   it("contains the full individual address and no company/tax/VAT identifier", () => {
     const order = orderFixture({ payment_status: "paid", paid_at: "2026-06-22T10:00:00.000Z" });
     const payload = buildSzamlazzPayload(order);
@@ -218,6 +242,37 @@ describe("Szamlazz.hu B2C payload", () => {
     expect(xml).toContain("<afaErtek>189</afaErtek>");
     expect(xml).toContain("<bruttoErtek>890</bruttoErtek>");
     expect(xml).not.toMatch(/<adoszam(?:EU)?>|<company|<cegnev|<vat/i);
+  });
+
+  it("includes the Hungarian tax number for a valid business invoice", () => {
+    const order = orderFixture({
+      payment_status: "paid",
+      paid_at: "2026-06-22T10:00:00.000Z",
+      billing_buyer_type: "business",
+      billing_name: "Minta Kft.",
+      billing_email: "szamla@minta.hu",
+      billing_tax_number: "12345678-1-42",
+    });
+    const payload = buildSzamlazzPayload(order);
+    expect(payload.buyerType).toBe("business");
+    const xml = buildInvoiceXml("test-agent-key", payload, true);
+    expect(xml).toContain("<nev>Minta Kft.</nev>");
+    expect(xml).toContain("<adoszam>12345678-1-42</adoszam>");
+    expect(xml).toContain("<sendEmail>true</sendEmail>");
+    expect(xml).not.toContain("<adoalany>-1</adoalany>");
+  });
+
+  it("fails closed when required invoice delivery or business billing data is missing", () => {
+    expect(() =>
+      buildSzamlazzPayload(orderFixture({ billing_email: "" })),
+    ).toThrowError(/Hiányzó számlázási email/);
+    expect(() =>
+      buildSzamlazzPayload(orderFixture({
+        billing_buyer_type: "business",
+        billing_name: "Minta Kft.",
+        billing_tax_number: null,
+      })),
+    ).toThrowError(/Hiányzó céges adószám/);
   });
 
   it("uses the official invoice-create multipart field and parses official headers", async () => {

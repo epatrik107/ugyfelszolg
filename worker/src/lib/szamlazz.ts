@@ -1,4 +1,4 @@
-import { calculateHufB2cVat } from "./billing";
+import { calculateHufB2cVat, isValidHungarianTaxNumber } from "./billing";
 import { PACKAGES } from "./packages";
 import type { Env, OrderRow } from "./types";
 
@@ -39,6 +39,8 @@ export interface SzamlazzInvoicePayload {
   performanceDate: string;
   customerName: string;
   customerEmail: string;
+  buyerType: "individual" | "business";
+  taxNumber: string | null;
   country: "HU";
   postalCode: string;
   city: string;
@@ -52,31 +54,53 @@ export interface SzamlazzInvoicePayload {
   currency: "HUF";
 }
 
+function requireText(value: string | null | undefined, code: string, message: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new InvoiceProviderError(code, false, message);
+  }
+  return trimmed;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value);
+}
+
 export function buildSzamlazzPayload(
   order: Pick<
     OrderRow,
     | "id"
     | "billing_name"
     | "billing_email"
+    | "billing_buyer_type"
     | "billing_country"
     | "billing_postal_code"
     | "billing_city"
     | "billing_address_line1"
+    | "billing_tax_number"
     | "server_calculated_price"
     | "currency"
     | "paid_at"
     | "selected_package"
   >,
 ): SzamlazzInvoicePayload {
-  if (
-    !order.billing_name ||
-    !order.billing_email ||
-    order.billing_country !== "HU" ||
-    !order.billing_postal_code ||
-    !order.billing_city ||
-    !order.billing_address_line1
-  ) {
-    throw new InvoiceProviderError("INVALID_BILLING_DATA", false, "Hiányos számlázási adatok.");
+  const customerName = requireText(order.billing_name, "MISSING_BILLING_NAME", "Hiányzó számlázási név.");
+  const customerEmail = requireText(order.billing_email, "MISSING_CUSTOMER_EMAIL", "Hiányzó számlázási email cím.").toLowerCase();
+  if (!isValidEmail(customerEmail)) {
+    throw new InvoiceProviderError("INVALID_CUSTOMER_EMAIL", false, "Érvénytelen számlázási email cím.");
+  }
+  if (order.billing_country !== "HU") {
+    throw new InvoiceProviderError("INVALID_BILLING_COUNTRY", false, "Csak magyar számlázási cím támogatott.");
+  }
+  const postalCode = requireText(order.billing_postal_code, "MISSING_BILLING_POSTAL_CODE", "Hiányzó számlázási irányítószám.");
+  const city = requireText(order.billing_city, "MISSING_BILLING_CITY", "Hiányzó számlázási település.");
+  const addressLine1 = requireText(order.billing_address_line1, "MISSING_BILLING_ADDRESS", "Hiányzó számlázási cím.");
+  const buyerType = order.billing_buyer_type === "business" ? "business" : "individual";
+  const taxNumber = buyerType === "business"
+    ? requireText(order.billing_tax_number, "MISSING_BUSINESS_TAX_NUMBER", "Hiányzó céges adószám.")
+    : null;
+  if (taxNumber && !isValidHungarianTaxNumber(taxNumber)) {
+    throw new InvoiceProviderError("INVALID_BUSINESS_TAX_NUMBER", false, "Érvénytelen magyar céges adószám.");
   }
   if (order.currency.toLowerCase() !== "huf") {
     throw new InvoiceProviderError("UNSUPPORTED_CURRENCY", false, "Nem támogatott pénznem.");
@@ -87,12 +111,14 @@ export function buildSzamlazzPayload(
     externalId: order.id,
     issueDate: new Date().toISOString().slice(0, 10),
     performanceDate: (order.paid_at ?? new Date().toISOString()).slice(0, 10),
-    customerName: order.billing_name,
-    customerEmail: order.billing_email,
+    customerName,
+    customerEmail,
+    buyerType,
+    taxNumber,
     country: "HU",
-    postalCode: order.billing_postal_code,
-    city: order.billing_city,
-    addressLine1: order.billing_address_line1,
+    postalCode,
+    city,
+    addressLine1,
     serviceName: PACKAGES[order.selected_package]?.name ?? "Levélírási szolgáltatás",
     quantity: 1,
     netAmount: amounts.netAmount,
@@ -144,7 +170,9 @@ export function buildInvoiceXml(
     <cim>${escapeXml(invoice.addressLine1)}</cim>
     <email>${escapeXml(invoice.customerEmail)}</email>
     <sendEmail>${sendEmail}</sendEmail>
-    <adoalany>-1</adoalany>
+    ${invoice.buyerType === "business" && invoice.taxNumber
+      ? `<adoszam>${escapeXml(invoice.taxNumber)}</adoszam>`
+      : "<adoalany>-1</adoalany>"}
   </vevo>
   <tetelek>
     <tetel>
@@ -241,6 +269,7 @@ export async function issueSzamlazzInvoice(
   env: Env,
   invoice: SzamlazzInvoicePayload,
   reconcileFirst = false,
+  sendEmail = env.PAYMENT_MODE !== "test",
 ): Promise<SzamlazzResult> {
   if (!env.SZAMLAZZ_AGENT_KEY) {
     throw new InvoiceProviderError("NOT_CONFIGURED", false);
@@ -256,7 +285,7 @@ export async function issueSzamlazzInvoice(
       buildInvoiceXml(
         env.SZAMLAZZ_AGENT_KEY,
         invoice,
-        env.PAYMENT_MODE !== "test",
+        sendEmail,
       ),
       "invoice.xml",
     ),

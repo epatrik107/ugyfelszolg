@@ -10,6 +10,19 @@ export interface IndividualBillingDetails {
   addressLine1: string;
 }
 
+export interface BusinessBillingDetails {
+  buyerType: "business";
+  name: string;
+  email: string;
+  country: "HU";
+  postalCode: string;
+  city: string;
+  addressLine1: string;
+  taxNumber: string;
+}
+
+export type BillingDetails = IndividualBillingDetails | BusinessBillingDetails;
+
 export interface LetterFormValues {
   name: string;
   email: string;
@@ -21,7 +34,7 @@ export interface LetterFormValues {
   previousMessages: string;
   selectedPackage: PackageId;
   checkoutAttemptId: string;
-  billing: IndividualBillingDetails;
+  billing: BillingDetails;
   legalAccepted: boolean;
   turnstileToken: string;
   demoAccessCode?: string;

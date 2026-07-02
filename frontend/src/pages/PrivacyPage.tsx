@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 
 const PRIVACY_VERSION = "1.1";
-const PRIVACY_DATE = "2026-06-22";
+const PRIVACY_DATE = "2026-06-30";
 
 export function PrivacyPage() {
   return (
@@ -23,7 +23,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="2. Kezelt adatok"
-        text="Név, e-mail cím, magánszemély számlázási név, számlázási e-mail, ország, irányítószám, település és cím, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), számlaszám és számlázási állapot, megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, személyes adatot nem tartalmazó hibakódok). Cégnév, adószám és VAT ID nem fogadható el."
+        text="Név, e-mail cím, számlázási név vagy cégnév, számlázási e-mail, ország, irányítószám, település és cím, céges vásárló esetén magyar adószám, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), számlaszám és számlázási állapot, megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, személyes adatot nem tartalmazó hibakódok)."
       />
       <ContentBlock
         title="3. Az adatkezelés céljai és jogalapjai"

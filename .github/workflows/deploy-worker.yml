@@ -57,8 +57,12 @@ jobs:
           const workerName = (process.env.WORKER_NAME || "").trim();
           const d1DatabaseName = (process.env.D1_DATABASE_NAME || "").trim();
           const hasSzamlazzAgentKey = Boolean((process.env.SZAMLAZZ_AGENT_KEY || "").trim());
+          const hasGeminiApiKey = Boolean((process.env.GEMINI_API_KEY || "").trim());
+          const hasTurnstileSecretKey = Boolean((process.env.TURNSTILE_SECRET_KEY || "").trim());
+          const tokenHashSecret = (process.env.TOKEN_HASH_SECRET || "").trim();
           const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
           const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+          const adminApiToken = (process.env.ADMIN_API_TOKEN || "").trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
 
@@ -80,6 +84,14 @@ jobs:
             errors.push("A Stripe webhook signing secret is required.");
           }
           if (!hasSzamlazzAgentKey) errors.push("SZAMLAZZ_AGENT_KEY is required.");
+          if (!hasGeminiApiKey) errors.push("GEMINI_API_KEY is required.");
+          if (!hasTurnstileSecretKey) errors.push("TURNSTILE_SECRET_KEY is required.");
+          if (tokenHashSecret.length < 32) {
+            errors.push("TOKEN_HASH_SECRET must be at least 32 characters.");
+          }
+          if (adminApiToken.length < 32) {
+            errors.push("ADMIN_API_TOKEN must be at least 32 characters.");
+          }
           if (!allowedOrigins) errors.push("ALLOWED_ORIGINS is required.");
           if (!siteUrl) errors.push("SITE_URL is required.");
 
@@ -131,7 +143,11 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
       - name: Create Worker config
         env:
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
@@ -252,7 +268,8 @@ jobs:
             "TOKEN_HASH_SECRET",
             "RESEND_API_KEY",
             "DEMO_ACCESS_CODE",
-            "SZAMLAZZ_AGENT_KEY"
+            "SZAMLAZZ_AGENT_KEY",
+            "ADMIN_API_TOKEN"
           ];
           const secrets = {};
           for (const key of keys) {
@@ -273,6 +290,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           DEMO_ACCESS_CODE: ${{ secrets.DEMO_ACCESS_CODE }}
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply "$D1_DATABASE_NAME" --remote --config worker/wrangler.toml
         env:

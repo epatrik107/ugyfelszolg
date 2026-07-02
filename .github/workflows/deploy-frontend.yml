@@ -24,6 +24,48 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Validate frontend production config
+        run: |
+          node <<'NODE'
+          const errors = [];
+          const apiBaseUrl = (process.env.VITE_API_BASE_URL || "").trim();
+          const siteUrl = (process.env.VITE_SITE_URL || "").trim();
+          const demoMode = (process.env.VITE_DEMO_MODE || "").trim();
+          const turnstileSiteKey = (process.env.VITE_TURNSTILE_SITE_KEY || "").trim();
+
+          const isHttps = (value) => {
+            try {
+              return new URL(value).protocol === "https:";
+            } catch {
+              return false;
+            }
+          };
+
+          if (!apiBaseUrl || !isHttps(apiBaseUrl)) {
+            errors.push("VITE_API_BASE_URL must be a production HTTPS origin.");
+          }
+          if (!siteUrl || !isHttps(siteUrl)) {
+            errors.push("VITE_SITE_URL must be a production HTTPS URL.");
+          }
+          if (demoMode !== "false") {
+            errors.push("VITE_DEMO_MODE must be false for production frontend deploys.");
+          }
+          if (!turnstileSiteKey) {
+            errors.push("VITE_TURNSTILE_SITE_KEY is required.");
+          }
+
+          if (errors.length > 0) {
+            console.error("Frontend deploy config validation failed:");
+            for (const error of errors) console.error("  ✗ " + error);
+            process.exit(1);
+          }
+          console.log("Frontend deploy config validation passed.");
+          NODE
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ugyfelkozpont-api.epatrik107.workers.dev' }}
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL || 'https://ügyfelszolgalat.hu' }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADUXwSqJjEYq4JaR' }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'false' }}
       - run: npm run build --workspace frontend
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ugyfelkozpont-api.epatrik107.workers.dev' }}

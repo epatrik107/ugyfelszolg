@@ -43,6 +43,10 @@ export function canStartGeneration(order: Pick<OrderRow, "payment_status" | "ai_
   );
 }
 
+export function hasActiveOrderAccess(order: Pick<OrderRow, "payment_status">) {
+  return order.payment_status === "paid" || order.payment_status === "partially_refunded";
+}
+
 /** Maximum number of user-initiated regenerations allowed per order (fallback). */
 export const MAX_REGENERATIONS = 3;
 

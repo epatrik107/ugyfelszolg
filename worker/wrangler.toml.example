@@ -25,5 +25,9 @@ DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 PAYMENT_MODE = "test"
 
+# Add these as secrets in payment environments:
+# - SZAMLAZZ_AGENT_KEY: Számlázz.hu Agent key
+# - ADMIN_API_TOKEN: bearer token for invoice status/retry admin endpoints
+
 [triggers]
 crons = [ "17 2 * * *" ]

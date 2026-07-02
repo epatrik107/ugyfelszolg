@@ -16,6 +16,12 @@ function getSellerInfo(env: Env) {
   };
 }
 
+function assertEmail(value: string) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)) {
+    throw new Error("INVALID_CUSTOMER_EMAIL");
+  }
+}
+
 async function sendEmail(
   env: Env,
   to: string,
@@ -75,6 +81,7 @@ export async function sendInvoiceEmail(
   order: Pick<OrderRow, "id" | "email" | "name" | "server_calculated_price" | "currency" | "paid_at" | "selected_package">,
   invoice: InvoiceRow,
 ) {
+  assertEmail(invoice.customer_email);
   const { sellerName, sellerAddress, sellerTaxNumber } = getSellerInfo(env);
   const { PACKAGES } = await import("./packages");
   const serviceName = PACKAGES[order.selected_package]?.name ?? "Levélírási szolgáltatás";
@@ -82,8 +89,8 @@ export async function sendInvoiceEmail(
   const html = invoiceEmailHtml({
     invoiceNumber: invoice.invoice_number,
     issuedAt: invoice.issued_at,
-    customerName: order.name,
-    customerEmail: order.email,
+    customerName: invoice.customer_name,
+    customerEmail: invoice.customer_email,
     serviceName,
     amount: invoice.amount,
     currency: invoice.currency,
@@ -95,7 +102,7 @@ export async function sendInvoiceEmail(
 
   return sendEmail(
     env,
-    order.email,
+    invoice.customer_email,
     `Számla – ${invoice.invoice_number}`,
     html,
     `invoice-${invoice.id}`,

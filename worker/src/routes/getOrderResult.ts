@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
+import { hasActiveOrderAccess } from "../lib/orderState";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
@@ -32,19 +33,21 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
   }
 
   logEvent("result_fetch", { orderId: order.id, publicId });
+  const canExposeLetter = hasActiveOrderAccess(order) && order.ai_status === "completed";
 
   return okJson(c, {
     paymentStatus: order.payment_status,
     invoiceStatus: order.invoice_status,
     aiStatus: order.ai_status,
     generationCount: order.generation_count,
-    generatedLetter:
-      order.ai_status === "completed" ? order.generated_letter : undefined,
+    generatedLetter: canExposeLetter ? order.generated_letter : undefined,
     letterHistory: (() => {
+      if (!canExposeLetter) return [];
       if (!order.letter_history) return [];
       try {
         return JSON.parse(order.letter_history) as string[];
       } catch {
+        logEvent("letter_history_parse_error", { orderId: order.id });
         return [];
       }
     })(),

@@ -7,7 +7,7 @@ import {
   insertOrder,
 } from "../lib/db";
 import {
-  assertIndividualBilling,
+  assertBillingDetails,
   calculateOrderPrice,
   detectSuspiciousCheckoutInput,
   looksLikeBusinessName,
@@ -35,6 +35,7 @@ function paymentsEnabled(env: Env) {
 function isValidDemoAccess(env: Env, demoAccessCode: string) {
   return (
     isDemoMode(env) &&
+    !paymentsEnabled(env) &&
     Boolean(env.DEMO_ACCESS_CODE) &&
     demoAccessCode.length > 0 &&
     constantTimeEqual(demoAccessCode, env.DEMO_ACCESS_CODE ?? "")
@@ -53,10 +54,10 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     logEvent(event, { reason: suspiciousInput });
     return errorJson(
       c,
-      suspiciousInput === "manipulated_price" ? "INVALID_INPUT" : "BUSINESS_BUYER_NOT_ALLOWED",
+      suspiciousInput === "manipulated_price" ? "INVALID_INPUT" : "INVALID_BILLING_DATA",
       suspiciousInput === "manipulated_price"
         ? "Az ár kizárólag szerveroldalon határozható meg."
-        : "A szolgáltatás kizárólag magánszemély vásárlóknak érhető el.",
+        : "Érvénytelen vagy nem támogatott számlázási adat.",
       400,
     );
   }
@@ -70,8 +71,8 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
       logEvent("rejected_business_buyer_attempt", { reason: "business_name" });
       return errorJson(
         c,
-        "BUSINESS_BUYER_NOT_ALLOWED",
-        "A szolgáltatás kizárólag magánszemély vásárlóknak érhető el.",
+        "INVALID_BILLING_DATA",
+        "Céges számlázáshoz válassza a céges vásárló típust és adja meg az adószámot.",
         400,
       );
     }
@@ -79,7 +80,14 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   }
 
   const input = parsed.data;
-  assertIndividualBilling(input.billing);
+  try {
+    assertBillingDetails(input.billing);
+  } catch (error) {
+    const message = error instanceof Error && error.message === "INVALID_BUSINESS_TAX_NUMBER"
+      ? "Érvényes magyar adószám szükséges a céges számlázáshoz."
+      : "Érvénytelen számlázási adat.";
+    return errorJson(c, "INVALID_BILLING_DATA", message, 400);
+  }
   const ip = getClientIp(c);
   const demoAccessGranted = isValidDemoAccess(c.env, input.demoAccessCode);
   const price = calculateOrderPrice(input.selectedPackage);

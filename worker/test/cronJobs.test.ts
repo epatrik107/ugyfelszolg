@@ -40,13 +40,14 @@ const app = (await import("../src/index")).default;
 function env(): Env {
   return {
     GEMINI_API_KEY: "gemini-key",
-    TOKEN_HASH_SECRET: "token-secret",
+    TOKEN_HASH_SECRET: "token-secret-with-at-least-32-chars",
     SITE_URL: "https://example.com",
     ALLOWED_ORIGINS: "https://example.com",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
     DEMO_MODE: "false",
     PAYMENTS_ENABLED: "false",
     DB: {} as D1Database,
+    RATE_LIMIT_KV: {} as KVNamespace,
   } as Env;
 }
 

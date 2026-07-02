@@ -264,17 +264,28 @@ describe("regeneration feedback", () => {
       letter_email_sent: 0,
       checkout_idempotency_key: null,
       checkout_input_hash: null,
+      paid_amount: 890,
+      customer_email: "teszt@example.com",
+      billing_buyer_type: "individual",
       billing_name: "Teszt Elek",
       billing_email: "teszt@example.com",
       billing_country: "HU",
       billing_postal_code: "1111",
       billing_city: "Budapest",
       billing_address_line1: "Példa utca 1.",
+      billing_tax_number: null,
       invoice_status: "not_required",
       invoice_provider: null,
       invoice_number: null,
       invoice_external_id: null,
       invoice_pdf_url: null,
+      szamlazz_invoice_id: null,
+      szamlazz_invoice_number: null,
+      invoice_sent_to_email: null,
+      invoice_sent_at: null,
+      invoice_created_at: null,
+      invoice_email_status: "not_required",
+      invoice_email_error_message: null,
       invoice_error_code: null,
       invoice_error_message: null,
       invoice_retry_count: 0,
@@ -512,7 +523,7 @@ describe("invoice provider selection", () => {
   it("uses the szamlazz provider in production (SZAMLAZZ_AGENT_KEY is set)", () => {
     expect(
       selectInvoiceProvider({ SZAMLAZZ_AGENT_KEY: "live-agent-key-123" } as unknown as Env),
-    ).toBe("szamlazz");
+    ).toBe("szamlazz_hu");
   });
 });
 
@@ -537,25 +548,18 @@ describe("createInvoice internal path", () => {
                   return { meta: { changes: 1 } };
                 },
                 async first() {
+                  if (sql.includes("invoice_sequence")) {
+                    seqValue += 1;
+                    return { last_number: seqValue };
+                  }
                   return null;
                 },
               };
             },
-            async batch() {
-              seqValue += 1;
-              return [
-                { results: [] },
-                { results: [{ last_number: seqValue }] },
-              ];
-            },
           };
         },
-        async batch(stmts: unknown[]) {
-          seqValue += 1;
-          return [
-            { results: [] },
-            { results: [{ last_number: seqValue }] },
-          ];
+        async batch(_stmts: unknown[]) {
+          return [];
         },
       },
     } as unknown as Env;
@@ -570,11 +574,15 @@ describe("createInvoice internal path", () => {
       selected_package: "basic" as const,
       billing_name: "Teszt Felhasználó",
       billing_email: "test@example.com",
+      billing_buyer_type: "individual" as const,
       billing_country: "HU",
       billing_postal_code: "1111",
       billing_city: "Budapest",
       billing_address_line1: "Példa utca 1.",
+      billing_tax_number: null,
       invoice_retry_count: 1,
+      stripe_session_id: "cs_test_1",
+      stripe_payment_intent_id: "pi_test_1",
     };
 
     const invoice = await createInvoice(fakeEnv, order);
@@ -583,6 +591,7 @@ describe("createInvoice internal path", () => {
     expect(invoice.invoice_number).toMatch(/^TEST-\d{4}-\d{6}$/);
     expect(invoice.order_id).toBe("order-test-1");
     expect(invoice.amount).toBe(890);
+    expect(sqlCalls.some((sql) => sql.includes("ON CONFLICT") && sql.includes("RETURNING"))).toBe(true);
 
     fetchSpy.mockRestore();
   });
@@ -639,11 +648,15 @@ describe("createInvoice szamlazz.hu path", () => {
       selected_package: "premium" as const,
       billing_name: "Éles Felhasználó",
       billing_email: "production@example.com",
+      billing_buyer_type: "individual" as const,
       billing_country: "HU",
       billing_postal_code: "1111",
       billing_city: "Budapest",
       billing_address_line1: "Példa utca 1.",
+      billing_tax_number: null,
       invoice_retry_count: 1,
+      stripe_session_id: "cs_live_1",
+      stripe_payment_intent_id: "pi_live_1",
     };
 
     const invoice = await createInvoice(fakeEnv, order);
@@ -681,11 +694,15 @@ describe("createInvoice szamlazz.hu path", () => {
       selected_package: "basic" as const,
       billing_name: "Hiba Teszt",
       billing_email: "err@example.com",
+      billing_buyer_type: "individual" as const,
       billing_country: "HU",
       billing_postal_code: "1111",
       billing_city: "Budapest",
       billing_address_line1: "Példa utca 1.",
+      billing_tax_number: null,
       invoice_retry_count: 1,
+      stripe_session_id: "cs_test_err",
+      stripe_payment_intent_id: "pi_test_err",
     };
 
     await expect(createInvoice(fakeEnv, order)).rejects.toThrow();
@@ -714,11 +731,15 @@ describe("createInvoice szamlazz.hu path", () => {
       selected_package: "basic" as const,
       billing_name: "Sec Teszt",
       billing_email: "sec@example.com",
+      billing_buyer_type: "individual" as const,
       billing_country: "HU",
       billing_postal_code: "1111",
       billing_city: "Budapest",
       billing_address_line1: "Példa utca 1.",
+      billing_tax_number: null,
       invoice_retry_count: 1,
+      stripe_session_id: "cs_test_sec",
+      stripe_payment_intent_id: "pi_test_sec",
     };
 
     await expect(createInvoice(fakeEnv, order)).rejects.toSatisfy(

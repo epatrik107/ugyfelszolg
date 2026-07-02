@@ -52,6 +52,7 @@ describe("database-level payment and invoice guards", () => {
       markOrderPaid(env, "order_1", {
         stripeSessionId: "cs_test_1",
         stripePaymentIntentId: "pi_test_1",
+        paidAmount: 890,
       }),
     ).resolves.toBe(true);
     expect(calls[0].sql).toContain("INSERT INTO order_status_log");
@@ -81,11 +82,14 @@ describe("database-level payment and invoice guards", () => {
     await persistCreatedInvoice(env, orderFixture(), {
       id: "invoice_1",
       invoiceNumber: "E-TST-2026-1",
-      provider: "szamlazz",
+      provider: "szamlazz_hu",
       externalId: "order_1",
       pdfUrl: null,
       issuedAt: "2026-06-22T10:01:00.000Z",
       status: "created",
+      emailStatus: "pending",
+      sentToEmail: null,
+      sentAt: null,
     });
     expect(calls).toHaveLength(2);
     expect(calls[0].sql).toContain("INSERT OR IGNORE INTO invoices");

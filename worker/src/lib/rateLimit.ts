@@ -10,7 +10,8 @@ export type RateLimitScope =
   | "contact-ip"
   | "contact-email"
   | "regenerate-ip"
-  | "send-letter-ip";
+  | "send-letter-ip"
+  | "admin-ip";
 
 export const RATE_LIMITS: Record<
   RateLimitScope,
@@ -24,6 +25,7 @@ export const RATE_LIMITS: Record<
   "contact-email": { limit: 3, windowSeconds: 600 },
   "regenerate-ip": { limit: 10, windowSeconds: 600 },
   "send-letter-ip": { limit: 10, windowSeconds: 600 },
+  "admin-ip": { limit: 30, windowSeconds: 600 },
 };
 
 function getWindowKey(scope: RateLimitScope, identifier: string, now: Date) {

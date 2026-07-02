@@ -99,4 +99,20 @@ describe("sendLetter route", () => {
     expect((await request({ versionIndex: -1 })).status).toBe(400);
     expect((await request({}, "wrong-token")).status).toBe(401);
   });
+
+  it("does not email a completed letter after full refund", async () => {
+    mocks.getOrderByPublicId.mockResolvedValue(
+      orderFixture({
+        result_token_hash: await hashToken("owner-token", "token-secret"),
+        payment_status: "refunded",
+        ai_status: "completed",
+        generated_letter: "Korábban elkészült levél",
+      }),
+    );
+
+    const response = await request();
+    expect(response.status).toBe(409);
+    expect(mocks.sendLetterReadyEmail).not.toHaveBeenCalled();
+    expect(mocks.markLetterEmailSent).not.toHaveBeenCalled();
+  });
 });
