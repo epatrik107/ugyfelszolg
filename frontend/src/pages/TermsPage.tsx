@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
+import legalVersions from "../config/legalVersions.json";
 
-const TERMS_VERSION = "1.1";
-const TERMS_DATE = "2026-06-30";
+const TERMS_VERSION = legalVersions.terms.version;
+const TERMS_DATE = legalVersions.terms.effectiveDate;
 
 export function TermsPage() {
   return (
@@ -12,14 +13,11 @@ export function TermsPage() {
         <p className="mt-2 text-sm text-slate-500">
           Verzió: {TERMS_VERSION} · Hatályos: {TERMS_DATE}
         </p>
-        <p className="mt-1 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-          Éles indulás előtt jogásszal ellenőriztetni kell.
-        </p>
       </div>
       <LegalNotice />
       <ContentBlock
         title="1. Szolgáltató adatai"
-        text="Szolgáltató neve: [KITÖLTENDŐ – Vállalkozás neve]. Székhelye: [KITÖLTENDŐ – Cím]. Adószáma: [KITÖLTENDŐ]. E-mail: [KITÖLTENDŐ]. Weboldal: ügyfelszolgalat.hu"
+        text="Szolgáltató neve: Engelbrecht Zoltán egyéni vállalkozó. Vállalkozás formája: egyéni vállalkozó. Székhelye: 2500 Esztergom, Bánomi út 4. Adószáma: 91250960-1-31. Közösségi adószáma: HU91250960. EV nyilvántartási száma: 60722263. E-mail: Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>. Weboldal: ügyfelszolgalat.hu."
       />
       <ContentBlock
         title="2. A szolgáltatás leírása"
@@ -41,25 +39,58 @@ export function TermsPage() {
         title="6. Elállási jog"
         text="Az Európai Parlament és a Tanács 2011/83/EU irányelve, valamint a 45/2014. (II.26.) Korm. rendelet alapján a fogyasztó 14 napos elállási joggal rendelkezik digitális tartalom megvásárlásakor. FONTOS: a fogyasztó az elállási jogát elveszíti, ha a digitális tartalom előállítása a fogyasztó kifejezett, előzetes beleegyezésével megkezdődött, és a fogyasztó tudomásul vette, hogy ezzel elveszíti elállási jogát. A megrendelési folyamat során a felhasználó kifejezetten beleegyezik az azonnali teljesítésbe és tudomásul veszi az elállási jog megszűnését."
       />
+      <ComplaintHandlingBlock />
       <ContentBlock
-        title="7. Panaszkezelés és számlázás"
-        text="Minőségi kifogás, számlaigény vagy egyéb panasz esetén a kapcsolat oldalon megadott elérhetőségeken veheti fel a felhasználó a kapcsolatot. A Szolgáltató 30 napon belül válaszol. A sikeres fizetés után a Számlázz.hu automatikusan, kizárólag a megadott számlázási adatokkal állítja ki és küldi ki az elektronikus számlát. Sikertelen, megszakított vagy lejárt fizetésre nem készül számla."
+        title="8. Számlázás"
+        text="A sikeres fizetés után a Számlázz.hu automatikusan, kizárólag a megadott számlázási adatokkal állítja ki és küldi ki az elektronikus számlát. Sikertelen, megszakított vagy lejárt fizetésre nem készül számla."
       />
       <ContentBlock
-        title="8. Felelősségkorlátozás"
+        title="9. Felelősségkorlátozás"
         text="A Szolgáltató nem vállal felelősséget harmadik felek (Stripe, Számlázz.hu, Cloudflare, Google, Resend) rendszer-leállásaiból fakadó késedelemért vagy kiesésért. A Szolgáltató felelőssége a megfizetett szolgáltatási díj összegére korlátozódik."
       />
       <ContentBlock
-        title="9. Irányadó jog"
+        title="10. Irányadó jog"
         text="Az ÁSZF-re a magyar jog az irányadó. A felhasználó és a Szolgáltató vitájuk rendezésére elsőként tárgyalásos megoldást keresnek. Fogyasztói jogvita esetén a fogyasztó bírósághoz vagy a hatáskörrel rendelkező békéltető testülethez fordulhat."
       />
       <ContentBlock
-        title="10. Módosítás"
+        title="11. Módosítás"
         text="A Szolgáltató fenntartja a jogot az ÁSZF egyoldalú módosítására. A módosítás hatályba lépéséről értesítést tesz közzé a weboldalon. Az értesítés után a szolgáltatás igénybevétele a módosított ÁSZF elfogadásának minősül."
       />
       <p className="text-xs text-slate-400 pt-4">
         ÁSZF verzió: {TERMS_VERSION} · Hatályos: {TERMS_DATE} ·{" "}
         <Link to="/adatkezeles" className="underline hover:text-slate-600">Adatkezelési tájékoztató</Link>
+      </p>
+    </section>
+  );
+}
+
+function ComplaintHandlingBlock() {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xl font-semibold">7. Panaszkezelés és jogorvoslat</h2>
+      <p className="leading-7 text-slate-700">
+        A jogsértő tartalomra érkező panaszokat a Szolgáltató 3 munkanapon belül kivizsgálja, és
+        annak eredményéről a panaszost írásban értesíti. A panasztételi lehetőségek megegyeznek az
+        1. pontban meghatározott szolgáltatói elérhetőségekkel.
+      </p>
+      <p className="leading-7 text-slate-700">
+        A Szolgáltató panasz közlésére vagy benyújtására szóban (telefonon), illetve írásban
+        (postai úton vagy elektronikus levélben) biztosít lehetőséget. A telefonon közölt szóbeli
+        panaszt minden munkanapon előre egyeztetett időpontban, 9-17 óra között, elektronikus
+        eléréssel fogadja; üzemzavar esetén megfelelő más elérhetőséget biztosít. Az írásbeli
+        panaszokat folyamatosan fogadja.
+      </p>
+      <p className="leading-7 text-slate-700">
+        A szolgáltatással kapcsolatos fogyasztói panasszal a Felhasználó az illetékes
+        fogyasztóvédelmi hatóság, a hatáskörrel rendelkező békéltető testület, elektronikus
+        hirdetésekkel kapcsolatos ügyben pedig a Nemzeti Média- és Hírközlési Hatóság eljárását
+        kezdeményezheti. Az NMHH központi ügyfélszolgálata: 1133 Budapest, Visegrádi u. 106.;
+        levelezési cím: 1376 Budapest, Pf. 997.; e-mail: info@nmhh.hu. Az NMHH székhelye: 1015
+        Budapest, Ostrom utca 23-25.; levelezési cím: 1525 Budapest, Pf. 75.
+      </p>
+      <p className="leading-7 text-slate-700">
+        A panaszkezelésre egyebekben a fogyasztóvédelemről szóló 1997. évi CLV. törvény
+        rendelkezései irányadók.
       </p>
     </section>
   );

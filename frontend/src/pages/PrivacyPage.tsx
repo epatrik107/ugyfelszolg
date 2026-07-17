@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
+import legalVersions from "../config/legalVersions.json";
 
-const PRIVACY_VERSION = "1.1";
-const PRIVACY_DATE = "2026-06-30";
+const PRIVACY_VERSION = legalVersions.privacy.version;
+const PRIVACY_DATE = legalVersions.privacy.effectiveDate;
 
 export function PrivacyPage() {
   return (
@@ -12,14 +13,11 @@ export function PrivacyPage() {
         <p className="mt-2 text-sm text-slate-500">
           Verzió: {PRIVACY_VERSION} · Hatályos: {PRIVACY_DATE}
         </p>
-        <p className="mt-1 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-          Éles indulás előtt adatvédelmi szakértővel vagy jogásszal ellenőriztetni kell.
-        </p>
       </div>
       <LegalNotice />
       <ContentBlock
         title="1. Adatkezelő"
-        text="Adatkezelő neve: [KITÖLTENDŐ – Vállalkozás neve]. Székhelye: [KITÖLTENDŐ – Cím]. Adószáma: [KITÖLTENDŐ]. E-mail: [KITÖLTENDŐ]. Weboldal: ügyfelszolgalat.hu"
+        text="Adatkezelő neve: Engelbrecht Zoltán egyéni vállalkozó. Vállalkozás formája: egyéni vállalkozó. Székhelye: 2500 Esztergom, Bánomi út 4. Adószáma: 91250960-1-31. Közösségi adószáma: HU91250960. EV nyilvántartási száma: 60722263. E-mail: Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>. Weboldal: ügyfelszolgalat.hu."
       />
       <ContentBlock
         title="2. Kezelt adatok"
@@ -35,7 +33,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="5. Adatmegőrzési idők"
-        text="Rendelési és generált levél adatok: 90 nap a teljesítéstől számítva, kivéve ha számlázási kötelezettség hosszabb megőrzést ír elő. Számlázási adatok: a hatályos számviteli jogszabályok szerint (jelenleg 8 év). Kapcsolatfelvételi üzenetek: 2 év. Technikai naplók: 30 nap."
+        text="A levél elkészítéséhez megadott szöveges adatok, előzmények és elkészült levelek: 90 nap a rendelés létrehozásától számítva, ezt követően a rendszer redaktálja vagy törli őket. Számlázási adatok és számlák: a hatályos számviteli jogszabályok szerint (jelenleg 8 év). Kapcsolatfelvételi üzenetek: 2 év. Technikai naplók: 30 nap."
       />
       <ContentBlock
         title="6. Az érintett jogai"
@@ -51,7 +49,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="9. Kapcsolat és törlési kérelem"
-        text="Adatkezelési kérdés, törlési kérelem vagy panasz esetén a kapcsolat oldalon található űrlapon lehet üzenetet küldeni. A kérelmekre 30 napon belül válaszolunk."
+        text="Adatkezelési kérdés, törlési kérelem vagy panasz esetén a kapcsolat oldalon található űrlapon vagy a Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com> e-mail-címen lehet üzenetet küldeni. A kérelmekre 30 napon belül válaszolunk."
       />
       <p className="text-xs text-slate-400 pt-4">
         Adatkezelési tájékoztató verzió: {PRIVACY_VERSION} · Hatályos: {PRIVACY_DATE} ·{" "}

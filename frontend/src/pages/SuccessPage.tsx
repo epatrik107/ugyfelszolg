@@ -3,11 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 import { getOrderResult, requestRegeneration, sendLetterByEmail } from "../lib/api";
-import { MAX_REGENERATIONS } from "../lib/constants";
+import { packages } from "../lib/constants";
 import {
   getRemainingRegenerationMessage,
   getRemainingRegenerations,
 } from "../lib/regeneration";
+import {
+  readResultCapabilityToken,
+  removeResultCapabilityFromBrowserUrl,
+} from "../lib/resultCapability";
 import type { OrderResult } from "../lib/types";
 
 type StepStatus = "pending" | "active" | "done" | "error";
@@ -88,12 +92,15 @@ function GenerationProgress({ result, pollCount }: { result: OrderResult | null;
 }
 
 export function SuccessPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const publicId = searchParams.get("order") ?? "";
-  const queryToken = searchParams.get("token");
+  const incomingToken = useMemo(
+    () => readResultCapabilityToken(searchParams, window.location.hash),
+    [searchParams],
+  );
   const storageKey = useMemo(() => `result-token:${publicId}`, [publicId]);
   const [token, setToken] = useState<string | null>(
-    queryToken || sessionStorage.getItem(storageKey),
+    incomingToken || sessionStorage.getItem(storageKey),
   );
   const [result, setResult] = useState<OrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,13 +116,12 @@ export function SuccessPage() {
   const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (queryToken) {
-      sessionStorage.setItem(storageKey, queryToken);
-      setToken(queryToken);
-      searchParams.delete("token");
-      setSearchParams(searchParams, { replace: true });
+    if (incomingToken) {
+      sessionStorage.setItem(storageKey, incomingToken);
+      setToken(incomingToken);
+      removeResultCapabilityFromBrowserUrl();
     }
-  }, [queryToken, searchParams, setSearchParams, storageKey]);
+  }, [incomingToken, storageKey]);
 
   const MAX_POLL_ATTEMPTS = 75; // ~5 minutes at 4s interval
   const pollCountRef = useRef(0);
@@ -144,7 +150,10 @@ export function SuccessPage() {
           payload.paymentStatus === "cancelled" ||
           payload.paymentStatus === "expired" ||
           payload.paymentStatus === "amount_mismatch" ||
-          payload.paymentStatus === "currency_mismatch";
+          payload.paymentStatus === "currency_mismatch" ||
+          payload.paymentStatus === "chargeback_open" ||
+          payload.paymentStatus === "chargeback_lost" ||
+          payload.paymentStatus === "chargeback_won";
         if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
           window.clearInterval(intervalRef.current);
           if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
@@ -248,29 +257,67 @@ export function SuccessPage() {
     }
   }
 
+  const packageMaxRegenerations = result
+    ? packages[result.selectedPackage].maxRegenerations
+    : 0;
   const remainingRegenerations = result
-    ? getRemainingRegenerations(result.generationCount ?? 0, MAX_REGENERATIONS)
+    ? getRemainingRegenerations(result.generationCount ?? 0, packageMaxRegenerations)
     : 0;
 
-  const regenerationMessage = getRemainingRegenerationMessage(remainingRegenerations);
+  const regenerationMessage = getRemainingRegenerationMessage(
+    remainingRegenerations,
+    packageMaxRegenerations,
+  );
 
   let statusMessage = "A fizetés ellenőrzése folyamatban...";
   if (result?.paymentStatus === "paid" && result.aiStatus === "generating") {
     statusMessage = "A levele készül...";
   }
+  const refundNeedsManualFollowup =
+    result?.refundStatus === "failed" ||
+    result?.refundStatus === "canceled" ||
+    result?.refundStatus === "requires_action";
+  const refundInProgress =
+    result?.refundStatus === "pending" || result?.refundStatus === "unknown";
   if (result?.aiStatus === "failed_review") {
     statusMessage =
-      "A levél automatikus minőségellenőrzése nem sikerült. Amennyiben fizetett, a visszatérítés 5–10 munkanapon belül megjelenik kártyáján.";
+      "A levél automatikus minőségellenőrzése nem sikerült.";
   }
   if (result?.aiStatus === "failed") {
     statusMessage =
-      "Technikai hiba történt a generálás során. Amennyiben fizetett, a visszatérítés 5–10 munkanapon belül megjelenik kártyáján.";
+      "Technikai hiba történt a generálás során.";
+  }
+  if (refundInProgress) {
+    statusMessage += " A visszatérítést elindítottuk, a Stripe visszaigazolására várunk.";
+  }
+  if (refundNeedsManualFollowup) {
+    statusMessage += " Az automatikus visszatérítés nem zárult le; kérjük, vegye fel velünk a kapcsolatot.";
+  }
+  if (result?.refundStatus === "succeeded" && result.paymentStatus !== "refunded") {
+    statusMessage += " A részleges visszatérítést a Stripe visszaigazolta.";
+  }
+  if (result?.paymentStatus === "chargeback_open") {
+    statusMessage =
+      "A fizetés vitatott tranzakcióként van nyilvántartva, ezért a hozzáférés átmenetileg szünetel. Kérjük, vegye fel velünk a kapcsolatot.";
+  }
+  if (result?.paymentStatus === "chargeback_lost") {
+    statusMessage =
+      "A fizetés vitatott tranzakciója lezárult, a hozzáférés nem aktív. Kérjük, vegye fel velünk a kapcsolatot.";
+  }
+  if (result?.paymentStatus === "chargeback_won") {
+    statusMessage =
+      "A fizetési vita lezárult, a rendelés hozzáférése újra aktív.";
   }
 
   const isRefunded = result?.paymentStatus === "refunded";
   const isError =
     result?.aiStatus === "failed" || result?.aiStatus === "failed_review";
-  const pageTitle = isError ? "Hiba a levélgenerálás során" : "Sikeres fizetés";
+  const hasChargebackIssue =
+    result?.paymentStatus === "chargeback_open" ||
+    result?.paymentStatus === "chargeback_lost";
+  const pageTitle = hasChargebackIssue
+    ? "Fizetési vita folyamatban"
+    : isError ? "Hiba a levélgenerálás során" : "Sikeres fizetés";
 
   return (
     <section className="mx-auto max-w-3xl space-y-6 px-4 py-10">

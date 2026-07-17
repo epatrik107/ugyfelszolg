@@ -5,6 +5,7 @@ import { CancelPage } from "./pages/CancelPage";
 import { ContactPage } from "./pages/ContactPage";
 import { HomePage } from "./pages/HomePage";
 import { LetterCreationPage } from "./pages/LetterCreationPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { PricingPage } from "./pages/PricingPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SuccessPage } from "./pages/SuccessPage";
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/kapcsolat" element={<ContactPage />} />
           <Route path="/aszf" element={<TermsPage />} />
           <Route path="/adatkezeles" element={<PrivacyPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Layout>
     </ErrorBoundary>

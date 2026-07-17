@@ -12,6 +12,7 @@ export function ContactPage() {
   });
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -21,6 +22,7 @@ export function ContactPage() {
       await sendContactMessage(values);
       setStatus("Köszönjük, megkaptuk az üzenetét.");
       setValues({ name: "", email: "", message: "", turnstileToken: "" });
+      setTurnstileKey((current) => current + 1);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Ismeretlen hiba.");
     } finally {
@@ -38,32 +40,47 @@ export function ContactPage() {
       </div>
       <LegalNotice />
       <form className="space-y-5" onSubmit={handleSubmit}>
-        <input
-          className="input"
-          placeholder="Név"
-          value={values.name}
-          onChange={(event) => setValues((current) => ({ ...current, name: event.target.value }))}
-        />
-        <input
-          className="input"
-          placeholder="Email"
-          type="email"
-          value={values.email}
-          onChange={(event) => setValues((current) => ({ ...current, email: event.target.value }))}
-        />
-        <textarea
-          className="input min-h-40"
-          placeholder="Üzenet"
-          value={values.message}
-          onChange={(event) => setValues((current) => ({ ...current, message: event.target.value }))}
-        />
+        <label className="grid gap-2 font-medium text-slate-700">
+          <span>Név</span>
+          <input
+            className="input"
+            maxLength={120}
+            required
+            value={values.name}
+            onChange={(event) => setValues((current) => ({ ...current, name: event.target.value }))}
+          />
+        </label>
+        <label className="grid gap-2 font-medium text-slate-700">
+          <span>Email</span>
+          <input
+            className="input"
+            maxLength={254}
+            required
+            type="email"
+            value={values.email}
+            onChange={(event) => setValues((current) => ({ ...current, email: event.target.value }))}
+          />
+        </label>
+        <label className="grid gap-2 font-medium text-slate-700">
+          <span>Üzenet</span>
+          <textarea
+            className="input min-h-40"
+            maxLength={3000}
+            minLength={10}
+            required
+            value={values.message}
+            onChange={(event) => setValues((current) => ({ ...current, message: event.target.value }))}
+          />
+        </label>
         <TurnstileField
+          key={turnstileKey}
+          action="contact"
           onSuccess={(turnstileToken) =>
             setValues((current) => ({ ...current, turnstileToken }))
           }
         />
         {status && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div aria-live="polite" className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
             {status}
           </div>
         )}

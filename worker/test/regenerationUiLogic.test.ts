@@ -17,6 +17,15 @@ describe("remaining regeneration display", () => {
 
   it("shows limit reached message after max attempts", () => {
     expect(getRemainingRegenerations(4, 3)).toBe(0);
-    expect(getRemainingRegenerationMessage(0)).toBe("Elérted a 3 módosítási lehetőséget.");
+    expect(getRemainingRegenerationMessage(0)).toBe(
+      "Elérted a módosítási lehetőségek (3) limitjét.",
+    );
+  });
+
+  it("uses the Basic package limit instead of advertising Premium retries", () => {
+    expect(getRemainingRegenerations(1, 1)).toBe(1);
+    expect(getRemainingRegenerationMessage(0, 1)).toBe(
+      "Elérted a módosítási lehetőségek (1) limitjét.",
+    );
   });
 });

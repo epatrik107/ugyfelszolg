@@ -4,8 +4,10 @@ import { TURNSTILE_SITE_KEY } from "../lib/config";
 
 export function TurnstileField({
   onSuccess,
+  action,
 }: {
   onSuccess: (token: string) => void;
+  action: "checkout" | "contact";
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -29,8 +31,12 @@ export function TurnstileField({
     <Turnstile
       siteKey={TURNSTILE_SITE_KEY}
       onSuccess={onSuccess}
-      onError={() => setFailed(true)}
-      options={{ theme: "light" }}
+      onExpire={() => onSuccess("")}
+      onError={() => {
+        onSuccess("");
+        setFailed(true);
+      }}
+      options={{ theme: "light", action }}
     />
   );
 }

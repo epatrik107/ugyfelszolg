@@ -51,7 +51,18 @@ export interface OrderResult {
     | "amount_mismatch"
     | "currency_mismatch"
     | "partially_refunded"
-    | "refunded";
+    | "refunded"
+    | "chargeback_open"
+    | "chargeback_lost"
+    | "chargeback_won";
+  refundStatus:
+    | "pending"
+    | "requires_action"
+    | "succeeded"
+    | "failed"
+    | "canceled"
+    | "unknown"
+    | null;
   invoiceStatus:
     | "not_required"
     | "pending"
