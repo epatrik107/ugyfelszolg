@@ -20,7 +20,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main for production deployment
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          if [ "$TARGET_ENVIRONMENT" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production Worker deployment is only allowed from main."
+            exit 1
+          fi
+
   deploy:
+    needs: validate-source
     environment:
       name: ${{ inputs.target_environment }}
     env:
@@ -29,6 +42,7 @@ jobs:
       PAYMENTS_ENABLED: "true"
       PAYMENT_MODE: ${{ inputs.target_environment == 'production' && 'live' || 'test' }}
       SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: ${{ inputs.target_environment == 'sandbox' && 'true' || 'false' }}
+      ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +57,11 @@ jobs:
       - name: Validate isolated deploy config
         run: |
           node <<'NODE'
+          const fs = require("fs");
           const errors = [];
+          const legalVersions = JSON.parse(
+            fs.readFileSync("frontend/src/config/legalVersions.json", "utf8"),
+          );
 
           const d1Id = (process.env.CLOUDFLARE_D1_DATABASE_ID || "").trim();
           const kvId = (process.env.CLOUDFLARE_KV_NAMESPACE_ID || "").trim();
@@ -59,14 +77,20 @@ jobs:
           const hasSzamlazzAgentKey = Boolean((process.env.SZAMLAZZ_AGENT_KEY || "").trim());
           const hasGeminiApiKey = Boolean((process.env.GEMINI_API_KEY || "").trim());
           const hasTurnstileSecretKey = Boolean((process.env.TURNSTILE_SECRET_KEY || "").trim());
+          const turnstileExpectedHostnames = (process.env.TURNSTILE_EXPECTED_HOSTNAMES || "").trim();
           const tokenHashSecret = (process.env.TOKEN_HASH_SECRET || "").trim();
           const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
           const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
           const adminApiToken = (process.env.ADMIN_API_TOKEN || "").trim();
-          const emailFrom = (process.env.EMAIL_FROM || "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>").trim();
-          const sellerName = (process.env.SELLER_NAME || (deployEnv === "production" ? "Engelbrecht Zoltán" : "Test")).trim();
-          const sellerAddress = (process.env.SELLER_ADDRESS || (deployEnv === "production" ? "2500 Esztergom, Bánomi út 4." : "Test")).trim();
-          const sellerTaxNumber = (process.env.SELLER_TAX_NUMBER || (deployEnv === "production" ? "91250960-1-31" : "00000XXXXXX")).trim();
+          const adminApiEnabled = (process.env.ADMIN_API_ENABLED || "").trim();
+          const hasResendApiKey = Boolean((process.env.RESEND_API_KEY || "").trim());
+          const legalTermsVersion = (process.env.LEGAL_TERMS_VERSION || "").trim();
+          const privacyPolicyVersion = (process.env.PRIVACY_POLICY_VERSION || "").trim();
+          const apiHealthUrl = (process.env.API_HEALTH_URL || "").trim();
+          const emailFrom = (process.env.EMAIL_FROM || "").trim();
+          const sellerName = (process.env.SELLER_NAME || "").trim();
+          const sellerAddress = (process.env.SELLER_ADDRESS || "").trim();
+          const sellerTaxNumber = (process.env.SELLER_TAX_NUMBER || "").trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
           const isPlaceholder = (value) => {
@@ -93,11 +117,40 @@ jobs:
           if (!hasSzamlazzAgentKey) errors.push("SZAMLAZZ_AGENT_KEY is required.");
           if (!hasGeminiApiKey) errors.push("GEMINI_API_KEY is required.");
           if (!hasTurnstileSecretKey) errors.push("TURNSTILE_SECRET_KEY is required.");
+          if (!turnstileExpectedHostnames) errors.push("TURNSTILE_EXPECTED_HOSTNAMES is required.");
+          if (/[*/:]|^https?:/i.test(turnstileExpectedHostnames)) {
+            errors.push("TURNSTILE_EXPECTED_HOSTNAMES must contain exact comma-separated hostnames without scheme, port, path, or wildcard.");
+          }
           if (tokenHashSecret.length < 32) {
             errors.push("TOKEN_HASH_SECRET must be at least 32 characters.");
           }
-          if (adminApiToken.length < 32) {
+          if (!['true', 'false'].includes(adminApiEnabled)) {
+            errors.push("ADMIN_API_ENABLED must be true or false.");
+          }
+          if (adminApiEnabled === "true" && adminApiToken.length < 32) {
             errors.push("ADMIN_API_TOKEN must be at least 32 characters.");
+          }
+          if (legalTermsVersion !== legalVersions.terms.version) {
+            errors.push("LEGAL_TERMS_VERSION must match the published frontend terms version.");
+          }
+          if (privacyPolicyVersion !== legalVersions.privacy.version) {
+            errors.push("PRIVACY_POLICY_VERSION must match the published frontend privacy version.");
+          }
+          let parsedApiHealthUrl = null;
+          try {
+            parsedApiHealthUrl = new URL(apiHealthUrl);
+            if (
+              parsedApiHealthUrl.protocol !== "https:" ||
+              parsedApiHealthUrl.pathname !== "/api/health" ||
+              parsedApiHealthUrl.search ||
+              parsedApiHealthUrl.hash ||
+              parsedApiHealthUrl.username ||
+              parsedApiHealthUrl.password
+            ) {
+              errors.push("API_HEALTH_URL must be the exact HTTPS /api/health URL without credentials, query, or fragment.");
+            }
+          } catch {
+            errors.push("API_HEALTH_URL must be a valid HTTPS URL.");
           }
           if (!allowedOrigins) errors.push("ALLOWED_ORIGINS is required.");
           if (!siteUrl) errors.push("SITE_URL is required.");
@@ -131,6 +184,17 @@ jobs:
             if ([siteUrl, ...allowedOrigins.split(",")].some(value => value.trim().startsWith("http://"))) {
               errors.push("Production SITE_URL and ALLOWED_ORIGINS must use HTTPS.");
             }
+            if (!emailFrom) errors.push("Production EMAIL_FROM is required.");
+            if (!hasResendApiKey) errors.push("Production RESEND_API_KEY is required.");
+            if (adminApiEnabled !== "false") {
+              errors.push("Production ADMIN_API_ENABLED must remain false until identity-aware Access verification is implemented.");
+            }
+            if (parsedApiHealthUrl?.hostname.toLowerCase().endsWith(".workers.dev")) {
+              errors.push("Production API_HEALTH_URL must use the custom API domain, not workers.dev.");
+            }
+            if (!sellerName) errors.push("Production SELLER_NAME is required.");
+            if (!sellerAddress) errors.push("Production SELLER_ADDRESS is required.");
+            if (!sellerTaxNumber) errors.push("Production SELLER_TAX_NUMBER is required.");
             if (isPlaceholder(sellerName)) errors.push("Production SELLER_NAME must be the legal seller name.");
             if (isPlaceholder(sellerAddress)) errors.push("Production SELLER_ADDRESS must be the legal seller address.");
             if (isPlaceholder(sellerTaxNumber)) errors.push("Production SELLER_TAX_NUMBER must be the legal seller tax number.");
@@ -156,9 +220,15 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_EXPECTED_HOSTNAMES: ${{ vars.TURNSTILE_EXPECTED_HOSTNAMES }}
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          LEGAL_TERMS_VERSION: ${{ vars.LEGAL_TERMS_VERSION }}
+          PRIVACY_POLICY_VERSION: ${{ vars.PRIVACY_POLICY_VERSION }}
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           SELLER_NAME: ${{ vars.SELLER_NAME }}
           SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
@@ -178,6 +248,10 @@ jobs:
           SELLER_NAME: ${{ vars.SELLER_NAME }}
           SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
           SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
+          TURNSTILE_EXPECTED_HOSTNAMES: ${{ vars.TURNSTILE_EXPECTED_HOSTNAMES }}
+          LEGAL_TERMS_VERSION: ${{ vars.LEGAL_TERMS_VERSION }}
+          PRIVACY_POLICY_VERSION: ${{ vars.PRIVACY_POLICY_VERSION }}
+          ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
         run: |
           node <<'NODE'
           const fs = require("fs");
@@ -189,15 +263,18 @@ jobs:
           const defaultDemoMode = deployEnv === "production" ? "false" : "true";
           const defaultPaymentsEnabled = deployEnv === "production" ? "true" : "false";
           const defaultPaymentMode = deployEnv === "production" ? "live" : "test";
-          const defaultSellerName = deployEnv === "production" ? "Engelbrecht Zoltán" : "Test";
-          const defaultSellerAddress = deployEnv === "production" ? "2500 Esztergom, Bánomi út 4." : "Test";
-          const defaultSellerTaxNumber = deployEnv === "production" ? "91250960-1-31" : "00000XXXXXX";
+          const defaultEmailFrom = deployEnv === "production" ? "" : "Sandbox <noreply@example.com>";
+          const defaultSellerName = deployEnv === "production" ? "" : "Test";
+          const defaultSellerAddress = deployEnv === "production" ? "" : "Test";
+          const defaultSellerTaxNumber = deployEnv === "production" ? "" : "00000XXXXXX";
+          const workersDev = deployEnv !== "production";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
           compatibility_date = "2026-05-18"
-          workers_dev = true
+          workers_dev = ${workersDev}
           preview_urls = false
+          upload_source_maps = true
 
           [[d1_databases]]
           binding = "DB"
@@ -215,7 +292,11 @@ jobs:
           GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
           SITE_URL = ${tomlString(value("SITE_URL", "https://xn--gyfelszolgalat-fsb.hu"))}
           ALLOWED_ORIGINS = ${tomlString(value("ALLOWED_ORIGINS", defaultAllowedOrigins))}
-          EMAIL_FROM = ${tomlString(value("EMAIL_FROM", "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"))}
+          TURNSTILE_EXPECTED_HOSTNAMES = ${tomlString(value("TURNSTILE_EXPECTED_HOSTNAMES", "localhost"))}
+          LEGAL_TERMS_VERSION = ${tomlString(value("LEGAL_TERMS_VERSION", ""))}
+          PRIVACY_POLICY_VERSION = ${tomlString(value("PRIVACY_POLICY_VERSION", ""))}
+          ADMIN_API_ENABLED = ${tomlString(value("ADMIN_API_ENABLED", "false"))}
+          EMAIL_FROM = ${tomlString(value("EMAIL_FROM", defaultEmailFrom))}
           DEMO_MODE = ${tomlString(value("DEMO_MODE", defaultDemoMode))}
           PAYMENTS_ENABLED = ${tomlString(value("PAYMENTS_ENABLED", defaultPaymentsEnabled))}
           PAYMENT_MODE = ${tomlString(value("PAYMENT_MODE", defaultPaymentMode))}
@@ -233,7 +314,7 @@ jobs:
       - name: Verify Cloudflare D1 binding
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
         run: |
           node <<'NODE'
@@ -274,7 +355,7 @@ jobs:
 
           console.log(`Cloudflare account/token can see D1 database ${match.name || "(unnamed)"} ending in ${d1Id.slice(-6)}.`);
           NODE
-      - name: Sync Worker secrets
+      - name: Prepare Worker secret bundle
         run: |
           node <<'NODE'
           const fs = require("fs");
@@ -285,38 +366,117 @@ jobs:
             "TURNSTILE_SECRET_KEY",
             "TOKEN_HASH_SECRET",
             "RESEND_API_KEY",
-            "DEMO_ACCESS_CODE",
             "SZAMLAZZ_AGENT_KEY",
             "ADMIN_API_TOKEN"
           ];
           const secrets = {};
           for (const key of keys) {
+            if (key === "ADMIN_API_TOKEN" && process.env.ADMIN_API_ENABLED !== "true") continue;
             if (process.env[key]) secrets[key] = process.env[key];
           }
           fs.writeFileSync("/tmp/worker-secrets.json", JSON.stringify(secrets));
           NODE
-          npx wrangler secret bulk /tmp/worker-secrets.json --config worker/wrangler.toml
-          rm /tmp/worker-secrets.json
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          DEMO_ACCESS_CODE: ${{ secrets.DEMO_ACCESS_CODE }}
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
+      - name: Capture currently active Worker version
+        id: previous-deployment
+        run: |
+          npx wrangler deployments list --json --config worker/wrangler.toml > /tmp/deployments-before.json
+
+          node <<'NODE'
+          const fs = require("fs");
+
+          const payload = JSON.parse(fs.readFileSync("/tmp/deployments-before.json", "utf8"));
+          const deployments = Array.isArray(payload) ? payload : [];
+          const ordered = [...deployments].sort(
+            (left, right) => Date.parse(left.created_on || 0) - Date.parse(right.created_on || 0),
+          );
+          const current = ordered.at(-1);
+
+          if (!current) {
+            console.log("No previous Worker deployment exists; automatic rollback will be unavailable.");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "version_id=\n");
+            process.exit(0);
+          }
+
+          const activeVersions = (current.versions || []).filter(
+            (version) => Number(version.percentage) > 0,
+          );
+          if (
+            activeVersions.length !== 1 ||
+            Number(activeVersions[0].percentage) !== 100 ||
+            !activeVersions[0].version_id
+          ) {
+            console.error("Deploy requires a single active Worker version at 100% before rollout.");
+            process.exit(1);
+          }
+
+          const versionId = activeVersions[0].version_id;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${versionId}\n`);
+          console.log(`Captured previous Worker version ending in ${versionId.slice(-6)}.`);
+          NODE
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Capture D1 Time Travel restore bookmark
+        run: npx wrangler d1 time-travel info "$D1_DATABASE_NAME" --json --config worker/wrangler.toml > d1-restore-bookmark.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'ugyfelkozpont' }}
+      - name: Preserve D1 restore bookmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-restore-bookmark-${{ inputs.target_environment }}-${{ github.run_id }}
+          path: d1-restore-bookmark.json
+          retention-days: 14
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply "$D1_DATABASE_NAME" --remote --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'ugyfelkozpont' }}
       - name: Deploy Cloudflare Worker
-        run: npx wrangler deploy --config worker/wrangler.toml
+        run: npx wrangler deploy --strict --message "${{ inputs.target_environment }} deploy from ${GITHUB_SHA}" --secrets-file /tmp/worker-secrets.json --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Remove obsolete Worker secrets
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          fs.writeFileSync(
+            "/tmp/stale-worker-secrets.json",
+            JSON.stringify({ OPENAI_API_KEY: null, DEMO_ACCESS_CODE: null }),
+          );
+          NODE
+          npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Remove temporary secret bundles
+        if: always()
+        run: rm -f /tmp/worker-secrets.json /tmp/stale-worker-secrets.json
+      - name: Verify deployed Worker health
+        id: deployment-health
+        continue-on-error: true
+        run: node scripts/check-deployment-health.mjs
+        env:
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+      - name: Roll back unhealthy Worker
+        if: steps.deployment-health.outcome == 'failure' && steps.previous-deployment.outputs.version_id != ''
+        run: npx wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}" --yes --message "Automatic rollback after failed health check" --config worker/wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Fail deployment after rollback
+        if: steps.deployment-health.outcome == 'failure'
+        run: exit 1

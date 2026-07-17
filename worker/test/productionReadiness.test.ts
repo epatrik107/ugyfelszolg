@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { constantTimeEqual } from "../src/lib/hash";
 import type { Env } from "../src/lib/types";
 
@@ -67,12 +69,12 @@ describe("handleCheckoutCompleted session ID validation", () => {
 });
 
 describe("cleanupExpiredData includes Stripe events", () => {
-  it("deletes completed Stripe events older than 30 days", async () => {
-    const deletedQueries: string[] = [];
+  it("deletes completed Stripe events and redacts expired personal order content", async () => {
+    const queries: string[] = [];
     const fakeEnv = {
       DB: {
         prepare(sql: string) {
-          deletedQueries.push(sql);
+          queries.push(sql);
           return {
             bind(..._args: unknown[]) {
               return this;
@@ -91,10 +93,84 @@ describe("cleanupExpiredData includes Stripe events", () => {
     const { cleanupExpiredData } = await import("../src/lib/db");
     await cleanupExpiredData(fakeEnv);
 
-    const hasStripeCleanup = deletedQueries.some(
+    const hasStripeCleanup = queries.some(
       (sql) => sql.includes("processed_stripe_events") && sql.includes("completed"),
     );
+    const hasPersonalDataRedaction = queries.some(
+      (sql) => sql.includes("personal_data_redacted_at") && sql.includes("generated_letter = NULL"),
+    );
+    const hasContactCleanup = queries.some(
+      (sql) => sql.includes("DELETE FROM contact_messages") && sql.includes("created_at < ?"),
+    );
+    const orderDeleteIndex = queries.findIndex((sql) => sql.includes("DELETE FROM orders"));
+    const statusLogDeleteIndex = queries.findIndex((sql) => sql.includes("DELETE FROM order_status_log"));
+    const disputeDeleteIndex = queries.findIndex((sql) => sql.includes("DELETE FROM payment_disputes"));
+    const refundDeleteIndex = queries.findIndex((sql) => sql.includes("DELETE FROM payment_refunds"));
     expect(hasStripeCleanup).toBe(true);
+    expect(hasPersonalDataRedaction).toBe(true);
+    expect(hasContactCleanup).toBe(true);
+    expect(statusLogDeleteIndex).toBeGreaterThanOrEqual(0);
+    expect(disputeDeleteIndex).toBeGreaterThanOrEqual(0);
+    expect(refundDeleteIndex).toBeGreaterThanOrEqual(0);
+    expect(statusLogDeleteIndex).toBeLessThan(orderDeleteIndex);
+    expect(disputeDeleteIndex).toBeLessThan(orderDeleteIndex);
+    expect(refundDeleteIndex).toBeLessThan(orderDeleteIndex);
+  });
+});
+
+describe("legal pages production placeholders", () => {
+  it("does not ship unfinished legal provider placeholders", () => {
+    const frontendRoot = resolve(process.cwd(), "../frontend/src/pages");
+    const legalPages = [
+      readFileSync(resolve(frontendRoot, "TermsPage.tsx"), "utf8"),
+      readFileSync(resolve(frontendRoot, "PrivacyPage.tsx"), "utf8"),
+    ].join("\n");
+
+    expect(legalPages).not.toContain("[KITÖLTENDŐ");
+    expect(legalPages).toContain("Engelbrecht Zoltán");
+    expect(legalPages).toContain("91250960-1-31");
+    expect(legalPages).toContain("HU91250960");
+    expect(legalPages).toContain("60722263");
+    expect(legalPages).toContain("ugyfelszolgalat2026@gmail.com");
+    expect(legalPages).toContain("3 munkanapon belül");
+  });
+});
+
+describe("production deploy workflow hardening", () => {
+  it("does not fall back to hard-coded production frontend or seller config", () => {
+    const repoRoot = resolve(process.cwd(), "..");
+    const frontendWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/deploy-frontend.yml"), "utf8");
+    const workerWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/deploy-worker.yml"), "utf8");
+
+    expect(frontendWorkflow).not.toContain("vars.VITE_API_BASE_URL ||");
+    expect(frontendWorkflow).not.toContain("vars.VITE_TURNSTILE_SITE_KEY ||");
+    expect(workerWorkflow).not.toContain('process.env.EMAIL_FROM || "Ügyfélközpont');
+    expect(workerWorkflow).not.toContain('deployEnv === "production" ? "Engelbrecht');
+  });
+
+  it("deploys secrets atomically and rolls back to the captured active version", () => {
+    const repoRoot = resolve(process.cwd(), "..");
+    const workerWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/deploy-worker.yml"), "utf8");
+
+    expect(workerWorkflow).toContain("--secrets-file /tmp/worker-secrets.json");
+    expect(workerWorkflow).not.toContain("wrangler secret bulk /tmp/worker-secrets.json");
+    expect(workerWorkflow).toContain("wrangler secret bulk /tmp/stale-worker-secrets.json");
+    expect(workerWorkflow).toContain("OPENAI_API_KEY: null");
+    expect(workerWorkflow).toContain("DEMO_ACCESS_CODE: null");
+    expect(workerWorkflow).toContain('steps.previous-deployment.outputs.version_id');
+    expect(workerWorkflow).toContain('wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}"');
+  });
+
+  it("allows production deploy workflows only from main and runs quality checks on main pushes", () => {
+    const repoRoot = resolve(process.cwd(), "..");
+    const frontendWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/deploy-frontend.yml"), "utf8");
+    const workerWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/deploy-worker.yml"), "utf8");
+    const qualityWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/quality.yml"), "utf8");
+
+    expect(frontendWorkflow).toContain('refs/heads/main');
+    expect(workerWorkflow).toContain('refs/heads/main');
+    expect(workerWorkflow).toContain('TARGET_ENVIRONMENT');
+    expect(qualityWorkflow).not.toContain('branches-ignore: [main]');
   });
 });
 

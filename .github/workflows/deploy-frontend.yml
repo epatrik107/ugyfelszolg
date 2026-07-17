@@ -13,7 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the protected production branch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production frontend deployment is only allowed from main."
+            exit 1
+          fi
+
   build:
+    needs: validate-source
     environment:
       name: production
     runs-on: ubuntu-latest
@@ -29,6 +40,7 @@ jobs:
           node <<'NODE'
           const errors = [];
           const apiBaseUrl = (process.env.VITE_API_BASE_URL || "").trim();
+          const basePath = (process.env.VITE_BASE_PATH || "").trim();
           const siteUrl = (process.env.VITE_SITE_URL || "").trim();
           const demoMode = (process.env.VITE_DEMO_MODE || "").trim();
           const turnstileSiteKey = (process.env.VITE_TURNSTILE_SITE_KEY || "").trim();
@@ -44,8 +56,33 @@ jobs:
           if (!apiBaseUrl || !isHttps(apiBaseUrl)) {
             errors.push("VITE_API_BASE_URL must be a production HTTPS origin.");
           }
+          if (apiBaseUrl) {
+            try {
+              const apiUrl = new URL(apiBaseUrl);
+              if (apiUrl.hostname.endsWith(".workers.dev")) {
+                errors.push("VITE_API_BASE_URL must use the protected custom API domain, not workers.dev.");
+              }
+              if (apiUrl.pathname !== "/" || apiUrl.search || apiUrl.hash) {
+                errors.push("VITE_API_BASE_URL must be an origin without path, query, or fragment.");
+              }
+            } catch {
+              // The general HTTPS validation above reports malformed URLs.
+            }
+          }
           if (!siteUrl || !isHttps(siteUrl)) {
             errors.push("VITE_SITE_URL must be a production HTTPS URL.");
+          }
+          if (siteUrl) {
+            try {
+              if (new URL(siteUrl).hostname.endsWith(".github.io")) {
+                errors.push("VITE_SITE_URL must use the production custom domain.");
+              }
+            } catch {
+              // The general HTTPS validation above reports malformed URLs.
+            }
+          }
+          if (!basePath || !basePath.startsWith("/")) {
+            errors.push("VITE_BASE_PATH must be set explicitly and start with /.");
           }
           if (demoMode !== "false") {
             errors.push("VITE_DEMO_MODE must be false for production frontend deploys.");
@@ -62,17 +99,18 @@ jobs:
           console.log("Frontend deploy config validation passed.");
           NODE
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ugyfelkozpont-api.epatrik107.workers.dev' }}
-          VITE_SITE_URL: ${{ vars.VITE_SITE_URL || 'https://ügyfelszolgalat.hu' }}
-          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADUXwSqJjEYq4JaR' }}
-          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'false' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH }}
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
       - run: npm run build --workspace frontend
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ugyfelkozpont-api.epatrik107.workers.dev' }}
-          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
-          VITE_SITE_URL: ${{ vars.VITE_SITE_URL || 'https://ügyfelszolgalat.hu' }}
-          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADUXwSqJjEYq4JaR' }}
-          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE || 'false' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH }}
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

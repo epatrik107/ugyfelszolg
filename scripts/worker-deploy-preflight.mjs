@@ -153,6 +153,21 @@ function validateProduction(config, errors) {
   if (vars.PAYMENT_MODE !== "live") {
     errors.push("Production deploy requires PAYMENT_MODE=live.");
   }
+  if (String(config.root.workers_dev) !== "false") {
+    errors.push("Production deploy requires workers_dev=false.");
+  }
+  if (vars.ADMIN_API_ENABLED !== "false") {
+    errors.push("Production deploy requires ADMIN_API_ENABLED=false until Access is enforced.");
+  }
+  if (!hasValue(vars.TURNSTILE_EXPECTED_HOSTNAMES)) {
+    errors.push("Production TURNSTILE_EXPECTED_HOSTNAMES is missing.");
+  }
+  if (!hasValue(vars.LEGAL_TERMS_VERSION)) {
+    errors.push("Production LEGAL_TERMS_VERSION is missing.");
+  }
+  if (!hasValue(vars.PRIVACY_POLICY_VERSION)) {
+    errors.push("Production PRIVACY_POLICY_VERSION is missing.");
+  }
   if (vars.SZAMLAZZ_TEST_ACCOUNT_CONFIRMED === "true") {
     errors.push("Production deploy cannot confirm a Szamlazz.hu test account.");
   }

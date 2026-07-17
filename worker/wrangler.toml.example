@@ -20,14 +20,18 @@ GEMINI_MODEL_PREMIUM = "gemini-3.5-flash"
 GEMINI_REVIEW_MODEL = "gemini-3.1-flash-lite"
 SITE_URL = "https://epatrik107.github.io/ugyfelszolg"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
-EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
+TURNSTILE_EXPECTED_HOSTNAMES = "xn--gyfelszolgalat-fsb.hu"
+LEGAL_TERMS_VERSION = "1.2"
+PRIVACY_POLICY_VERSION = "1.2"
+ADMIN_API_ENABLED = "false"
+EMAIL_FROM = "Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 PAYMENT_MODE = "test"
 
 # Add these as secrets in payment environments:
 # - SZAMLAZZ_AGENT_KEY: Számlázz.hu Agent key
-# - ADMIN_API_TOKEN: bearer token for invoice status/retry admin endpoints
+# - ADMIN_API_TOKEN: sandbox-only fallback; production admin API stays disabled
 
 [triggers]
 crons = [ "17 2 * * *" ]

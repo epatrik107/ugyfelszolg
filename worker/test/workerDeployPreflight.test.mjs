@@ -5,6 +5,7 @@ const validProductionConfig = `
 name = "ugyfelkozpont-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-18"
+workers_dev = false
 
 [[d1_databases]]
 binding = "DB"
@@ -19,13 +20,17 @@ id = "330e31489f97415989d94972003b0202"
 [vars]
 SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
-EMAIL_FROM = "Ugyfelszolgalat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
+TURNSTILE_EXPECTED_HOSTNAMES = "xn--gyfelszolgalat-fsb.hu"
+LEGAL_TERMS_VERSION = "2026-07-14"
+PRIVACY_POLICY_VERSION = "2026-07-14"
+ADMIN_API_ENABLED = "false"
+EMAIL_FROM = "Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>"
 DEMO_MODE = "false"
 PAYMENTS_ENABLED = "true"
 PAYMENT_MODE = "live"
 SZAMLAZZ_TEST_ACCOUNT_CONFIRMED = "false"
-SELLER_NAME = "Engelbrecht Zoltan"
-SELLER_ADDRESS = "2500 Esztergom, Banomi ut 4."
+SELLER_NAME = "Engelbrecht Zoltán egyéni vállalkozó"
+SELLER_ADDRESS = "2500 Esztergom, Bánomi út 4."
 SELLER_TAX_NUMBER = "91250960-1-31"
 `;
 
@@ -68,8 +73,8 @@ describe("worker deploy preflight", () => {
   it("blocks placeholder seller data in production", () => {
     const unsafe = replaceConfig(
       replaceConfig(
-        replaceConfig(validProductionConfig, 'SELLER_NAME = "Engelbrecht Zoltan"', 'SELLER_NAME = "Test"'),
-        'SELLER_ADDRESS = "2500 Esztergom, Banomi ut 4."',
+        replaceConfig(validProductionConfig, 'SELLER_NAME = "Engelbrecht Zoltán egyéni vállalkozó"', 'SELLER_NAME = "Test"'),
+        'SELLER_ADDRESS = "2500 Esztergom, Bánomi út 4."',
         'SELLER_ADDRESS = "Test"',
       ),
       'SELLER_TAX_NUMBER = "91250960-1-31"',
@@ -82,5 +87,21 @@ describe("worker deploy preflight", () => {
     expect(result.errors).toContain("Production SELLER_NAME must be set to the legal seller name.");
     expect(result.errors).toContain("Production SELLER_ADDRESS must be set to the legal seller address.");
     expect(result.errors).toContain("Production SELLER_TAX_NUMBER must be set to the legal seller tax number.");
+  });
+
+  it("blocks workers.dev and the static-token admin API in production", () => {
+    const unsafe = replaceConfig(
+      replaceConfig(validProductionConfig, "workers_dev = false", "workers_dev = true"),
+      'ADMIN_API_ENABLED = "false"',
+      'ADMIN_API_ENABLED = "true"',
+    );
+
+    const result = validateWorkerDeployConfig(unsafe, "production");
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("Production deploy requires workers_dev=false.");
+    expect(result.errors).toContain(
+      "Production deploy requires ADMIN_API_ENABLED=false until Access is enforced.",
+    );
   });
 });
