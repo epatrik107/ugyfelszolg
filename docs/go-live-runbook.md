@@ -7,7 +7,7 @@ forrását és a `GO` döntéshez szükséges sorrendet.
 
 | Hely | Állapot | Teendő |
 |---|---|---|
-| GitHub Environmentek | `sandbox`, `production`, `github-pages` létezik; a névlista hitelesítve lett 2026-07-14-én | az alábbi scope-hibákat kell rendezni |
+| GitHub Environmentek | `sandbox`, `production`, `github-pages` létezik; a névlista újra hitelesítve lett 2026-07-18-án | az alábbi scope-hibákat kell rendezni |
 | GitHub `production` protection | protected-branch policy aktív; a `main` PR + `verify` check védelemmel rendelkezik | required reviewer még nincs, admin bypass továbbra is engedett |
 | `.env.example` | tracked, placeholder-only, fájlon belüli duplikáció nincs | ez marad az összes név dokumentációs inventoryja |
 | `frontend/.env` | gitignore-olt, `0600`; két nevet definiál | a kívánt lokális értékek átvitele után törlendő |
@@ -28,7 +28,7 @@ repository-szintűt.
 
 ## 2. Hitelesített GitHub név-audit
 
-A 2026-07-14-i, értékmentes audit tényleges GitHub-állapota:
+A 2026-07-18-i, értékmentes audit tényleges GitHub-állapota:
 
 - repository-szinten három alkalmazás-secret és nulla variable maradt; a célállapot
   itt `none`, mert a sandbox és production értékeknek külön Environmentben kell
@@ -42,13 +42,10 @@ A 2026-07-14-i, értékmentes audit tényleges GitHub-állapota:
   `SELLER_TAX_NUMBER` tévesen secretként él, miközben a workflow variable-ként
   várja; az értékek GitHubból nem olvashatók vissza, ezért előbb kézzel újra fel
   kell venni őket variable-ként;
-- productionben külön új `TOKEN_HASH_SECRET` készült; a meglévő Turnstile widget
-  hostname-ja ellenőrzött, a publikus sitekey GitHubban szinkronizált, a
-  `TURNSTILE_SECRET_KEY` Environment secret felvéve, a repository-duplikátum
-  törölve; még hat szolgáltatói secretet kell felvenni:
-  `CLOUDFLARE_API_TOKEN`, `GEMINI_API_KEY`,
-  `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-  `SZAMLAZZ_AGENT_KEY`;
+- productionben a variable-névlista teljes. A production Environmentben a
+  `CLOUDFLARE_API_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`,
+  `TOKEN_HASH_SECRET` és `TURNSTILE_SECRET_KEY` jelen van; még a két Stripe
+  secret és a `SZAMLAZZ_AGENT_KEY` hiányzik;
 - az audit utáni Cloudflare-ellenőrzés az account-, D1- és KV-azonosítót
   azonosította és felvette; a production Environment variable-k név szerint
   teljesek;
@@ -60,7 +57,12 @@ A 2026-07-14-i, értékmentes audit tényleges GitHub-állapota:
   `TOKEN_HASH_SECRET` és `TURNSTILE_SECRET_KEY` neve létezik, de az értékük nem
   olvasható vissza és GitHub Environmentben reprodukálhatóan újra meg kell adni;
   a `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` és `SZAMLAZZ_AGENT_KEY` a
-  production Workerből is hiányzik;
+  production Workerből is hiányzik. A Workerben egy stale
+  `DEMO_ACCESS_CODE` is jelen van; ezt production deploy előtt kézzel törölni
+  kell;
+- Dependabot alert/security update, provider-alapú secret scanning és push
+  protection 2026-07-18-án bekapcsolva; a CodeQL JavaScript/TypeScript default
+  setup első futása elindult;
 - a production Worker rollbackelt verziót futtat. A külön secret-módosítás
   Cloudflare 10215 hibával blokkolt; a workflow ezért atomikus
   `wrangler deploy --secrets-file` folyamatra és explicit előző-verziós
@@ -111,6 +113,16 @@ Secret- vagy variable-értéket nem ír ki.
    - futtass sandbox deployt;
    - csak a sikeres deploy után töröld az azonos repository-szintű nevet;
    - secretet ne másolj issue-ba, parancssori argumentumba vagy logba.
+
+6. A stale production demo secretet csak ellenőrzött target mellett, manuálisan
+   töröld:
+
+   ```bash
+   npx wrangler secret delete DEMO_ACCESS_CODE --config worker/wrangler.toml
+   ```
+
+   Ezután a Worker secret-listában és a health/preflight ellenőrzésben se
+   szerepelhet production demo-hozzáférés.
 
 GitHub UI útvonal: **Repository → Settings → Environments → production/sandbox**.
 Repository-szintű lista: **Settings → Secrets and variables → Actions**.
@@ -316,7 +328,8 @@ publikálja.
 4. Ellenőrizd:
 
    - D1 bookmark artifact létrejött;
-   - 0011 legal-evidence és 0012 refund-lifecycle migráció alkalmazva;
+   - a remote listában jelenleg várakozó 0009, 0010, 0011 és 0012 migráció
+     sorrendben alkalmazva;
    - custom API health 200 és `status=ok`;
    - HSTS, CSP, XFO, nosniff és referrer header jelen van;
    - workers.dev origin nincs production használatban;
