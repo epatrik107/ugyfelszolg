@@ -20,6 +20,7 @@ vi.mock("../src/lib/db", () => ({
   hasLetterEmailVersionSent: vi.fn(() => false),
   markLetterEmailSent: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
+  upsertPaymentRefund: vi.fn(),
   markRefundInvoiceManualRequired: vi.fn(),
 }));
 
@@ -34,6 +35,7 @@ vi.mock("../src/lib/invoice", () => ({
 
 vi.mock("../src/lib/stripe", () => ({
   createRefund: vi.fn(),
+  normalizeStripeRefundStatus: (status: string) => status,
   fromStripeMinorAmount: vi.fn((amount: number | null, currency: string | null) => {
     if (amount === null || currency === null) return null;
     return currency.toLowerCase() === "huf" ? amount / 100 : amount;
@@ -122,7 +124,13 @@ const order: OrderRow = {
   refund_invoice_status: "not_required",
   refund_amount: null,
   refund_stripe_id: null,
+  stripe_refund_status: null,
+  stripe_refund_failure_reason: null,
   letter_email_sent_versions: null,
+  personal_data_redacted_at: null,
+  legal_accepted_at: "2026-01-01T00:00:00.000Z",
+  legal_terms_version: "2026-07-14",
+  privacy_policy_version: "2026-07-14",
 };
 
 function geminiResponse(text: string) {
@@ -341,9 +349,9 @@ describe("secondary AI review gate", () => {
   it("prevents completion when valid review output blocks both generation attempts", async () => {
     fetchMock(
       geminiResponse(safeLetter),
-      reviewResponse({ ok: false, issues: ["Túl agresszív hangnem."] }),
+      reviewResponse({ ok: false, issues: ["Személyes adat: private@example.com"] }),
       geminiResponse(safeLetter),
-      reviewResponse({ ok: false, issues: ["Túl agresszív hangnem."] }),
+      reviewResponse({ ok: false, issues: ["Személyes adat: private@example.com"] }),
     );
 
     await generateLetterForPaidOrder(env, order);
@@ -355,6 +363,9 @@ describe("secondary AI review gate", () => {
       "failed_review",
       "Automatikus minőségellenőrzés sikertelen.",
       null,
+    );
+    expect(consoleSpy.mock.calls.map((call) => call.join(" ")).join("\n")).not.toContain(
+      "private@example.com",
     );
   });
 
@@ -431,5 +442,40 @@ describe("secondary AI review gate", () => {
       null,
     );
     expect(createRefund).not.toHaveBeenCalled();
+  });
+
+  it("records a pending automatic refund without claiming success or emailing it", async () => {
+    const { markOrderPaymentStatus, upsertPaymentRefund } = await import("../src/lib/db");
+    const { sendRefundEmail } = await import("../src/lib/email");
+    vi.mocked(createRefund).mockResolvedValueOnce({
+      id: "re_pending",
+      payment_intent: "pi_test_1",
+      amount: 89000,
+      currency: "huf",
+      status: "pending",
+    });
+    fetchMock(
+      geminiResponse(safeLetter),
+      new DOMException("timed out", "TimeoutError"),
+      new DOMException("timed out again", "TimeoutError"),
+    );
+
+    await generateLetterForPaidOrder(env, {
+      ...order,
+      stripe_payment_intent_id: "pi_test_1",
+      billing_source: "checkout",
+    });
+
+    expect(upsertPaymentRefund).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({ stripeRefundId: "re_pending", status: "pending" }),
+    );
+    expect(markOrderPaymentStatus).not.toHaveBeenCalledWith(
+      env,
+      order.id,
+      "refunded",
+      expect.anything(),
+    );
+    expect(sendRefundEmail).not.toHaveBeenCalled();
   });
 });

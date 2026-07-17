@@ -18,6 +18,7 @@ import { logEvent } from "../lib/logger";
 import { generateLetterForPaidOrder } from "../lib/ai";
 import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
+import { buildResultCapabilityUrl } from "../lib/resultUrl";
 import { errorJson, okJson } from "../lib/response";
 import { createCheckoutSession, retrieveCheckoutSession } from "../lib/stripe";
 import { verifyTurnstileToken } from "../lib/turnstile";
@@ -50,13 +51,19 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
       ? "rejected_tax_number_attempt"
       : suspiciousInput === "manipulated_price"
         ? "rejected_manipulated_price"
+        : suspiciousInput === "invalid_structure"
+          ? "rejected_checkout_structure"
         : "rejected_business_buyer_attempt";
     logEvent(event, { reason: suspiciousInput });
     return errorJson(
       c,
-      suspiciousInput === "manipulated_price" ? "INVALID_INPUT" : "INVALID_BILLING_DATA",
+      suspiciousInput === "manipulated_price" || suspiciousInput === "invalid_structure"
+        ? "INVALID_INPUT"
+        : "INVALID_BILLING_DATA",
       suspiciousInput === "manipulated_price"
         ? "Az ár kizárólag szerveroldalon határozható meg."
+        : suspiciousInput === "invalid_structure"
+          ? "Hibás vagy túl összetett űrlapadatok."
         : "Érvénytelen vagy nem támogatott számlázási adat.",
       400,
     );
@@ -138,7 +145,12 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
         c.env.TOKEN_HASH_SECRET,
       );
       return okJson(c, {
-        checkoutUrl: `${c.env.SITE_URL}/sikeres-fizetes?order=${existingOrder.public_id}&token=${existingToken}`,
+        checkoutUrl: buildResultCapabilityUrl(
+          c.env.SITE_URL,
+          "sikeres-fizetes",
+          existingOrder.public_id,
+          existingToken,
+        ),
         publicId: existingOrder.public_id,
         demo: true,
       });
@@ -173,7 +185,7 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
 
   const turnstileOk =
     demoAccessGranted ||
-    (await verifyTurnstileToken(c.env, input.turnstileToken, ip));
+    (await verifyTurnstileToken(c.env, input.turnstileToken, ip, "checkout"));
   if (!turnstileOk) {
     return errorJson(c, "TURNSTILE_FAILED", "A spamvédelem ellenőrzése sikertelen.", 400);
   }
@@ -219,7 +231,12 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
         return errorJson(c, "IDEMPOTENCY_CONFLICT", "Ütköző fizetési kísérlet.", 409);
       }
       return okJson(c, {
-        checkoutUrl: `${c.env.SITE_URL}/sikeres-fizetes?order=${racedOrder.public_id}&token=${resultToken}`,
+        checkoutUrl: buildResultCapabilityUrl(
+          c.env.SITE_URL,
+          "sikeres-fizetes",
+          racedOrder.public_id,
+          resultToken,
+        ),
         publicId: racedOrder.public_id,
         demo: true,
       });
@@ -235,7 +252,12 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     }
 
     return okJson(c, {
-      checkoutUrl: `${c.env.SITE_URL}/sikeres-fizetes?order=${publicId}&token=${resultToken}`,
+      checkoutUrl: buildResultCapabilityUrl(
+        c.env.SITE_URL,
+        "sikeres-fizetes",
+        publicId,
+        resultToken,
+      ),
       publicId,
       demo: true,
     });

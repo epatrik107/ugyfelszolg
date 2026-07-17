@@ -65,7 +65,13 @@ export function orderFixture(overrides: Partial<OrderRow> = {}): OrderRow {
     refund_invoice_status: "not_required",
     refund_amount: null,
     refund_stripe_id: null,
+    stripe_refund_status: null,
+    stripe_refund_failure_reason: null,
     letter_email_sent_versions: null,
+    personal_data_redacted_at: null,
+    legal_accepted_at: now,
+    legal_terms_version: "2026-07-14",
+    privacy_policy_version: "2026-07-14",
     ...overrides,
   };
 }

@@ -108,6 +108,21 @@ describe("checkout billing validation", () => {
     expect(checkoutSchema.safeParse(withoutBilling).success).toBe(false);
   });
 
+  it("rejects excessive nesting and cyclic objects without recursive overflow", () => {
+    const deeplyNested: Record<string, unknown> = {};
+    let cursor = deeplyNested;
+    for (let depth = 0; depth < 20; depth += 1) {
+      const next: Record<string, unknown> = {};
+      cursor.next = next;
+      cursor = next;
+    }
+    expect(detectSuspiciousCheckoutInput(deeplyNested)).toBe("invalid_structure");
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(detectSuspiciousCheckoutInput(cyclic)).toBe("invalid_structure");
+  });
+
   it("rejects non-Hungarian billing while VAT rules are HU-only", () => {
     expect(
       checkoutSchema.safeParse({
@@ -225,6 +240,14 @@ describe("Stripe Checkout request", () => {
     ]);
     expect(JSON.stringify(metadata)).not.toMatch(/company|business|tax|vat/i);
     expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("checkout-order_1");
+    expect((init.headers as Record<string, string>)["Stripe-Version"]).toBe("2026-02-25.clover");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    const successUrl = new URL(params.get("success_url")!);
+    const cancelUrl = new URL(params.get("cancel_url")!);
+    expect(successUrl.searchParams.get("token")).toBeNull();
+    expect(cancelUrl.searchParams.get("token")).toBeNull();
+    expect(new URLSearchParams(successUrl.hash.slice(1)).get("token")).toBe("result-token");
+    expect(new URLSearchParams(cancelUrl.hash.slice(1)).get("token")).toBe("result-token");
   });
 });
 

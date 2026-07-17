@@ -1,5 +1,6 @@
 import { constantTimeEqual } from "./hash";
-import type { Env, PackageId } from "./types";
+import { buildResultCapabilityUrl } from "./resultUrl";
+import type { Env, PackageId, StripeRefundStatus } from "./types";
 
 export interface StripeCheckoutSession {
   id: string;
@@ -41,7 +42,29 @@ export interface StripeEvent<T = unknown> {
   };
 }
 
+export interface StripeRefund {
+  id: string;
+  payment_intent: string | null;
+  status: StripeRefundStatus | string | null;
+  amount: number;
+  currency: string;
+  failure_reason?: string | null;
+  metadata?: Record<string, string>;
+}
+
+export function normalizeStripeRefundStatus(status: string | null): StripeRefundStatus {
+  return status === "pending" ||
+    status === "requires_action" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled"
+    ? status
+    : "unknown";
+}
+
 const STRIPE_TWO_DECIMAL_CHARGE_CURRENCIES = new Set(["huf"]);
+const STRIPE_REQUEST_TIMEOUT_MS = 15_000;
+const STRIPE_API_VERSION = "2026-02-25.clover";
 
 export function toStripeMinorAmount(amount: number, currency: string) {
   if (!Number.isSafeInteger(amount) || amount <= 0) {
@@ -85,8 +108,10 @@ async function stripeRequest<T>(
     ...init,
     headers: {
       Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Stripe-Version": STRIPE_API_VERSION,
       ...(init.headers ?? {}),
     },
+    signal: init.signal ?? AbortSignal.timeout(STRIPE_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -114,8 +139,14 @@ export async function createCheckoutSession(
 ) {
   const params = new URLSearchParams();
   params.set("mode", "payment");
-  params.set("success_url", `${env.SITE_URL}/sikeres-fizetes?order=${input.publicId}&token=${input.resultToken}`);
-  params.set("cancel_url", `${env.SITE_URL}/sikertelen-fizetes?order=${input.publicId}&token=${input.resultToken}`);
+  params.set(
+    "success_url",
+    buildResultCapabilityUrl(env.SITE_URL, "sikeres-fizetes", input.publicId, input.resultToken),
+  );
+  params.set(
+    "cancel_url",
+    buildResultCapabilityUrl(env.SITE_URL, "sikertelen-fizetes", input.publicId, input.resultToken),
+  );
   params.set("customer_email", input.email);
   params.set("client_reference_id", input.orderId);
   // Keep the checkout constrained to card payments. Stripe Hosted Checkout can
@@ -173,7 +204,7 @@ export async function retrieveSubscription(env: Env, subscriptionId: string) {
 
 export async function createRefund(env: Env, paymentIntentId: string) {
   const params = new URLSearchParams({ payment_intent: paymentIntentId });
-  return stripeRequest<{ id: string; status: string; amount?: number; currency?: string }>(env, "/refunds", {
+  return stripeRequest<StripeRefund>(env, "/refunds", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -181,6 +212,13 @@ export async function createRefund(env: Env, paymentIntentId: string) {
     },
     body: params,
   });
+}
+
+export async function retrieveRefund(env: Env, refundId: string) {
+  if (!refundId.startsWith("re_")) {
+    throw new Error("INVALID_STRIPE_REFUND_ID");
+  }
+  return stripeRequest<StripeRefund>(env, `/refunds/${encodeURIComponent(refundId)}`);
 }
 
 function parseStripeSignature(signatureHeader: string) {

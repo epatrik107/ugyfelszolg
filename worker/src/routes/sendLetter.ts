@@ -86,12 +86,12 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
       orderId: order.id,
       generationCount: order.generation_count,
       versionIndex: body.versionIndex ?? "current",
-      providerMessageId: emailResult.providerMessageId,
+      delivered: Boolean(emailResult.providerMessageId),
     });
   } catch (err) {
     logEvent("letter_email_send_failed", {
       orderId: order.id,
-      reason: err instanceof Error ? err.message : "unknown",
+      errorType: err instanceof Error ? err.name : "unknown",
     });
     return errorJson(c, "INTERNAL_ERROR", "Az email küldése nem sikerült. Kérjük, próbálja újra.", 500);
   }

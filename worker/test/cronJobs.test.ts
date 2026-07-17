@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   failGeneration: vi.fn(),
   getStuckGeneratingOrders: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
+  upsertPaymentRefund: vi.fn(),
   retryDueInvoices: vi.fn(),
   getInvoiceByOrderId: vi.fn(),
   createRefund: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("../src/lib/db", () => ({
   failGeneration: mocks.failGeneration,
   getStuckGeneratingOrders: mocks.getStuckGeneratingOrders,
   markOrderPaymentStatus: mocks.markOrderPaymentStatus,
+  upsertPaymentRefund: mocks.upsertPaymentRefund,
 }));
 
 vi.mock("../src/lib/invoice", () => ({
@@ -27,6 +29,7 @@ vi.mock("../src/lib/invoice", () => ({
 
 vi.mock("../src/lib/stripe", () => ({
   createRefund: mocks.createRefund,
+  normalizeStripeRefundStatus: (status: string) => status,
   fromStripeMinorAmount: (amount: number, currency: string) =>
     currency.toLowerCase() === "huf" ? amount / 100 : amount,
 }));
@@ -44,6 +47,9 @@ function env(): Env {
     SITE_URL: "https://example.com",
     ALLOWED_ORIGINS: "https://example.com",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
+    TURNSTILE_EXPECTED_HOSTNAMES: "example.com",
+    LEGAL_TERMS_VERSION: "2026-07-14",
+    PRIVACY_POLICY_VERSION: "2026-07-14",
     DEMO_MODE: "false",
     PAYMENTS_ENABLED: "false",
     DB: {} as D1Database,
@@ -59,6 +65,7 @@ describe("scheduled cron jobs", () => {
     mocks.getStuckGeneratingOrders.mockResolvedValue([]);
     mocks.createRefund.mockResolvedValue({ id: "re_1", amount: 89000, currency: "huf", status: "succeeded" });
     mocks.getInvoiceByOrderId.mockResolvedValue({ invoice_number: "INV-1" });
+    mocks.markOrderPaymentStatus.mockResolvedValue(true);
   });
 
   it("runs cleanup, invoice retries, and resolves stuck checkout orders with refund metadata", async () => {
@@ -90,12 +97,60 @@ describe("scheduled cron jobs", () => {
       "refunded",
       { source: "cron", refundAmount: 890, refundStripeId: "re_1" },
     );
+    expect(mocks.upsertPaymentRefund).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orderId: "order_1",
+        stripeRefundId: "re_1",
+        status: "succeeded",
+      }),
+    );
     expect(mocks.sendRefundEmail).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ id: "order_1" }),
       "INV-1",
       expect.stringContaining("technikai hiba"),
     );
+  });
+
+  it("keeps a pending refund out of the settled payment state and does not email success", async () => {
+    mocks.createRefund.mockResolvedValueOnce({
+      id: "re_pending",
+      payment_intent: "pi_1",
+      amount: 89000,
+      currency: "huf",
+      status: "pending",
+    });
+    mocks.getStuckGeneratingOrders.mockResolvedValue([
+      orderFixture({
+        ai_status: "generating",
+        payment_status: "paid",
+        stripe_payment_intent_id: "pi_1",
+      }),
+    ]);
+
+    await app.scheduled({} as ScheduledController, env());
+
+    expect(mocks.upsertPaymentRefund).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "pending" }),
+    );
+    expect(mocks.markOrderPaymentStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      "refunded",
+      expect.anything(),
+    );
+    expect(mocks.sendRefundEmail).not.toHaveBeenCalled();
+  });
+
+  it("continues financial jobs if retention cleanup fails", async () => {
+    mocks.cleanupExpiredData.mockRejectedValueOnce(new Error("foreign key failure"));
+
+    await app.scheduled({} as ScheduledController, env());
+
+    expect(mocks.retryDueInvoices).toHaveBeenCalledOnce();
+    expect(mocks.getStuckGeneratingOrders).toHaveBeenCalledOnce();
   });
 
   it("does not refund subscription stuck orders", async () => {

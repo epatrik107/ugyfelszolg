@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Env } from "./types";
+import { hashToken } from "./hash";
 import { logEvent } from "./logger";
 
 export type RateLimitScope =
@@ -28,9 +29,10 @@ export const RATE_LIMITS: Record<
   "admin-ip": { limit: 30, windowSeconds: 600 },
 };
 
-function getWindowKey(scope: RateLimitScope, identifier: string, now: Date) {
+async function getWindowKey(env: Env, scope: RateLimitScope, identifier: string, now: Date) {
   const bucket = Math.floor(now.getTime() / 1000 / RATE_LIMITS[scope].windowSeconds);
-  return `ratelimit:${scope}:${identifier}:${bucket}`;
+  const identifierHash = await hashToken(`${scope}:${identifier}`, env.TOKEN_HASH_SECRET);
+  return `ratelimit:${scope}:${identifierHash}:${bucket}`;
 }
 
 export function getClientIp(c: Context<{ Bindings: Env }>) {
@@ -49,16 +51,22 @@ export async function isRateLimited(
     if (env.DEMO_MODE === "true") {
       return false;
     }
-    logEvent("rate_limit_kv_missing", { scope, identifier });
+    // The identifier can be an IP address or email address. It is useful for
+    // enforcing the limit, but it must not be copied into application logs.
+    logEvent("rate_limit_kv_missing", { scope });
+    return true;
+  }
+  if (!env.TOKEN_HASH_SECRET) {
+    logEvent("rate_limit_hash_secret_missing", { scope });
     return true;
   }
 
   const rule = RATE_LIMITS[scope];
-  const key = getWindowKey(scope, identifier, now);
+  const key = await getWindowKey(env, scope, identifier, now);
   const current = Number(await env.RATE_LIMIT_KV.get(key)) || 0;
 
   if (current >= rule.limit) {
-    logEvent("rate_limited", { scope, identifier });
+    logEvent("rate_limited", { scope });
     return true;
   }
 

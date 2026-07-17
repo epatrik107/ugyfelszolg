@@ -10,7 +10,10 @@ export type PaymentStatus =
   | "amount_mismatch"
   | "currency_mismatch"
   | "partially_refunded"
-  | "refunded";
+  | "refunded"
+  | "chargeback_open"
+  | "chargeback_lost"
+  | "chargeback_won";
 export type InvoiceStatus =
   | "not_required"
   | "pending"
@@ -24,6 +27,13 @@ export type RefundInvoiceStatus =
   | "manual_required"
   | "created"
   | "failed";
+export type StripeRefundStatus =
+  | "pending"
+  | "requires_action"
+  | "succeeded"
+  | "failed"
+  | "canceled"
+  | "unknown";
 export type InvoiceEmailStatus =
   | "not_required"
   | "pending"
@@ -54,9 +64,12 @@ export interface Env {
   GEMINI_MODEL_PREMIUM?: string;
   GEMINI_REVIEW_MODEL?: string;
   TURNSTILE_SECRET_KEY: string;
+  TURNSTILE_EXPECTED_HOSTNAMES: string;
   SITE_URL: string;
   ALLOWED_ORIGINS: string;
   TOKEN_HASH_SECRET: string;
+  LEGAL_TERMS_VERSION: string;
+  PRIVACY_POLICY_VERSION: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   DEMO_MODE?: string;
@@ -72,6 +85,8 @@ export interface Env {
   SZAMLAZZ_AGENT_KEY?: string;
   /** Bearer token for protected backend/admin invoice operations. */
   ADMIN_API_TOKEN?: string;
+  /** Admin routes stay unavailable unless explicitly enabled outside live mode. */
+  ADMIN_API_ENABLED?: string;
 }
 
 export interface OrderRow {
@@ -137,7 +152,13 @@ export interface OrderRow {
   refund_invoice_status: RefundInvoiceStatus;
   refund_amount: number | null;
   refund_stripe_id: string | null;
+  stripe_refund_status: StripeRefundStatus | null;
+  stripe_refund_failure_reason: string | null;
   letter_email_sent_versions: string | null;
+  personal_data_redacted_at: string | null;
+  legal_accepted_at: string | null;
+  legal_terms_version: string | null;
+  privacy_policy_version: string | null;
 }
 
 export interface SubscriptionRow {

@@ -58,7 +58,12 @@ describe("contact route", () => {
     const response = await request(validPayload);
 
     expect(response.status).toBe(200);
-    expect(mocks.verifyTurnstileToken).toHaveBeenCalledWith(expect.anything(), "turnstile-token", "127.0.0.1");
+    expect(mocks.verifyTurnstileToken).toHaveBeenCalledWith(
+      expect.anything(),
+      "turnstile-token",
+      "127.0.0.1",
+      "contact",
+    );
     expect(mocks.insertContactMessage).toHaveBeenCalledWith(expect.anything(), {
       name: "Teszt Elek",
       email: "teszt@example.com",
