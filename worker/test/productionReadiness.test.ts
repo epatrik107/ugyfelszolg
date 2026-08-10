@@ -167,7 +167,7 @@ describe("production deploy workflow hardening", () => {
     expect(workerWorkflow).not.toContain("wrangler secret bulk /tmp/worker-secrets.json");
     expect(workerWorkflow).toContain("wrangler secret bulk /tmp/stale-worker-secrets.json");
     expect(workerWorkflow).toContain("OPENAI_API_KEY: null");
-    expect(workerWorkflow).toContain("DEMO_ACCESS_CODE: null");
+    expect(workerWorkflow).toContain("DEMO_ACCESS_CODE: null"); expect(workerWorkflow).toContain('const defaultDemoMode = "false"');
     expect(workerWorkflow).toContain('steps.previous-deployment.outputs.version_id');
     expect(workerWorkflow).toContain('wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}"');
   });
