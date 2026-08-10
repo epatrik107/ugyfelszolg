@@ -12,6 +12,14 @@ export const REQUIRED_WORKER_SECRETS = [
   "TURNSTILE_SECRET_KEY",
 ];
 
+export const REQUIRED_SANDBOX_WORKER_SECRETS = [
+  "CLOUDFLARE_API_TOKEN",
+  "GEMINI_API_KEY",
+  "RESEND_API_KEY",
+  "TOKEN_HASH_SECRET",
+  "TURNSTILE_SECRET_KEY",
+];
+
 export const REQUIRED_WORKER_VARIABLES = [
   "ADMIN_API_ENABLED",
   "ALLOWED_ORIGINS",
@@ -67,7 +75,11 @@ export function auditEnvironment({
   repositoryVariables = [],
 }) {
   const requiredSecrets =
-    environment === "github-pages" ? [] : REQUIRED_WORKER_SECRETS;
+    environment === "github-pages"
+      ? []
+      : environment === "sandbox"
+        ? REQUIRED_SANDBOX_WORKER_SECRETS
+        : REQUIRED_WORKER_SECRETS;
   const requiredVariables =
     environment === "production"
       ? [...REQUIRED_WORKER_VARIABLES, ...REQUIRED_FRONTEND_VARIABLES]

@@ -9,20 +9,23 @@ A repository `Settings > Environments` részében hozz létre két environmentet
 - `sandbox`
 - `production`
 
-A két environmentben azonos secretneveket használunk, de eltérő értékekkel. Így a workflow nem tud test és live kulcsot ugyanabból a secretből véletlenül összekeverni. A `production` environmenthez ajánlott required reviewert beállítani.
+A két environment külön credentialt használ. A sandboxban a payment/invoice integráció ki van kapcsolva, mert nincs izolált Számlázz.hu tesztfiók. A `production` environmenthez ajánlott required reviewert beállítani.
 
 ## Environment secretek
 
 Mindkét environmentben külön add meg:
 
 - `CLOUDFLARE_API_TOKEN`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
 - `GEMINI_API_KEY`
 - `TURNSTILE_SECRET_KEY`
 - `TOKEN_HASH_SECRET`
-- `SZAMLAZZ_AGENT_KEY`
 - `RESEND_API_KEY`
+
+Csak productionben szükséges:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `SZAMLAZZ_AGENT_KEY`
 
 `ADMIN_API_TOKEN` csak sandboxban szükséges, ha ott explicit
 `ADMIN_API_ENABLED=true`. Productionben `ADMIN_API_ENABLED=false`, amíg az admin
@@ -30,11 +33,9 @@ felület nincs Cloudflare Access identity és MFA mögött.
 
 `sandbox` értékek:
 
-- `STRIPE_SECRET_KEY`: kizárólag `sk_test_…`
-- `STRIPE_WEBHOOK_SECRET`: a sandbox endpoint `whsec_…` signing secretje
-- `SZAMLAZZ_AGENT_KEY`: kizárólag külön Számlázz.hu tesztfiók kulcsa
 - `RESEND_API_KEY`: kizárólag sandbox/test email küldésre használt kulcs
 - a többi külső szolgáltatásnál is fejlesztői/test credential
+- a workflow `PAYMENTS_ENABLED=false` és `SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=false` értéket kényszerít, és eltávolítja a payment provider secreteket a sandbox Workerből
 
 `production` értékek:
 
@@ -97,7 +98,7 @@ Ne használd ugyanazt a D1 adatbázist vagy Worker nevet sandboxhoz és producti
 
 1. GitHub `Actions > Deploy worker > Run workflow`.
 2. Elsőként válaszd a `sandbox` environmentet.
-3. Futtasd végig a Stripe test és Számlázz.hu tesztfiókos smoke teszteket.
+3. Futtasd végig az AI/API/health/rollback sandbox teszteket; payment/invoice E2E külön tesztfiók hiányában itt nem fut.
 4. Csak jóváhagyás után indíts külön `production` workflow-t.
 5. A production Worker sikeres deployja után indítsd kézzel a `Deploy frontend` workflow-t.
 
@@ -105,7 +106,7 @@ A workflow minden futásnál lintet, teszteket és buildet futtat, D1 Time Trave
 bookmarkot ment artifactként, majd alkalmazza a migrációkat. A Worker deploy után
 kötelező health/security-header ellenőrzés fut; hiba esetén a workflow Wrangler
 rollbacket indít és sikertelenül zár. A kulcsprefix-, webhook-mód-, custom domain-,
-admin API- és Számlázz.hu tesztfiók-ellenőrzés deploy előtt leállítja a hibás
+admin API- és sandbox payment-tiltás ellenőrzése deploy előtt leállítja a hibás
 konfigurációt.
 
 A teljes, érték nélküli inventory: `docs/production-secrets.md`.

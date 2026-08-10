@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_FRONTEND_VARIABLES,
+  REQUIRED_SANDBOX_WORKER_SECRETS,
   REQUIRED_WORKER_SECRETS,
   REQUIRED_WORKER_VARIABLES,
   auditEnvironment,
@@ -40,7 +41,7 @@ describe("GitHub environment name-only audit", () => {
   it("allows the sandbox-only admin token but not a demo access code", () => {
     const result = auditEnvironment({
       environment: "sandbox",
-      secrets: [...REQUIRED_WORKER_SECRETS, "ADMIN_API_TOKEN", "DEMO_ACCESS_CODE"],
+      secrets: [...REQUIRED_SANDBOX_WORKER_SECRETS, "ADMIN_API_TOKEN", "DEMO_ACCESS_CODE"],
       variables: REQUIRED_WORKER_VARIABLES,
     });
 

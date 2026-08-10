@@ -152,6 +152,11 @@ describe("production deploy workflow hardening", () => {
     expect(workerWorkflow).toContain("[observability]");
     expect(workerWorkflow).toContain("head_sampling_rate = ${observabilitySamplingRate}");
     expect(workerWorkflow).toContain('deployEnv === "production" ? "0.1" : "1"');
+    expect(workerWorkflow).toContain("inputs.target_environment == 'production' && 'true' || 'false'");
+    expect(workerWorkflow).toContain(
+      "Sandbox deploy without an isolated billing test account requires PAYMENTS_ENABLED=false.",
+    );
+    expect(workerWorkflow).toContain("staleSecrets.STRIPE_SECRET_KEY = null");
   });
 
   it("deploys secrets atomically and rolls back to the captured active version", () => {

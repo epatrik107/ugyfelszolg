@@ -96,7 +96,8 @@ Ezek **publikusak**, a böngésző bundle-ben láthatók; secret nem kerülhet k
 - [x] Régi, Git-historyban talált Gemini kulcs visszavonva, usage auditálva és új production kulcs beállítva — projektgazda által megerősítve 2026-07-18-án
 - [x] Mind a 8 production secret név szerint jelen van a production Environmentben (értékmentes audit: 2026-08-10)
 - [x] Mind a 24 production GitHub variable jelen van; ÁSZF `1.3`, verified-domain `EMAIL_FROM` beállítva
-- [ ] Külön sandbox `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY` felvéve, majd a két repository-szintű fallback törölve
+- [x] Külön sandbox `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY` felvéve, majd a két repository-szintű fallback törölve
+- [x] Sandbox payment provider secretek eltávolítva; a következő sandbox deploy `PAYMENTS_ENABLED=false` értéket kényszerít, mert nincs izolált Számlázz.hu tesztfiók
 - [ ] Custom API `/api/health` 200/ok
 - [ ] Frontend edge-en HSTS/CSP/XFO/nosniff/referrer headerek ténylegesen jelen vannak
 - [x] Stripe live account/webhook és Számlázz.hu NAV-kapcsolat projektgazdai megerősítés alapján elkészült

@@ -7,7 +7,7 @@ forrását és a `GO` döntéshez szükséges sorrendet.
 
 | Hely | Állapot | Teendő |
 |---|---|---|
-| GitHub Environmentek | 2026-08-10-én értékmentesen auditálva; productionben mind a 8 secret és 24 variable név szerint teljes | külön sandbox Cloudflare- és Gemini-kulcs még hiányzik |
+| GitHub Environmentek | 2026-08-10-én értékmentesen auditálva; production teljes, sandbox külön Cloudflare- és Gemini-kulcsa beállítva; repository-scope üres; sandbox payment provider secretek eltávolítva | az új payment-disabled sandbox release deployja még hátravan |
 | GitHub `production` protection | protected-branch policy aktív; a `main` PR + `verify` check védelemmel rendelkezik | required reviewer még nincs, admin bypass továbbra is engedett |
 | `.env.example` | tracked, placeholder-only, fájlon belüli duplikáció nincs | ez marad az összes név dokumentációs inventoryja |
 | `frontend/.env` | gitignore-olt, `0600`; két nevet definiál | a kívánt lokális értékek átvitele után törlendő |
@@ -38,9 +38,8 @@ A 2026-08-10-i, értékmentes audit tényleges GitHub-állapota:
 - sandboxban a teljes variable-névlista megvan, és a korábban secretként tárolt
   `EMAIL_FROM`/`SELLER_*` adatok variable-ként kerültek át, a stale secret
   példányok törölve lettek;
-- sandboxból még hiányzik a külön `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY`.
-  Emiatt a két repository-szintű fallback egyelőre megmaradt; ezek productionben
-  az Environment-szintű értékek által shadowolt scope-duplikációk;
+- sandboxban külön `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY` van, a
+  repository-szintű fallbackek törölve; scope-duplikáció nincs;
 - a repository-szintű `CLOUDFLARE_ACCOUNT_ID` secret törölve lett, mert az
   azonosító mindkét Environmentben helyesen variable;
 - a `main` branch védett: PR, zöld `verify`, stale review eldobása,

@@ -39,9 +39,9 @@ jobs:
     env:
       DEPLOY_ENV: ${{ inputs.target_environment }}
       DEMO_MODE: "false"
-      PAYMENTS_ENABLED: "true"
+      PAYMENTS_ENABLED: ${{ inputs.target_environment == 'production' && 'true' || 'false' }}
       PAYMENT_MODE: ${{ inputs.target_environment == 'production' && 'live' || 'test' }}
-      SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: ${{ inputs.target_environment == 'sandbox' && 'true' || 'false' }}
+      SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "false"
       ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
     runs-on: ubuntu-latest
     steps:
@@ -116,12 +116,10 @@ jobs:
           if (!['sandbox', 'production'].includes(deployEnv)) {
             errors.push("DEPLOY_ENV must be sandbox or production.");
           }
-          if (demoMode !== "false") errors.push("DEMO_MODE must be false for payment deploys.");
-          if (paymentsEnabled !== "true") errors.push("PAYMENTS_ENABLED must be true for payment deploys.");
-          if (!stripeWebhookSecret.startsWith("whsec_")) {
-            errors.push("A Stripe webhook signing secret is required.");
+          if (demoMode !== "false") errors.push("DEMO_MODE must remain false in deployed environments.");
+          if (!['true', 'false'].includes(paymentsEnabled)) {
+            errors.push("PAYMENTS_ENABLED must be true or false.");
           }
-          if (!hasSzamlazzAgentKey) errors.push("SZAMLAZZ_AGENT_KEY is required.");
           if (!hasGeminiApiKey) errors.push("GEMINI_API_KEY is required.");
           if (!hasTurnstileSecretKey) errors.push("TURNSTILE_SECRET_KEY is required.");
           if (!turnstileExpectedHostnames) errors.push("TURNSTILE_EXPECTED_HOSTNAMES is required.");
@@ -164,9 +162,11 @@ jobs:
 
           if (deployEnv === "sandbox") {
             if (paymentMode !== "test") errors.push("PAYMENT_MODE=test is required in sandbox.");
-            if (!stripeSecretKey.startsWith("sk_test_")) errors.push("A Stripe test secret key is required in sandbox.");
-            if (szamlazzTestAccountConfirmed !== "true") {
-              errors.push("SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true is required in sandbox.");
+            if (paymentsEnabled !== "false") {
+              errors.push("Sandbox deploy without an isolated billing test account requires PAYMENTS_ENABLED=false.");
+            }
+            if (szamlazzTestAccountConfirmed !== "false") {
+              errors.push("Sandbox deploy without an isolated billing test account requires SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=false.");
             }
             if (!/(sandbox|test)/i.test(workerName)) {
               errors.push("Sandbox WORKER_NAME must contain sandbox or test.");
@@ -183,8 +183,13 @@ jobs:
           }
 
           if (deployEnv === "production") {
+            if (paymentsEnabled !== "true") errors.push("PAYMENTS_ENABLED=true is required in production.");
             if (paymentMode !== "live") errors.push("PAYMENT_MODE=live is required in production.");
             if (!stripeSecretKey.startsWith("sk_live_")) errors.push("A Stripe live secret key is required in production.");
+            if (!stripeWebhookSecret.startsWith("whsec_")) {
+              errors.push("A Stripe webhook signing secret is required in production.");
+            }
+            if (!hasSzamlazzAgentKey) errors.push("SZAMLAZZ_AGENT_KEY is required in production.");
             if (szamlazzTestAccountConfirmed === "true") {
               errors.push("A Szamlazz.hu test account cannot be confirmed in production.");
             }
@@ -378,15 +383,15 @@ jobs:
           node <<'NODE'
           const fs = require("fs");
           const keys = [
-            "STRIPE_SECRET_KEY",
-            "STRIPE_WEBHOOK_SECRET",
             "GEMINI_API_KEY",
             "TURNSTILE_SECRET_KEY",
             "TOKEN_HASH_SECRET",
             "RESEND_API_KEY",
-            "SZAMLAZZ_AGENT_KEY",
             "ADMIN_API_TOKEN"
           ];
+          if (process.env.DEPLOY_ENV === "production") {
+            keys.push("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "SZAMLAZZ_AGENT_KEY");
+          }
           const secrets = {};
           for (const key of keys) {
             if (key === "ADMIN_API_TOKEN" && process.env.ADMIN_API_ENABLED !== "true") continue;
@@ -404,6 +409,7 @@ jobs:
           SZAMLAZZ_AGENT_KEY: ${{ secrets.SZAMLAZZ_AGENT_KEY }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
+          DEPLOY_ENV: ${{ inputs.target_environment }}
       - name: Capture currently active Worker version
         id: previous-deployment
         run: |
@@ -471,10 +477,13 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require("fs");
-          fs.writeFileSync(
-            "/tmp/stale-worker-secrets.json",
-            JSON.stringify({ OPENAI_API_KEY: null, DEMO_ACCESS_CODE: null }),
-          );
+          const staleSecrets = { OPENAI_API_KEY: null, DEMO_ACCESS_CODE: null };
+          if (process.env.DEPLOY_ENV === "sandbox") {
+            staleSecrets.STRIPE_SECRET_KEY = null;
+            staleSecrets.STRIPE_WEBHOOK_SECRET = null;
+            staleSecrets.SZAMLAZZ_AGENT_KEY = null;
+          }
+          fs.writeFileSync("/tmp/stale-worker-secrets.json", JSON.stringify(staleSecrets));
           NODE
           npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml
         env:

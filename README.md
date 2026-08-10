@@ -185,7 +185,7 @@ GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite
 
 ## 17. GitHub Actions secret beállítás
 
-A Worker külön GitHub `sandbox` és `production` Environmentet használ, környezetenként elkülönített Stripe-, Számlázz.hu-, Cloudflare- és alkalmazás-secretekkel. A pontos secret- és variable-lista: [docs/github-environments.md](docs/github-environments.md).
+A Worker külön GitHub `sandbox` és `production` Environmentet használ. A production külön Stripe- és Számlázz.hu-secreteket kap; a sandbox payment/invoice integráció izolált számlázási tesztfiók hiányában fail-closed módon ki van kapcsolva. A pontos secret- és variable-lista: [docs/github-environments.md](docs/github-environments.md).
 
 Fontos: a Worker secret értékeket nem szabad frontend env változóba tenni. A deploy workflow a kiválasztott GitHub Environment secretjeiből szinkronizálja őket Cloudflare Worker secretként. A merge nem indít automatikus production deployt.
 
