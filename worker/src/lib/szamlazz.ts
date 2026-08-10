@@ -209,7 +209,7 @@ function formWithXml(field: string, xml: string, filename: string) {
 function providerErrorFromResponse(response: Response) {
   const code = response.headers.get("szlahu_error_code") ?? `HTTP_${response.status}`;
   const retryable = response.status === 408 || response.status === 429 || response.status >= 500 || code === "1" || code === "55";
-  return new InvoiceProviderError(code, retryable);
+  return new InvoiceProviderError(code, retryable, decodeHeader(response.headers.get("szlahu_error"))?.trim().slice(0, 300) || undefined);
 }
 
 async function fetchSzamlazz(form: FormData) {
