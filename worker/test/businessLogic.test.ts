@@ -734,7 +734,7 @@ describe("createInvoice szamlazz.hu path", () => {
       stripe_payment_intent_id: "pi_test_err",
     };
 
-    await expect(createInvoice(fakeEnv, order)).rejects.toThrow();
+    await expect(createInvoice(fakeEnv, order)).rejects.toThrow("Hibás agent kulcs");
   });
 
   it("does NOT include the agent key in the thrown error message", async () => {
