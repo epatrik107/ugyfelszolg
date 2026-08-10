@@ -18,14 +18,17 @@ const paymentTransitions: Record<PaymentStatus, PaymentStatus[]> = {
     "amount_mismatch",
     "currency_mismatch",
   ],
-  paid: ["partially_refunded", "refunded"],
+  paid: ["partially_refunded", "refunded", "chargeback_open"],
   failed: ["paid", "cancelled", "expired", "amount_mismatch", "currency_mismatch"],
   cancelled: [],
   expired: [],
   amount_mismatch: [],
   currency_mismatch: [],
-  partially_refunded: ["refunded"],
+  partially_refunded: ["refunded", "chargeback_open"],
   refunded: [],
+  chargeback_open: ["chargeback_lost", "chargeback_won"],
+  chargeback_lost: [],
+  chargeback_won: ["chargeback_open"],
 };
 
 export function canTransitionPaymentStatus(
@@ -44,7 +47,11 @@ export function canStartGeneration(order: Pick<OrderRow, "payment_status" | "ai_
 }
 
 export function hasActiveOrderAccess(order: Pick<OrderRow, "payment_status">) {
-  return order.payment_status === "paid" || order.payment_status === "partially_refunded";
+  return (
+    order.payment_status === "paid" ||
+    order.payment_status === "partially_refunded" ||
+    order.payment_status === "chargeback_won"
+  );
 }
 
 /** Maximum number of user-initiated regenerations allowed per order (fallback). */

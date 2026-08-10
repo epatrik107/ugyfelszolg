@@ -78,7 +78,9 @@ function kvMock() {
 
 function adminEnv(overrides: Partial<Env> = {}) {
   return {
+    ADMIN_API_ENABLED: "true",
     ADMIN_API_TOKEN: ADMIN_TOKEN,
+    TOKEN_HASH_SECRET: "admin-rate-limit-test-secret-32-chars",
     RATE_LIMIT_KV: kvMock(),
     ...overrides,
   } as Env;
@@ -125,6 +127,17 @@ describe("admin invoice backend", () => {
       adminEnv(),
     );
     expect(response.status).toBe(401);
+    expect(mocks.getOrderByPublicId).not.toHaveBeenCalled();
+  });
+
+  it("is unavailable unless the admin API is explicitly enabled", async () => {
+    const response = await app().fetch(
+      new Request("https://worker.test/admin/orders/public_1/invoice", {
+        headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+      }),
+      adminEnv({ ADMIN_API_ENABLED: "false" }),
+    );
+    expect(response.status).toBe(404);
     expect(mocks.getOrderByPublicId).not.toHaveBeenCalled();
   });
 

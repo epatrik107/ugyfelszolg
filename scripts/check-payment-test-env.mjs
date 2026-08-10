@@ -54,7 +54,13 @@ requireValue(worker, "TOKEN_HASH_SECRET");
 requireValue(worker, "STRIPE_SECRET_KEY");
 requireValue(worker, "STRIPE_WEBHOOK_SECRET");
 requireValue(worker, "SZAMLAZZ_AGENT_KEY");
-requireValue(worker, "ADMIN_API_TOKEN");
+requireValue(worker, "TURNSTILE_EXPECTED_HOSTNAMES");
+requireValue(worker, "LEGAL_TERMS_VERSION");
+requireValue(worker, "PRIVACY_POLICY_VERSION");
+
+if (worker.ADMIN_API_ENABLED === "true") {
+  requireValue(worker, "ADMIN_API_TOKEN");
+}
 
 if (worker.STRIPE_SECRET_KEY && !worker.STRIPE_SECRET_KEY.startsWith("sk_test_")) {
   errors.push("A STRIPE_SECRET_KEY nem Stripe test kulcs (sk_test_…).");
@@ -74,7 +80,7 @@ if (
 if ((worker.TOKEN_HASH_SECRET?.length ?? 0) < 32) {
   errors.push("A TOKEN_HASH_SECRET legyen legalább 32 karakteres random érték.");
 }
-if ((worker.ADMIN_API_TOKEN?.length ?? 0) < 32) {
+if (worker.ADMIN_API_ENABLED === "true" && (worker.ADMIN_API_TOKEN?.length ?? 0) < 32) {
   errors.push("Az ADMIN_API_TOKEN legyen legalább 32 karakteres random érték.");
 }
 
@@ -94,7 +100,11 @@ console.log("Payment test konfiguráció rendben:");
 console.log("  ✓ Stripe test mód, live kulcs nélkül");
 console.log("  ✓ Stripe webhook signing secret beállítva");
 console.log("  ✓ Számlázz.hu tesztfiók explicit megerősítve");
-console.log("  ✓ Admin invoice retry API token beállítva");
+console.log(
+  worker.ADMIN_API_ENABLED === "true"
+    ? "  ✓ Sandbox admin invoice retry API token beállítva"
+    : "  ✓ Admin invoice retry API letiltva",
+);
 console.log("  ✓ Vevői számlaemail test módban letiltva");
 console.log("  ✓ Cloudflare Turnstile hivatalos tesztkulcsok");
 console.log("A parancs egyetlen secret értéket sem írt ki.");

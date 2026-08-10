@@ -5,9 +5,11 @@
 - A checkout magyarországi magánszemély és magyar adószámmal rendelkező céges vásárlót fogad.
 - A `buyerType` elfogadott értékei: `individual` és `business`.
 - Céges vásárlónál a cégnév és magyar adószám kötelező; VAT/EU VAT ID, nem támogatott szervezeti buyer type és kliensoldali adó/ármező elutasításra kerül.
-- A kliens nem küldhet árat, pénznemet, kupont vagy kedvezményt. A fizetendő bruttó HUF összeg kizárólag a backend csomagkatalógusából származik.
+- A kliens nem küldhet árat, pénznemet, kupont vagy kedvezményt. A fizetendő HUF végösszeg kizárólag a backend csomagkatalógusából származik.
 - A jelenlegi szolgáltatás nem támogat kupont vagy promóciót (`discountAmount = 0`).
-- A piac HU-only, mert az ár 27% magyar ÁFÁ-t tartalmaz. Külföldi fogyasztó addig nem engedhető, amíg az OSS/célországi ÁFA szabály nincs implementálva.
+- A seller igazolt adózási státusza AAM (alanyi adómentes). A Számlázz.hu tételben az áfakulcs `AAM`, a nettó és bruttó érték megegyezik, az áfa összege 0.
+- A Stripe csak a fizetést dolgozza fel: Stripe Tax és Stripe invoice creation nincs engedélyezve, a Checkout inline Price nem kap `tax_behavior` értéket. A jogszabályi számlát kizárólag a Számlázz.hu állítja ki.
+- A piac HU-only. Külföldi fogyasztó addig nem engedhető, amíg a határon átnyúló adózási szabályok nincsenek implementálva és szakértővel jóváhagyva.
 - Aktiválás és számlázás kizárólag Stripe által aláírt, szerveroldalon visszaolvasott, `paid` állapotú, pontos összegű és pénznemű Checkout Session után indul.
 - A `PAYMENT_MODE=test|live` explicit környezetválasztás kötelező. A Stripe secret kulcs prefixének és a webhook `livemode` jelzőjének egyeznie kell vele.
 - Fizetős deployban a demó bypass tiltott: `DEMO_MODE=true` és `PAYMENTS_ENABLED=true` kombinációt a Worker hibás konfigurációnak kezeli.
@@ -30,7 +32,8 @@
 - A számlázási worker atomikusan `processing` állapotot foglal. Párhuzamos webhook csak az egyik hívást engedi a providerhez.
 - A Számla Agent kérés hivatalos `action-xmlagentxmlfile` multipart mezőt és aktuális XSD-sorrendet használ.
 - Magánszemély vevőnél `<adoalany>-1</adoalany>` kerül a payloadba; céges vevőnél a validált magyar `<adoszam>` kerül átadásra. `<adoszamEU>` nincs támogatva.
-- HUF 27% ÁFA kerekítés bruttó alapú: `áfa = round(bruttó / 127 * 27)`, `nettó = bruttó - áfa`.
+- AAM HUF számlán `nettó = fizetendő végösszeg`, `áfa = 0`, `bruttó = fizetendő végösszeg`, az XML `<afakulcs>` értéke `AAM`.
+- Az AAM státusz nem runtime environment variable: megváltoztatása kódreview-t, tesztfrissítést, jogi/könyvelői ellenőrzést és új release-t igényel.
 - A `szamlaKulsoAzon` és `rendelesSzam` az order ID. Ambiguus timeout után a retry előbb ezzel az azonosítóval kérdezi le a már elkészült számlát, így nem állít ki duplikátumot.
 - Retry-olható hiba `retry_required`, legfeljebb 5 próbálkozás, 5/30/120/720 perces backoff. Validáció/auth hiba `failed`, kézi javítást igényel.
 - Az ütemezett Worker feldolgozza a due és stale invoice állapotokat. A fizetés közben végig `paid` marad.
@@ -41,17 +44,18 @@
 ## Refund szabály
 
 - Teljes és részleges refund külön payment státuszt kap.
+- Chargeback/dispute eseménynél a rendelés `chargeback_open`, `chargeback_lost` vagy `chargeback_won` státuszt kap, és az esemény a `payment_disputes` audit táblába kerül.
 - Ha már készült számla, `refund_invoice_status=manual_required` lesz és monitoring esemény készül.
 - Automatikus sztornó/helyesbítő számla nincs engedélyezve, amíg a pénzügyi/jogi szabály (teljes vs. részleges refund, teljesítési állapot) nincs jóváhagyva. Productionben ezt adminnak kell rendeznie Számlázz.hu-ban.
 
 ## Production előtti checklist
 
-1. Töltse ki és jogásszal ellenőriztesse az ÁSZF/adatkezelés `[KITÖLTENDŐ]` szolgáltatói mezőit.
+1. Ellenőrizze jogásszal az ÁSZF/adatkezelés szolgáltatói adatait, a panaszkezelési eljárást és a 90 napos személyes tartalom redaction szabályt.
 2. Állítsa be a live `STRIPE_SECRET_KEY`, live endpoint `STRIPE_WEBHOOK_SECRET` és live `SZAMLAZZ_AGENT_KEY` GitHub/Worker secreteket. Test és live kulcsot ne keverjen.
 3. Stripe Workbenchben csak a dokumentált eseményeket kapcsolja az endpointhez.
 4. Számlázz.hu tesztfiókkal, Stripe test mode-dal végezzen kézi smoke tesztet; valódi kártyát és production adatot ne használjon.
-5. Ellenőrizze a számlaképet, eladói adatokat, 27% ÁFÁ-t, email-kézbesítést és a Számlázz.hu tesztfiók kikapcsolását csak a jóváhagyott go-live pillanatban.
+5. Ellenőrizze a számlaképet, eladói adatokat, az `AAM` áfakulcsot, a nettó=bruttó és áfa=0 összegeket, az email-kézbesítést és a Számlázz.hu tesztfiók kikapcsolását csak a jóváhagyott go-live pillanatban.
 6. Alkalmazza a D1 migrációkat a Worker deploy előtt. Ne deployoljon mainen kívüli automatikával és ne merge-eljen ellenőrzés nélkül.
-7. Monitorozza: `payment_paid`, `payment_failed`, `duplicate_webhook_ignored`, `amount_mismatch`, `currency_mismatch`, `invoice_pending`, `invoice_created`, `invoice_retry_finished`, `invoice_email_sent`, `invoice_email_send_failed`, `admin_invoice_retry`, `admin_invoice_email_retry`, `refund_invoice_manual_required`, `rejected_tax_number_attempt`, `rejected_manipulated_price`.
+7. Monitorozza: `payment_paid`, `payment_failed`, `duplicate_webhook_ignored`, `amount_mismatch`, `currency_mismatch`, `chargeback_dispute_recorded`, `invoice_pending`, `invoice_created`, `invoice_retry_finished`, `invoice_email_sent`, `invoice_email_send_failed`, `admin_invoice_retry`, `admin_invoice_email_retry`, `refund_invoice_manual_required`, `rejected_tax_number_attempt`, `rejected_manipulated_price`.
 
 A GitHub sandbox/production secret- és deploy-konfiguráció részletes leírása: [github-environments.md](github-environments.md).

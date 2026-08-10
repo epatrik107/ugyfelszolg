@@ -5,7 +5,6 @@ import {
   getLetterEmailVersionKey,
   hasLetterEmailVersionSent,
   markLetterEmailSent,
-  markOrderPaymentStatus,
 } from "./db";
 import { sendGeneratedLetterEmail, sendRefundEmail } from "./email";
 import { getInvoiceByOrderId } from "./invoice";
@@ -13,7 +12,8 @@ import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewLetterWithRules } from "./review";
-import { createRefund, fromStripeMinorAmount } from "./stripe";
+import { createRefund } from "./stripe";
+import { reconcileStripeRefund } from "./refund";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
@@ -92,12 +92,12 @@ async function sendGeneratedLetterEmailIfConfigured(
     await markLetterEmailSent(env, order.id, versionKey);
     logEvent("letter_email_sent_auto", {
       orderId: order.id,
-      providerMessageId: emailResult?.providerMessageId ?? null,
+      delivered: Boolean(emailResult?.providerMessageId),
     });
   } catch (error) {
     logEvent("letter_email_send_failed", {
       orderId: order.id,
-      reason: error instanceof Error ? error.message : "unknown",
+      errorType: error instanceof Error ? error.name : "unknown",
     });
   }
 }
@@ -136,7 +136,13 @@ function parseAiReviewJson(raw: string): AiReviewResult {
  * the risk of prompt injection.
  */
 function wrapUserField(tag: string, value: string): string {
-  return `<${tag}>\n${value}\n</${tag}>`;
+  // User data must not be able to close the delimiter and inject sibling
+  // prompt sections. The model can still understand the escaped text.
+  const escaped = value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;");
+  return `<${tag}>\n${escaped}\n</${tag}>`;
 }
 
 /**
@@ -375,7 +381,11 @@ export async function generateLetterForPaidOrder(
   const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
-    await failGeneration(env, order.id, status, message, order.subscription_id);
+    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id);
+    if (!failureRecorded) {
+      logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason });
+      return;
+    }
     logEvent("ai_generation_failed", { orderId: order.id, reason });
 
     // Auto-refund for one-time checkout payments only (skip for user-initiated regenerations
@@ -383,26 +393,28 @@ export async function generateLetterForPaidOrder(
     if (order.generation_count <= 1 && order.stripe_payment_intent_id && order.billing_source === "checkout") {
       try {
         const refund = await createRefund(env, order.stripe_payment_intent_id);
-        const refundAmount = typeof refund.amount === "number" && refund.currency
-          ? fromStripeMinorAmount(refund.amount, refund.currency)
-          : order.server_calculated_price;
-        await markOrderPaymentStatus(env, order.id, "refunded", {
-          source: "ai",
-          refundAmount,
-          refundStripeId: refund.id,
-        });
-        logEvent("auto_refund_issued", { orderId: order.id });
+        const refundResult = await reconcileStripeRefund(env, order, refund, "ai");
+        if (refundResult.status !== "succeeded") {
+          logEvent("auto_refund_not_settled", {
+            orderId: order.id,
+            refundStatus: refundResult.status,
+          });
+          return;
+        }
+        logEvent("auto_refund_succeeded", { orderId: order.id });
 
         const invoice = await getInvoiceByOrderId(env, order.id);
         const userReason =
           status === "failed_review"
             ? "Az elkészült levél nem ment át az automatikus minőségellenőrzésen, ezért a rendelést visszatérítettük."
             : "A levélgeneráló szolgáltatás átmeneti hibája miatt a rendelést nem tudtuk teljesíteni.";
-        await sendRefundEmail(env, order, invoice?.invoice_number ?? null, userReason);
+        if (refundResult.paymentStatusChanged && refundResult.paymentStatus === "refunded") {
+          await sendRefundEmail(env, order, invoice?.invoice_number ?? null, userReason);
+        }
       } catch (refundError) {
         logEvent("auto_refund_failed", {
           orderId: order.id,
-          reason: refundError instanceof Error ? refundError.message : "unknown",
+          errorType: refundError instanceof Error ? refundError.name : "unknown",
         });
       }
     }
@@ -430,7 +442,7 @@ export async function generateLetterForPaidOrder(
         const aiReview = await reviewWithAi(env, letter);
         if (!aiReview.ok) {
           aiBlockers = aiReview.issues;
-          logEvent("ai_review_blocker", { orderId: order.id, attempt, issues: aiReview.issues });
+          logEvent("ai_review_blocker", { orderId: order.id, attempt, issueCount: aiReview.issues.length });
         }
         reviewIssues = [...ruleReview.blockers, ...aiBlockers];
       } catch (reviewErr) {
@@ -449,7 +461,11 @@ export async function generateLetterForPaidOrder(
 
       if (ruleReview.ok && aiBlockers.length === 0) {
         const safeLetter = validateAiOutput(letter);
-        await completeGeneration(env, order.id, safeLetter, order.generated_letter);
+        const completed = await completeGeneration(env, order.id, safeLetter, order.generated_letter);
+        if (!completed) {
+          logEvent("ai_generation_completion_state_unchanged", { orderId: order.id });
+          return;
+        }
         if (order.subscription_id) {
           await commitReservedQuota(env, order.subscription_id);
         }
@@ -458,7 +474,12 @@ export async function generateLetterForPaidOrder(
         return;
       }
 
-      logEvent("ai_review_failed", { orderId: order.id, attempt, ruleBlockers: ruleReview.blockers, aiBlockers });
+      logEvent("ai_review_failed", {
+        orderId: order.id,
+        attempt,
+        ruleBlockers: ruleReview.blockers,
+        aiBlockerCount: aiBlockers.length,
+      });
     }
 
     await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");
@@ -466,7 +487,7 @@ export async function generateLetterForPaidOrder(
     await handleFailure(
       "failed",
       "Generálási hiba.",
-      error instanceof Error ? error.message : "unknown",
+      error instanceof Error ? error.name : "unknown",
     );
   }
 }

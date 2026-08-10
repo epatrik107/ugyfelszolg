@@ -18,7 +18,10 @@ function makeKvMock() {
 }
 
 function makeEnv(kv: unknown = makeKvMock()): Env {
-  return { RATE_LIMIT_KV: kv } as unknown as Env;
+  return {
+    RATE_LIMIT_KV: kv,
+    TOKEN_HASH_SECRET: "rate-limit-test-secret-with-32-chars",
+  } as unknown as Env;
 }
 
 function makeEnvWithoutKv(): Env {
@@ -80,7 +83,42 @@ describe("isRateLimited", () => {
     // The logger uses console.log – check that the missing-KV event was recorded
     // (the logger.ts implementation may use console.log, console.warn or similar)
     expect(logSpy).toHaveBeenCalled();
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(identifier);
     logSpy.mockRestore();
+  });
+
+  it("does not include the limited identifier in logs", async () => {
+    const env = makeEnv();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    for (let i = 0; i <= RATE_LIMITS[scope].limit; i++) {
+      await isRateLimited(env, scope, identifier, now);
+    }
+
+    expect(logSpy).toHaveBeenCalled();
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(identifier);
+    logSpy.mockRestore();
+  });
+
+  it("does not persist raw IP or email identifiers in KV keys", async () => {
+    const keys: string[] = [];
+    const kv = {
+      async get(key: string) {
+        keys.push(key);
+        return null;
+      },
+      async put(key: string) {
+        keys.push(key);
+      },
+    };
+    const env = makeEnv(kv);
+    const email = "personal@example.com";
+
+    await isRateLimited(env, "contact-email", email, now);
+
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.join("\n")).not.toContain(email);
+    expect(keys.every((key) => key.startsWith("ratelimit:contact-email:"))).toBe(true);
   });
 
   it("a new time window resets the counter", async () => {

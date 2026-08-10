@@ -198,6 +198,13 @@ describe("payment status transition safety", () => {
     expect(canTransitionPaymentStatus("paid", "refunded")).toBe(true);
   });
 
+  it("paid order can enter and resolve chargeback states", () => {
+    expect(canTransitionPaymentStatus("paid", "chargeback_open")).toBe(true);
+    expect(canTransitionPaymentStatus("chargeback_open", "chargeback_lost")).toBe(true);
+    expect(canTransitionPaymentStatus("chargeback_open", "chargeback_won")).toBe(true);
+    expect(canTransitionPaymentStatus("chargeback_lost", "paid")).toBe(false);
+  });
+
   it("pending order can expire", () => {
     expect(canTransitionPaymentStatus("pending", "expired")).toBe(true);
   });

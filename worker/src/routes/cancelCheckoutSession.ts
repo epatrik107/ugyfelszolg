@@ -24,7 +24,14 @@ export async function cancelCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
   if (!constantTimeEqual(tokenHash, order.result_token_hash)) {
     return errorJson(c, "UNAUTHORIZED", "Érvénytelen token.", 401);
   }
-  if (order.payment_status === "paid" || order.payment_status === "partially_refunded" || order.payment_status === "refunded") {
+  if (
+    order.payment_status === "paid" ||
+    order.payment_status === "partially_refunded" ||
+    order.payment_status === "refunded" ||
+    order.payment_status === "chargeback_open" ||
+    order.payment_status === "chargeback_lost" ||
+    order.payment_status === "chargeback_won"
+  ) {
     return errorJson(c, "ORDER_ALREADY_PAID", "A fizetés már megtörtént.", 409);
   }
   if (order.payment_status === "cancelled" || order.payment_status === "expired") {

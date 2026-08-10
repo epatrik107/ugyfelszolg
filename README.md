@@ -123,7 +123,13 @@ Kezelt események:
 - `checkout.session.async_payment_failed`
 - `checkout.session.expired`
 - `payment_intent.payment_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
 - `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.updated`
+- `charge.dispute.closed`
 
 ## 11. Stripe webhook secret beállítás
 
@@ -179,7 +185,7 @@ GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite
 
 ## 17. GitHub Actions secret beállítás
 
-A Worker külön GitHub `sandbox` és `production` Environmentet használ, környezetenként elkülönített Stripe-, Számlázz.hu-, Cloudflare- és alkalmazás-secretekkel. A pontos secret- és variable-lista: [docs/github-environments.md](docs/github-environments.md).
+A Worker külön GitHub `sandbox` és `production` Environmentet használ. A production külön Stripe- és Számlázz.hu-secreteket kap; a sandbox payment/invoice integráció izolált számlázási tesztfiók hiányában fail-closed módon ki van kapcsolva. A pontos secret- és variable-lista: [docs/github-environments.md](docs/github-environments.md).
 
 Fontos: a Worker secret értékeket nem szabad frontend env változóba tenni. A deploy workflow a kiválasztott GitHub Environment secretjeiből szinkronizálja őket Cloudflare Worker secretként. A merge nem indít automatikus production deployt.
 
@@ -231,7 +237,7 @@ STRIPE_WEBHOOK_SECRET=
 SZAMLAZZ_AGENT_KEY= # csak Számlázz.hu tesztfiók kulcsa lokális smoke teszthez
 TURNSTILE_SECRET_KEY=
 RESEND_API_KEY=
-EMAIL_FROM=Ügyfélközpont <noreply@example.com>
+EMAIL_FROM="Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
 ```
 
 Lokális D1 migráció:
@@ -332,7 +338,7 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 GEMINI_REVIEW_MODEL = "gemini-3.1-flash-lite"
 SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
-EMAIL_FROM = "Ügyfélközpont <noreply@xn--gyfelszolgalat-fsb.hu>"
+EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 ```
@@ -451,6 +457,7 @@ Ha a Worker deploy ezt írja: `binding DB of type d1 must have a valid database_
 - [ ] teszt rendelés végigmegy
 - [ ] teszt sikertelen fizetés végigmegy
 - [ ] teszt webhook retry nem duplikál
+- [ ] chargeback/dispute webhook access revocation és audit log tesztelve
 
 ## Biztonsági alapelvek
 
@@ -499,7 +506,6 @@ form POST-ot, ezért Stripe origin nincs a `form-action` direktívában.
   README.md
   .env.example
   package.json
-  wrangler.toml.example
   /frontend
   /worker
   /.github/workflows

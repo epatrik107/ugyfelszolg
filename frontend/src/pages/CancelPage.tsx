@@ -1,14 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { cancelCheckoutSession } from "../lib/api";
+import {
+  readResultCapabilityToken,
+  removeResultCapabilityFromBrowserUrl,
+} from "../lib/resultCapability";
 
 export function CancelPage() {
   const [searchParams] = useSearchParams();
   const publicId = searchParams.get("order") ?? "";
-  const token = searchParams.get("token") ?? "";
+  const incomingToken = readResultCapabilityToken(searchParams, window.location.hash) ?? "";
+  const [token] = useState(incomingToken);
   const [cancelState, setCancelState] = useState<"pending" | "done" | "failed">(
     publicId && token ? "pending" : "failed",
   );
+
+  useEffect(() => {
+    if (!incomingToken) return;
+    removeResultCapabilityFromBrowserUrl();
+  }, [incomingToken]);
 
   useEffect(() => {
     if (!publicId || !token) return;

@@ -3,7 +3,6 @@ name: Quality checks
 on:
   pull_request:
   push:
-    branches-ignore: [main]
 
 permissions:
   contents: read
@@ -41,4 +40,7 @@ jobs:
             ".read worker/migrations/0007_payment_billing_hardening.sql" \
             ".read worker/migrations/0008_production_hardening.sql" \
             ".read worker/migrations/0009_invoice_email_business_admin.sql" \
+            ".read worker/migrations/0010_retention_dispute_hardening.sql" \
+            ".read worker/migrations/0011_legal_acceptance_evidence.sql" \
+            ".read worker/migrations/0012_refund_lifecycle.sql" \
             "PRAGMA integrity_check;"

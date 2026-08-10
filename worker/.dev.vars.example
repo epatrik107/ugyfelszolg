@@ -18,5 +18,9 @@ STRIPE_WEBHOOK_SECRET=<PASTE_WHSEC_FROM_STRIPE_LISTEN>
 SZAMLAZZ_AGENT_KEY=<PASTE_TEST_ACCOUNT_AGENT_KEY>
 SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true
 
+# Required for protected invoice status/retry admin endpoints.
+ADMIN_API_TOKEN=<ADD_AT_LEAST_32_RANDOM_CHARACTERS>
+
 # Keep empty during local payment tests: no real transactional email is sent.
 RESEND_API_KEY=
+EMAIL_FROM=Sandbox <noreply@example.com>

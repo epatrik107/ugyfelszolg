@@ -34,7 +34,7 @@ Ezután külön terminálban:
 
 ```bash
 stripe listen \
-  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,payment_intent.payment_failed,checkout.session.expired,charge.refunded \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,payment_intent.payment_failed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.refunded,charge.dispute.created,charge.dispute.updated,charge.dispute.closed \
   --forward-to http://127.0.0.1:8787/api/stripe/webhook
 ```
 
@@ -76,7 +76,7 @@ Minden Stripe tesztkártyához használható jövőbeli lejárat, tetszőleges h
 4. A Stripe Checkout bezárásával ellenőrizd a cancelled flow-t.
 5. Ismételd meg ugyanazt a webhook eventet; nem készülhet második számla vagy aktiválás.
 6. Paid rendelésen új checkout nem indulhat.
-7. Ellenőrizd a Számlázz.hu tesztfiókban a nevet vagy céges nevet, címet, magyar adószámot céges vevőnél, HUF összeget és 27% ÁFÁ-t, valamint hogy VAT/EU VAT ID nem kerül a számlára.
+7. Ellenőrizd a Számlázz.hu tesztfiókban a nevet vagy céges nevet, címet, magyar adószámot céges vevőnél, HUF összeget, az `AAM` áfakulcsot, a nettó=bruttó és áfa=0 összegeket, valamint hogy VAT/EU VAT ID nem kerül a számlára.
 8. Ha `RESEND_API_KEY` és `EMAIL_FROM` be van állítva sandboxban, ellenőrizd, hogy a megadott vevői email címre megérkezik:
    - az elkészült generált levél szövege;
    - a számlaértesítő, Számlázz.hu PDF/link adattal, ha a szolgáltató visszaadta.

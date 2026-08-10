@@ -22,7 +22,12 @@ export async function contactRoute(c: Context<{ Bindings: Env }>) {
     return errorJson(c, "RATE_LIMITED", "Túl sok üzenet. Kérjük, próbálja később.", 429);
   }
 
-  const turnstileOk = await verifyTurnstileToken(c.env, input.turnstileToken, ip);
+  const turnstileOk = await verifyTurnstileToken(
+    c.env,
+    input.turnstileToken,
+    ip,
+    "contact",
+  );
   if (!turnstileOk) {
     return errorJson(c, "TURNSTILE_FAILED", "A spamvédelem ellenőrzése sikertelen.", 400);
   }

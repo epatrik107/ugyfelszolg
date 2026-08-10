@@ -1,4 +1,4 @@
-import { calculateHufB2cVat, isValidHungarianTaxNumber } from "./billing";
+import { calculateAamInvoiceAmounts, isValidHungarianTaxNumber } from "./billing";
 import { PACKAGES } from "./packages";
 import type { Env, OrderRow } from "./types";
 
@@ -50,7 +50,7 @@ export interface SzamlazzInvoicePayload {
   netAmount: number;
   vatAmount: number;
   grossAmount: number;
-  vatRate: 27;
+  vatCode: "AAM";
   currency: "HUF";
 }
 
@@ -106,7 +106,7 @@ export function buildSzamlazzPayload(
     throw new InvoiceProviderError("UNSUPPORTED_CURRENCY", false, "Nem támogatott pénznem.");
   }
 
-  const amounts = calculateHufB2cVat(order.server_calculated_price, 27);
+  const amounts = calculateAamInvoiceAmounts(order.server_calculated_price);
   return {
     externalId: order.id,
     issueDate: new Date().toISOString().slice(0, 10),
@@ -124,7 +124,7 @@ export function buildSzamlazzPayload(
     netAmount: amounts.netAmount,
     vatAmount: amounts.vatAmount,
     grossAmount: amounts.grossAmount,
-    vatRate: 27,
+    vatCode: amounts.vatCode,
     currency: "HUF",
   };
 }
@@ -180,7 +180,7 @@ export function buildInvoiceXml(
       <mennyiseg>${invoice.quantity}</mennyiseg>
       <mennyisegiEgyseg>db</mennyisegiEgyseg>
       <nettoEgysegar>${invoice.netAmount}</nettoEgysegar>
-      <afakulcs>${invoice.vatRate}</afakulcs>
+      <afakulcs>${invoice.vatCode}</afakulcs>
       <nettoErtek>${invoice.netAmount}</nettoErtek>
       <afaErtek>${invoice.vatAmount}</afaErtek>
       <bruttoErtek>${invoice.grossAmount}</bruttoErtek>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LetterForm } from "../components/LetterForm";
 import { LegalNotice } from "../components/LegalNotice";
+import { TurnstileField } from "../components/TurnstileField";
 import { ApiRequestError, createCheckoutSession } from "../lib/api";
 import { DEMO_MODE } from "../lib/config";
 import { packages } from "../lib/constants";
@@ -47,12 +48,21 @@ export function LetterCreationPage() {
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Ismeretlen hiba.");
       setServerErrorCode(error instanceof ApiRequestError ? error.code ?? null : null);
+      if (!DEMO_MODE) {
+        // Turnstile tokens are single-use. Keep the form and summary data, but
+        // require a fresh challenge before a safe idempotent retry.
+        setSummary((current) => current ? { ...current, turnstileToken: "" } : current);
+      }
       setBusy(false);
     }
   }
 
   function updateDemoAccessCode(demoAccessCode: string) {
     setSummary((current) => current ? { ...current, demoAccessCode } : current);
+  }
+
+  function updateTurnstileToken(turnstileToken: string) {
+    setSummary((current) => current ? { ...current, turnstileToken } : current);
   }
 
   return (
@@ -88,6 +98,7 @@ export function LetterCreationPage() {
         onChangePackage={() => navigate("/arak")}
         onContinue={continueToPayment}
         onDemoAccessCodeChange={updateDemoAccessCode}
+        onTurnstileTokenChange={updateTurnstileToken}
         serverError={serverError}
         serverErrorCode={serverErrorCode}
         serverErrorRef={serverErrorRef}
@@ -139,6 +150,7 @@ function PaymentSummary({
   onChangePackage,
   onContinue,
   onDemoAccessCodeChange,
+  onTurnstileTokenChange,
   serverError,
   serverErrorCode,
   serverErrorRef,
@@ -149,6 +161,7 @@ function PaymentSummary({
   onChangePackage: () => void;
   onContinue: () => void;
   onDemoAccessCodeChange: (demoAccessCode: string) => void;
+  onTurnstileTokenChange: (turnstileToken: string) => void;
   serverError: string | null;
   serverErrorCode: string | null;
   serverErrorRef: React.RefObject<HTMLDivElement | null>;
@@ -236,6 +249,14 @@ function PaymentSummary({
                 {serverError}
               </div>
             )}
+            {!DEMO_MODE && !summary.turnstileToken && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-slate-600">
+                  A biztonságos újrapróbáláshoz végezze el ismét a spamvédelmi ellenőrzést.
+                </p>
+                <TurnstileField action="checkout" onSuccess={onTurnstileTokenChange} />
+              </div>
+            )}
             {shouldShowDemoCodeField && (
               <label className="mt-4 grid gap-2 text-sm font-medium text-slate-700">
                 <span className="flex items-center gap-2">
@@ -257,7 +278,11 @@ function PaymentSummary({
               </label>
             )}
             <div className="mt-4 grid gap-3">
-              <button className="button-primary w-full" disabled={busy} onClick={onContinue}>
+              <button
+                className="button-primary w-full"
+                disabled={busy || (!DEMO_MODE && !summary.turnstileToken)}
+                onClick={onContinue}
+              >
                 {primaryActionLabel}
               </button>
               <button className="button-secondary w-full" onClick={onChangePackage}>

@@ -15,6 +15,12 @@ import type { Env, InvoiceRow, OrderRow } from "../lib/types";
 type AdminContext = Context<{ Bindings: Env }>;
 
 async function requireAdmin(c: AdminContext) {
+  // Production must keep this route disabled until it is placed behind a
+  // verified identity-aware access layer (for example Cloudflare Access).
+  if (c.env.ADMIN_API_ENABLED !== "true") {
+    return errorJson(c, "NOT_FOUND", "Nem található.", 404);
+  }
+
   if (await isRateLimited(c.env, "admin-ip", getClientIp(c))) {
     return errorJson(c, "RATE_LIMITED", "Túl sok admin kérés. Kérjük, próbálja később.", 429);
   }

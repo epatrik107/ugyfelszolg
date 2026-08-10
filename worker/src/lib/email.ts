@@ -6,6 +6,7 @@ import {
   paymentFailedEmailHtml,
   refundEmailHtml,
 } from "./emailTemplates";
+import { buildResultCapabilityUrl } from "./resultUrl";
 import type { Env, InvoiceRow, OrderRow } from "./types";
 
 function getSellerInfo(env: Env) {
@@ -36,6 +37,7 @@ async function sendEmail(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${env.RESEND_API_KEY}`,
     "Content-Type": "application/json",
+    "User-Agent": "ugyfelkozpont-worker/0.1",
   };
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
@@ -54,6 +56,7 @@ async function sendEmail(
       method: "POST",
       headers,
       body,
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (response.ok) {
@@ -65,9 +68,9 @@ async function sendEmail(
 
     const isTransient = response.status >= 500;
     if (!isTransient || attempt === 1) {
-      // Capture the response body for better debugging
-      const responseBody = await response.text().catch(() => "");
-      throw new Error(`Resend API error (${response.status}): ${responseBody.slice(0, 300)}`);
+      // Provider error bodies can contain recipient data or request details.
+      // Retain only the status code in logs and persisted retry state.
+      throw new Error(`Resend API error (${response.status})`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -188,7 +191,12 @@ export async function sendLetterReadyEmail(
   idempotencyKeySuffix?: string,
 ) {
   const { sellerName, sellerAddress } = getSellerInfo(env);
-  const orderUrl = `${env.SITE_URL}/sikeres-fizetes?order=${order.public_id}&token=${resultToken}`;
+  const orderUrl = buildResultCapabilityUrl(
+    env.SITE_URL,
+    "sikeres-fizetes",
+    order.public_id,
+    resultToken,
+  );
   const generationCount = order.generation_count ?? 1;
   const html = letterReadyEmailHtml({
     customerName: order.name,

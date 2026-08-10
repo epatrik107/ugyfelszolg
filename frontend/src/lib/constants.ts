@@ -3,9 +3,6 @@ import type { PackageId } from "./types";
 export const legalNotice =
   "A szolgáltatás nem minősül jogi, pénzügyi vagy egészségügyi tanácsadásnak. Az elkészített szöveg kommunikációs segítség, amelyet az ügyfél saját felelősségére használ fel.";
 
-/** Must match MAX_REGENERATIONS in worker/src/lib/orderState.ts */
-export const MAX_REGENERATIONS = 3;
-
 export const letterTypes = [
   "Panaszlevél",
   "Reklamáció",
@@ -31,6 +28,7 @@ export const packages: Record<
     name: string;
     price: string;
     numericPrice: number;
+    maxRegenerations: number;
     recurring?: string;
     bullets: string[];
   }
@@ -39,6 +37,7 @@ export const packages: Record<
     name: "Alapcsomag",
     price: "890 Ft",
     numericPrice: 890,
+    maxRegenerations: 1,
     bullets: [
       "1 hivatalos levél",
       "Kulturált, határozott megfogalmazás",
@@ -50,6 +49,7 @@ export const packages: Record<
     name: "Prémium",
     price: "3 900 Ft",
     numericPrice: 3900,
+    maxRegenerations: 3,
     bullets: [
       "Részletesebb megfogalmazás",
       "Alternatív tárgymező",
@@ -62,6 +62,7 @@ export const packages: Record<
     name: "Prémium plusz",
     price: "10 900 Ft",
     numericPrice: 10900,
+    maxRegenerations: 3,
     bullets: [
       "Összetettebb ügyekhez",
       "Részletesebb levélváltozat",

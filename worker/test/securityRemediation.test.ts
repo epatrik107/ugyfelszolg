@@ -24,6 +24,15 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     SITE_URL: "https://example.com",
     ALLOWED_ORIGINS: "https://example.com",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
+    TURNSTILE_EXPECTED_HOSTNAMES: "example.com",
+    LEGAL_TERMS_VERSION: "2026-07-14",
+    PRIVACY_POLICY_VERSION: "2026-07-14",
+    ADMIN_API_ENABLED: "false",
+    RESEND_API_KEY: "re_test",
+    EMAIL_FROM: "Service <noreply@example.com>",
+    SELLER_NAME: "Example Seller",
+    SELLER_ADDRESS: "Example Address",
+    SELLER_TAX_NUMBER: "12345678-1-42",
     PAYMENTS_ENABLED: "false",
     DEMO_MODE: "false",
     ...overrides,
@@ -202,11 +211,22 @@ describe("environment validation", () => {
 
   it("requires Stripe configuration only when payment mode is enabled", () => {
     expect(validateEnv(baseEnv({ PAYMENTS_ENABLED: "false" })).ok).toBe(true);
-    expect(validateEnv(baseEnv({ PAYMENTS_ENABLED: "true" })).missing).toEqual([
+    expect(validateEnv(baseEnv({
+      PAYMENTS_ENABLED: "true",
+      RESEND_API_KEY: undefined,
+      EMAIL_FROM: undefined,
+      SELLER_NAME: undefined,
+      SELLER_ADDRESS: undefined,
+      SELLER_TAX_NUMBER: undefined,
+    })).missing).toEqual([
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "SZAMLAZZ_AGENT_KEY",
-      "ADMIN_API_TOKEN",
+      "RESEND_API_KEY",
+      "EMAIL_FROM",
+      "SELLER_NAME",
+      "SELLER_ADDRESS",
+      "SELLER_TAX_NUMBER",
       "PAYMENT_MODE",
     ]);
     expect(
@@ -217,7 +237,6 @@ describe("environment validation", () => {
           STRIPE_SECRET_KEY: "sk_test_secret",
           STRIPE_WEBHOOK_SECRET: "whsec_test",
           SZAMLAZZ_AGENT_KEY: "test-agent-key",
-          ADMIN_API_TOKEN: "admin-token-with-at-least-thirty-two-chars",
           SZAMLAZZ_TEST_ACCOUNT_CONFIRMED: "true",
         }),
       ).ok,
@@ -228,6 +247,7 @@ describe("environment validation", () => {
     expect(
       validateEnv(
         baseEnv({
+          ADMIN_API_ENABLED: "true",
           PAYMENTS_ENABLED: "true",
           PAYMENT_MODE: "test",
           STRIPE_SECRET_KEY: "sk_test_secret",
@@ -238,6 +258,22 @@ describe("environment validation", () => {
         }),
       ).missing,
     ).toContain("ADMIN_API_TOKEN_MIN_LENGTH");
+  });
+
+  it("keeps the static-token admin API disabled in live mode", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          ADMIN_API_ENABLED: "true",
+          ADMIN_API_TOKEN: "admin-token-with-at-least-thirty-two-chars",
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+        }),
+      ).missing,
+    ).toContain("ADMIN_API_NOT_ALLOWED_IN_LIVE_MODE");
   });
 
   it("keeps Stripe test and live credentials isolated", () => {
@@ -340,6 +376,21 @@ describe("environment validation", () => {
         }),
       ).missing,
     ).toContain("ALLOWED_ORIGINS_HTTPS_REQUIRED");
+  });
+
+  it("requires the live email sender to use the verified production domain", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+          EMAIL_FROM: "Service <sender@gmail.com>",
+        }),
+      ).missing,
+    ).toContain("EMAIL_FROM_DOMAIN_MISMATCH");
   });
 
   it("rejects an uppercase Szamlazz.hu Agent key in payment mode", () => {

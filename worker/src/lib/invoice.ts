@@ -58,8 +58,7 @@ async function sendInvoiceEmailIfConfigured(
     });
     logEvent("invoice_email_sent", {
       orderId: order.id,
-      invoiceNumber: invoice.invoice_number,
-      providerMessageId: emailResult?.providerMessageId ?? null,
+      delivered: Boolean(emailResult?.providerMessageId),
     });
   } catch (error) {
     await markInvoiceEmailFailed(
@@ -69,8 +68,7 @@ async function sendInvoiceEmailIfConfigured(
     );
     logEvent("invoice_email_send_failed", {
       orderId: order.id,
-      invoiceNumber: invoice.invoice_number,
-      reason: error instanceof Error ? error.message : "unknown",
+      errorType: error instanceof Error ? error.name : "unknown",
     });
   }
 }
@@ -210,7 +208,7 @@ export async function retryDueInvoices(env: Env) {
     } catch (error) {
       logEvent("invoice_retry_error", {
         orderId: order.id,
-        reason: error instanceof Error ? error.message : "unknown",
+        errorType: error instanceof Error ? error.name : "unknown",
       });
       results.push({ orderId: order.id, status: "error" });
     }

@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   getProcessedStripeEventStatus: vi.fn(),
   markOrderPaid: vi.fn(),
   markOrderPaymentStatus: vi.fn(),
+  upsertPaymentDispute: vi.fn(),
+  upsertPaymentRefund: vi.fn(),
   markRefundInvoiceManualRequired: vi.fn(),
   generateLetterForPaidOrder: vi.fn(),
   processInvoiceForOrder: vi.fn(),
@@ -21,9 +23,12 @@ const mocks = vi.hoisted(() => ({
     return currency.toLowerCase() === "huf" ? amount / 100 : amount;
   }),
   retrieveCheckoutSession: vi.fn(),
+  retrieveRefund: vi.fn(),
   verifyStripeWebhook: vi.fn(),
   sendCheckoutExpiredEmail: vi.fn(),
   sendPaymentFailedEmail: vi.fn(),
+  sendRefundEmail: vi.fn(),
+  getInvoiceByOrderId: vi.fn(),
 }));
 
 vi.mock("../src/lib/db", () => ({
@@ -36,6 +41,8 @@ vi.mock("../src/lib/db", () => ({
   getProcessedStripeEventStatus: mocks.getProcessedStripeEventStatus,
   markOrderPaid: mocks.markOrderPaid,
   markOrderPaymentStatus: mocks.markOrderPaymentStatus,
+  upsertPaymentDispute: mocks.upsertPaymentDispute,
+  upsertPaymentRefund: mocks.upsertPaymentRefund,
   markRefundInvoiceManualRequired: mocks.markRefundInvoiceManualRequired,
 }));
 vi.mock("../src/lib/ai", () => ({
@@ -43,15 +50,19 @@ vi.mock("../src/lib/ai", () => ({
 }));
 vi.mock("../src/lib/invoice", () => ({
   processInvoiceForOrder: mocks.processInvoiceForOrder,
+  getInvoiceByOrderId: mocks.getInvoiceByOrderId,
 }));
 vi.mock("../src/lib/stripe", () => ({
   fromStripeMinorAmount: mocks.fromStripeMinorAmount,
   retrieveCheckoutSession: mocks.retrieveCheckoutSession,
+  retrieveRefund: mocks.retrieveRefund,
+  normalizeStripeRefundStatus: (status: string) => status,
   verifyStripeWebhook: mocks.verifyStripeWebhook,
 }));
 vi.mock("../src/lib/email", () => ({
   sendCheckoutExpiredEmail: mocks.sendCheckoutExpiredEmail,
   sendPaymentFailedEmail: mocks.sendPaymentFailedEmail,
+  sendRefundEmail: mocks.sendRefundEmail,
 }));
 
 const { stripeWebhookRoute } = await import("../src/routes/stripeWebhook");
@@ -112,6 +123,17 @@ describe("Stripe webhook business flow", () => {
       return true;
     });
     mocks.markOrderPaymentStatus.mockResolvedValue(true);
+    mocks.upsertPaymentDispute.mockResolvedValue(undefined);
+    mocks.upsertPaymentRefund.mockResolvedValue(undefined);
+    mocks.getInvoiceByOrderId.mockResolvedValue({ invoice_number: "INV-1" });
+    mocks.sendRefundEmail.mockResolvedValue(undefined);
+    mocks.retrieveRefund.mockResolvedValue({
+      id: "re_1",
+      payment_intent: "pi_test_1",
+      amount: 89000,
+      currency: "huf",
+      status: "succeeded",
+    });
     mocks.beginGeneration.mockImplementation(async () => {
       if (currentOrder.payment_status !== "paid" || currentOrder.ai_status !== "not_started") return false;
       currentOrder = { ...currentOrder, ai_status: "generating", generation_count: 1 };
@@ -277,6 +299,106 @@ describe("Stripe webhook business flow", () => {
       },
     );
     expect(mocks.markRefundInvoiceManualRequired).not.toHaveBeenCalled();
+  });
+
+  it.each(["pending", "requires_action", "failed", "canceled"])(
+    "records a %s refund without falsely settling or emailing it",
+    async (refundStatus) => {
+      currentOrder = orderFixture({
+        payment_status: "paid",
+        stripe_payment_intent_id: "pi_test_1",
+        paid_amount: 890,
+      });
+      mocks.getOrderByPaymentIntentId.mockResolvedValueOnce(currentOrder);
+      mocks.retrieveRefund.mockResolvedValueOnce({
+        id: "re_1",
+        payment_intent: "pi_test_1",
+        amount: 89000,
+        currency: "huf",
+        status: refundStatus,
+        failure_reason: refundStatus === "failed" ? "expired_or_canceled_card" : null,
+      });
+      mocks.verifyStripeWebhook.mockResolvedValue(event("refund.updated", { id: "re_1" }));
+
+      const response = await deliver([]);
+
+      expect(response.status).toBe(200);
+      expect(mocks.upsertPaymentRefund).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ orderId: "order_1", status: refundStatus }),
+      );
+      expect(mocks.markOrderPaymentStatus).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "order_1",
+        "refunded",
+        expect.anything(),
+      );
+      expect(mocks.sendRefundEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  it("settles and emails only an authoritative succeeded refund", async () => {
+    currentOrder = orderFixture({
+      payment_status: "paid",
+      stripe_payment_intent_id: "pi_test_1",
+      paid_amount: 890,
+    });
+    mocks.getOrderByPaymentIntentId.mockResolvedValueOnce(currentOrder);
+    mocks.verifyStripeWebhook.mockResolvedValue(event("refund.updated", { id: "re_1" }));
+
+    const response = await deliver([]);
+
+    expect(response.status).toBe(200);
+    expect(mocks.markOrderPaymentStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      "refunded",
+      { source: "webhook", refundAmount: 890, refundStripeId: "re_1" },
+    );
+    expect(mocks.sendRefundEmail).toHaveBeenCalledOnce();
+  });
+
+  it("records a chargeback dispute and revokes active access without fulfillment side effects", async () => {
+    currentOrder = orderFixture({
+      payment_status: "paid",
+      stripe_payment_intent_id: "pi_test_1",
+      ai_status: "completed",
+      generated_letter: "Kész levél.",
+    });
+    mocks.getOrderByPaymentIntentId.mockResolvedValueOnce(currentOrder);
+    mocks.verifyStripeWebhook.mockResolvedValue(
+      event("charge.dispute.created", {
+        id: "dp_1",
+        charge: "ch_1",
+        payment_intent: "pi_test_1",
+        amount: 89000,
+        currency: "huf",
+        reason: "fraudulent",
+        status: "needs_response",
+      }),
+    );
+
+    const response = await deliver([]);
+    expect(response.status).toBe(200);
+    expect(mocks.upsertPaymentDispute).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orderId: "order_1",
+        stripeDisputeId: "dp_1",
+        stripePaymentIntentId: "pi_test_1",
+        amount: 890,
+        currency: "huf",
+        status: "needs_response",
+      }),
+    );
+    expect(mocks.markOrderPaymentStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_1",
+      "chargeback_open",
+      { source: "webhook" },
+    );
+    expect(mocks.beginGeneration).not.toHaveBeenCalled();
+    expect(mocks.processInvoiceForOrder).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid signature without claiming the event", async () => {

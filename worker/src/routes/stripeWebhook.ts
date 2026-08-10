@@ -9,14 +9,17 @@ import {
   getProcessedStripeEventStatus,
   markOrderPaid,
   markOrderPaymentStatus,
+  upsertPaymentDispute,
 } from "../lib/db";
-import { sendCheckoutExpiredEmail, sendPaymentFailedEmail } from "../lib/email";
+import { sendCheckoutExpiredEmail, sendPaymentFailedEmail, sendRefundEmail } from "../lib/email";
 import { generateLetterForPaidOrder } from "../lib/ai";
-import { processInvoiceForOrder } from "../lib/invoice";
+import { getInvoiceByOrderId, processInvoiceForOrder } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
+import { reconcileStripeRefund } from "../lib/refund";
 import {
   fromStripeMinorAmount,
   retrieveCheckoutSession,
+  retrieveRefund,
   verifyStripeWebhook,
 } from "../lib/stripe";
 import type { Env, OrderRow, PaymentStatus } from "../lib/types";
@@ -28,7 +31,7 @@ function runLater(c: WorkerContext, promise: Promise<unknown>, event: string, or
     promise.catch((error) => {
       logEvent(event, {
         orderId,
-        reason: error instanceof Error ? error.message : "unknown",
+        errorType: error instanceof Error ? error.name : "unknown",
       });
     }),
   );
@@ -44,6 +47,17 @@ function schedulePaidOrderSideEffects(c: WorkerContext, order: OrderRow) {
       });
     }),
     "invoice_processing_error",
+    order.id,
+  );
+}
+
+function scheduleRefundEmail(c: WorkerContext, order: OrderRow, reason: string) {
+  runLater(
+    c,
+    getInvoiceByOrderId(c.env, order.id).then((invoice) =>
+      sendRefundEmail(c.env, order, invoice?.invoice_number ?? null, reason),
+    ),
+    "refund_email_error",
     order.id,
   );
 }
@@ -221,6 +235,123 @@ async function handleRefund(c: WorkerContext, charge: {
   if (!changed) return;
   logEvent(status, { orderId });
   logEvent("refund_invoice_manual_required", { orderId, refundType: status });
+  if (status === "refunded") {
+    const order = await getOrderById(c.env, orderId);
+    if (order) {
+      scheduleRefundEmail(
+        c,
+        order,
+        "A Stripe visszaigazolta a megrendelés teljes visszatérítését.",
+      );
+    }
+  }
+}
+
+async function handleRefundLifecycle(
+  c: WorkerContext,
+  object: { id?: string },
+  eventId: string,
+) {
+  if (!object.id?.startsWith("re_")) {
+    logEvent("suspicious_payment_event", { reason: "invalid_refund_id" });
+    return;
+  }
+
+  // Retrieve the authoritative current object so out-of-order webhook payloads
+  // cannot regress a refund that Stripe has already settled.
+  const refund = await retrieveRefund(c.env, object.id);
+  let orderId = refund.metadata?.orderId ?? null;
+  if (!orderId && refund.payment_intent) {
+    orderId = (await getOrderByPaymentIntentId(c.env, refund.payment_intent))?.id ?? null;
+  }
+  if (!orderId) {
+    logEvent("suspicious_payment_event", { reason: "unknown_refund_order" });
+    return;
+  }
+  const order = await getOrderById(c.env, orderId);
+  if (!order) {
+    logEvent("suspicious_payment_event", { reason: "unknown_refund_order" });
+    return;
+  }
+
+  const result = await reconcileStripeRefund(c.env, order, refund, "webhook", eventId);
+  logEvent("refund_lifecycle_recorded", {
+    orderId,
+    refundStatus: result.status,
+    paymentStatus: result.paymentStatus,
+  });
+
+  if (result.status === "succeeded" && result.paymentStatusChanged && result.paymentStatus === "refunded") {
+    scheduleRefundEmail(c, order, "A Stripe visszaigazolta a megrendelés teljes visszatérítését.");
+  } else if (result.status === "failed" || result.status === "canceled" || result.status === "requires_action") {
+    logEvent("refund_manual_followup_required", { orderId, refundStatus: result.status });
+  }
+}
+
+async function handleDispute(
+  c: WorkerContext,
+  dispute: {
+    id?: string;
+    charge?: string | null;
+    payment_intent?: string | null;
+    amount?: number;
+    currency?: string | null;
+    reason?: string | null;
+    status?: string | null;
+    metadata?: Record<string, string>;
+  },
+  eventId: string,
+) {
+  if (!dispute.id) {
+    logEvent("suspicious_payment_event", { reason: "missing_dispute_id" });
+    return;
+  }
+
+  let orderId = dispute.metadata?.orderId ?? null;
+  if (!orderId && dispute.payment_intent) {
+    orderId = (await getOrderByPaymentIntentId(c.env, dispute.payment_intent))?.id ?? null;
+  }
+  if (!orderId) {
+    logEvent("suspicious_payment_event", {
+      reason: "unknown_dispute_order",
+      disputeId: dispute.id,
+    });
+    return;
+  }
+
+  const disputeStatus = dispute.status ?? "needs_response";
+  const paymentStatus: Extract<PaymentStatus, "chargeback_open" | "chargeback_lost" | "chargeback_won"> =
+    disputeStatus === "won"
+      ? "chargeback_won"
+      : disputeStatus === "lost"
+        ? "chargeback_lost"
+        : "chargeback_open";
+  const amount = dispute.currency && typeof dispute.amount === "number"
+    ? fromStripeMinorAmount(dispute.amount, dispute.currency)
+    : null;
+
+  await upsertPaymentDispute(c.env, {
+    id: crypto.randomUUID(),
+    orderId,
+    stripeDisputeId: dispute.id,
+    stripeChargeId: dispute.charge ?? null,
+    stripePaymentIntentId: dispute.payment_intent ?? null,
+    amount,
+    currency: dispute.currency?.toLowerCase() ?? null,
+    reason: dispute.reason ?? null,
+    status: disputeStatus,
+    outcome: paymentStatus === "chargeback_open" ? null : paymentStatus,
+    eventId,
+  });
+
+  const changed = await markOrderPaymentStatus(c.env, orderId, paymentStatus, { source: "webhook" });
+  logEvent("chargeback_dispute_recorded", {
+    orderId,
+    disputeId: dispute.id,
+    disputeStatus,
+    paymentStatus,
+    changed,
+  });
 }
 
 export async function stripeWebhookRoute(c: WorkerContext) {
@@ -304,6 +435,29 @@ export async function stripeWebhookRoute(c: WorkerContext) {
             metadata?: Record<string, string>;
             refunds?: { data?: Array<{ id?: string; amount?: number }> };
           },
+        );
+        break;
+      case "refund.created":
+      case "refund.updated":
+      case "refund.failed":
+        await handleRefundLifecycle(c, object, event.id);
+        break;
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.closed":
+        await handleDispute(
+          c,
+          event.data.object as {
+            id?: string;
+            charge?: string | null;
+            payment_intent?: string | null;
+            amount?: number;
+            currency?: string | null;
+            reason?: string | null;
+            status?: string | null;
+            metadata?: Record<string, string>;
+          },
+          event.id,
         );
         break;
       default:

@@ -385,7 +385,10 @@ export function LetterForm({
       )}
 
       {!DEMO_MODE && (
-        <TurnstileField onSuccess={(token) => update("turnstileToken", token)} />
+        <TurnstileField
+          action="checkout"
+          onSuccess={(token) => update("turnstileToken", token)}
+        />
       )}
 
       {error && (

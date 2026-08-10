@@ -57,7 +57,11 @@ export type SuspiciousCheckoutInput =
   | "business_data"
   | "business_buyer_type"
   | "manipulated_price"
+  | "invalid_structure"
   | null;
+
+const MAX_CHECKOUT_OBJECT_DEPTH = 16;
+const MAX_CHECKOUT_OBJECT_NODES = 512;
 
 export function isValidHungarianTaxNumber(value: string) {
   return /^\d{8}-\d-\d{2}$/u.test(value.trim());
@@ -65,39 +69,62 @@ export function isValidHungarianTaxNumber(value: string) {
 
 export function detectSuspiciousCheckoutInput(
   value: unknown,
-  path: string[] = [],
 ): SuspiciousCheckoutInput {
   if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
 
-  for (const [rawKey, child] of Object.entries(record)) {
-    const key = normalizeKey(rawKey);
-    const childPath = [...path, key];
-    const isBillingField = path.length === 1 && path[0] === "billing";
-    const isAllowedBusinessTaxNumber =
-      isBillingField &&
-      key === "taxnumber" &&
-      typeof record.buyerType === "string" &&
-      record.buyerType.toLocaleLowerCase("en-US") === "business";
+  const stack: Array<{ value: object; path: string[]; depth: number }> = [
+    { value, path: [], depth: 0 },
+  ];
+  const seen = new WeakSet<object>();
+  let visitedNodes = 0;
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    if (seen.has(current.value)) return "invalid_structure";
+    seen.add(current.value);
+    visitedNodes += 1;
     if (
-      TAX_KEYS.has(key) &&
-      (!isAllowedBusinessTaxNumber || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))
+      current.depth > MAX_CHECKOUT_OBJECT_DEPTH ||
+      visitedNodes > MAX_CHECKOUT_OBJECT_NODES
     ) {
-      return "tax_data";
+      return "invalid_structure";
     }
-    if (BUSINESS_KEYS.has(key) && (!isBillingField || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))) {
-      return "business_data";
+
+    const record = current.value as Record<string, unknown>;
+    for (const [rawKey, child] of Object.entries(record)) {
+      const key = normalizeKey(rawKey);
+      const childPath = [...current.path, key];
+      const isBillingField = current.path.length === 1 && current.path[0] === "billing";
+      const isAllowedBusinessTaxNumber =
+        isBillingField &&
+        key === "taxnumber" &&
+        typeof record.buyerType === "string" &&
+        record.buyerType.toLocaleLowerCase("en-US") === "business";
+      if (
+        TAX_KEYS.has(key) &&
+        (!isAllowedBusinessTaxNumber || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))
+      ) {
+        return "tax_data";
+      }
+      if (
+        BUSINESS_KEYS.has(key) &&
+        (!isBillingField || !ALLOWED_BILLING_BUSINESS_KEYS.has(key))
+      ) {
+        return "business_data";
+      }
+      if (PRICE_KEYS.has(key)) return "manipulated_price";
+      if (
+        key === "buyertype" &&
+        typeof child === "string" &&
+        !["individual", "business"].includes(child.toLocaleLowerCase("en-US"))
+      ) {
+        return "business_buyer_type";
+      }
+      if (child && typeof child === "object") {
+        stack.push({ value: child, path: childPath, depth: current.depth + 1 });
+      }
     }
-    if (PRICE_KEYS.has(key)) return "manipulated_price";
-    if (
-      key === "buyertype" &&
-      typeof child === "string" &&
-      !["individual", "business"].includes(child.toLocaleLowerCase("en-US"))
-    ) {
-      return "business_buyer_type";
-    }
-    const nested = detectSuspiciousCheckoutInput(child, childPath);
-    if (nested) return nested;
   }
   return null;
 }
@@ -114,11 +141,13 @@ export function assertBillingDetails(details: BillingDetails) {
     throw new Error("INVALID_BUSINESS_TAX_NUMBER");
   }
   if (details.country !== "HU") {
-    // Prices currently contain Hungarian VAT. Restricting the market to HU is
-    // safer than issuing an invoice with an incorrect cross-border VAT rate.
+    // The current invoice flow is explicitly configured for the seller's
+    // Hungarian AAM tax status. Cross-border tax rules are not implemented.
     throw new Error("UNSUPPORTED_BILLING_COUNTRY");
   }
 }
+
+export const SELLER_VAT_CODE = "AAM" as const;
 
 export interface PriceBreakdown {
   packageId: PackageId;
@@ -126,7 +155,7 @@ export interface PriceBreakdown {
   discountAmount: 0;
   payableAmount: number;
   currency: "huf";
-  vatRate: 27;
+  vatCode: typeof SELLER_VAT_CODE;
 }
 
 export function calculateOrderPrice(packageId: PackageId): PriceBreakdown {
@@ -143,18 +172,18 @@ export function calculateOrderPrice(packageId: PackageId): PriceBreakdown {
     discountAmount: 0,
     payableAmount: selectedPackage.price,
     currency: "huf",
-    vatRate: 27,
+    vatCode: SELLER_VAT_CODE,
   };
 }
 
-export function calculateHufB2cVat(grossAmount: number, vatRate = 27) {
-  if (!Number.isSafeInteger(grossAmount) || grossAmount <= 0) {
+export function calculateAamInvoiceAmounts(payableAmount: number) {
+  if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) {
     throw new Error("INVALID_GROSS_AMOUNT");
   }
-  if (!Number.isSafeInteger(vatRate) || vatRate < 0) {
-    throw new Error("INVALID_VAT_RATE");
-  }
-  const vatAmount = Math.round((grossAmount / (100 + vatRate)) * vatRate);
-  const netAmount = grossAmount - vatAmount;
-  return { netAmount, vatAmount, grossAmount, vatRate };
+  return {
+    netAmount: payableAmount,
+    vatAmount: 0,
+    grossAmount: payableAmount,
+    vatCode: SELLER_VAT_CODE,
+  };
 }

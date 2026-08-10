@@ -7,6 +7,7 @@ import type {
   OrderRow,
   PackageId,
   PaymentStatus,
+  StripeRefundStatus,
   SubscriptionRow,
   UsageRow,
 } from "./types";
@@ -18,7 +19,10 @@ type MutablePaymentStatus =
   | "amount_mismatch"
   | "currency_mismatch"
   | "partially_refunded"
-  | "refunded";
+  | "refunded"
+  | "chargeback_open"
+  | "chargeback_lost"
+  | "chargeback_won";
 
 function paymentStatusLogStatement(
   env: Env,
@@ -85,8 +89,9 @@ export async function insertOrder(
       updated_at, subscription_id, billing_source, checkout_idempotency_key,
       checkout_input_hash, customer_email, billing_buyer_type, billing_name,
       billing_email, billing_country, billing_postal_code, billing_city,
-      billing_address_line1, billing_tax_number
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      billing_address_line1, billing_tax_number, legal_accepted_at,
+      legal_terms_version, privacy_policy_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       input.id,
@@ -120,6 +125,9 @@ export async function insertOrder(
       input.billing?.city ?? null,
       input.billing?.addressLine1 ?? null,
       input.billing?.buyerType === "business" ? input.billing.taxNumber : null,
+      now,
+      env.LEGAL_TERMS_VERSION,
+      env.PRIVACY_POLICY_VERSION,
     )
     .run();
   return result.meta.changes === 1;
@@ -233,6 +241,9 @@ export async function markOrderPaymentStatus(
     currency_mismatch: ["pending", "checkout_created", "failed"],
     partially_refunded: ["paid", "partially_refunded"],
     refunded: ["paid", "partially_refunded"],
+    chargeback_open: ["paid", "partially_refunded", "chargeback_won"],
+    chargeback_lost: ["chargeback_open"],
+    chargeback_won: ["chargeback_open"],
   };
   const fromStatuses = allowedFrom[status];
   const placeholders = fromStatuses.map(() => "?").join(", ");
@@ -315,8 +326,9 @@ export async function completeGeneration(
   previousLetter?: string | null,
 ) {
   const now = new Date().toISOString();
+  let result: D1Result;
   if (previousLetter) {
-    await env.DB.prepare(
+    result = await env.DB.prepare(
       `UPDATE orders
        SET ai_status = 'completed',
            generated_letter = ?,
@@ -332,19 +344,24 @@ export async function completeGeneration(
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ? AND ai_status = 'generating'`,
+       WHERE id = ?
+         AND ai_status = 'generating'
+         AND payment_status IN ('paid', 'partially_refunded')`,
     ).bind(generatedLetter, previousLetter, now, now, orderId).run();
   } else {
-    await env.DB.prepare(
+    result = await env.DB.prepare(
       `UPDATE orders
        SET ai_status = 'completed',
            generated_letter = ?,
            generated_at = ?,
            updated_at = ?,
            error_message = NULL
-       WHERE id = ? AND ai_status = 'generating'`,
+       WHERE id = ?
+         AND ai_status = 'generating'
+         AND payment_status IN ('paid', 'partially_refunded')`,
     ).bind(generatedLetter, now, now, orderId).run();
   }
+  return result.meta.changes === 1;
 }
 
 export async function failGeneration(
@@ -361,18 +378,16 @@ export async function failGeneration(
          error_message = ?,
          updated_at = ?
      WHERE id = ?
-       AND ai_status IN ('generating', 'not_started')`,
+       AND ai_status IN ('generating', 'not_started')
+       AND payment_status IN ('paid', 'partially_refunded')`,
   )
     .bind(status, errorMessage, now, orderId);
 
-  if (!subscriptionId) {
-    const result = await failStatement.run();
-    return result.meta.changes === 1;
-  }
+  const result = await failStatement.run();
+  if (result.meta.changes !== 1) return false;
 
-  const [result] = await env.DB.batch([
-    failStatement,
-    env.DB.prepare(
+  if (subscriptionId) {
+    await env.DB.prepare(
       `UPDATE subscription_usage
        SET reserved_count = CASE WHEN reserved_count > 0 THEN reserved_count - 1 ELSE 0 END,
            updated_at = ?
@@ -382,9 +397,10 @@ export async function failGeneration(
          ORDER BY period_start DESC
          LIMIT 1
        )`,
-    ).bind(now, subscriptionId),
-  ]);
-  return result.meta.changes === 1;
+    ).bind(now, subscriptionId).run();
+  }
+
+  return true;
 }
 
 export async function claimStripeEvent(
@@ -445,6 +461,116 @@ export async function failStripeEvent(env: Env, eventId: string, errorCode: stri
     .bind(errorCode.slice(0, 120), new Date().toISOString(), eventId)
     .run();
   return result.meta.changes === 1;
+}
+
+export async function upsertPaymentDispute(
+  env: Env,
+  input: {
+    id: string;
+    orderId: string;
+    stripeDisputeId: string;
+    stripeChargeId: string | null;
+    stripePaymentIntentId: string | null;
+    amount: number | null;
+    currency: string | null;
+    reason: string | null;
+    status: string;
+    outcome: string | null;
+    eventId: string;
+  },
+) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO payment_disputes (
+       id, order_id, stripe_dispute_id, stripe_charge_id, stripe_payment_intent_id,
+       amount, currency, reason, status, outcome, first_event_id, last_event_id,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(stripe_dispute_id) DO UPDATE SET
+       order_id = excluded.order_id,
+       stripe_charge_id = excluded.stripe_charge_id,
+       stripe_payment_intent_id = excluded.stripe_payment_intent_id,
+       amount = excluded.amount,
+       currency = excluded.currency,
+       reason = excluded.reason,
+       status = excluded.status,
+       outcome = excluded.outcome,
+       last_event_id = excluded.last_event_id,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(
+      input.id,
+      input.orderId,
+      input.stripeDisputeId,
+      input.stripeChargeId,
+      input.stripePaymentIntentId,
+      input.amount,
+      input.currency,
+      input.reason,
+      input.status,
+      input.outcome,
+      input.eventId,
+      input.eventId,
+      now,
+      now,
+    )
+    .run();
+}
+
+export async function upsertPaymentRefund(
+  env: Env,
+  input: {
+    id: string;
+    orderId: string;
+    stripeRefundId: string;
+    stripePaymentIntentId: string | null;
+    amount: number | null;
+    currency: string | null;
+    status: StripeRefundStatus;
+    failureReason: string | null;
+    eventId?: string | null;
+  },
+) {
+  const now = new Date().toISOString();
+  const failureReason = input.failureReason?.slice(0, 120) ?? null;
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO payment_refunds (
+         id, order_id, stripe_refund_id, stripe_payment_intent_id,
+         amount, currency, status, failure_reason, first_event_id, last_event_id,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(stripe_refund_id) DO UPDATE SET
+         order_id = excluded.order_id,
+         stripe_payment_intent_id = excluded.stripe_payment_intent_id,
+         amount = excluded.amount,
+         currency = excluded.currency,
+         status = excluded.status,
+         failure_reason = excluded.failure_reason,
+         last_event_id = COALESCE(excluded.last_event_id, payment_refunds.last_event_id),
+         updated_at = excluded.updated_at`,
+    ).bind(
+      input.id,
+      input.orderId,
+      input.stripeRefundId,
+      input.stripePaymentIntentId,
+      input.amount,
+      input.currency,
+      input.status,
+      failureReason,
+      input.eventId ?? null,
+      input.eventId ?? null,
+      now,
+      now,
+    ),
+    env.DB.prepare(
+      `UPDATE orders
+       SET stripe_refund_status = ?,
+           stripe_refund_failure_reason = ?,
+           updated_at = ?
+       WHERE id = ?`,
+    ).bind(input.status, failureReason, now, input.orderId),
+  ]);
 }
 
 export async function claimInvoiceProcessing(env: Env, orderId: string) {
@@ -1064,21 +1190,88 @@ export async function cleanupExpiredData(env: Env) {
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const eventCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const contactCutoff = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString();
+  const redacted = "[redacted_after_retention]";
   await env.DB.batch([
     env.DB.prepare("DELETE FROM subscription_magic_links WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM subscription_sessions WHERE expires_at < ?").bind(now),
+    env.DB.prepare("DELETE FROM contact_messages WHERE created_at < ?").bind(contactCutoff),
     // Completed Stripe events older than 30 days — failed/processing events are
     // kept for manual investigation.
     env.DB.prepare(
       "DELETE FROM processed_stripe_events WHERE status = 'completed' AND processed_at < ?",
     ).bind(eventCutoff),
-    // Only delete orders that have no invoice — invoices require 8-year retention under
-    // Hungarian accounting law (2000. évi C. törvény 169. §).
+    env.DB.prepare(
+      `UPDATE orders
+       SET recipient = ?,
+           problem_description = ?,
+           desired_result = ?,
+           previous_messages = NULL,
+           attached_letter = NULL,
+           generated_letter = NULL,
+           letter_history = NULL,
+           error_message = NULL,
+           personal_data_redacted_at = ?,
+           updated_at = ?
+       WHERE created_at < ?
+         AND personal_data_redacted_at IS NULL
+         AND (
+           recipient <> ?
+           OR problem_description <> ?
+           OR desired_result <> ?
+           OR previous_messages IS NOT NULL
+           OR attached_letter IS NOT NULL
+           OR generated_letter IS NOT NULL
+           OR letter_history IS NOT NULL
+           OR error_message IS NOT NULL
+         )`,
+    ).bind(
+      redacted,
+      redacted,
+      redacted,
+      now,
+      now,
+      cutoff,
+      redacted,
+      redacted,
+      redacted,
+    ),
+    // Delete dependent audit rows first. D1 enforces foreign keys, so a parent
+    // delete must not be attempted while these rows still reference the order.
+    env.DB.prepare(
+      `DELETE FROM order_status_log
+       WHERE order_id IN (
+         SELECT id FROM orders
+         WHERE created_at < ?
+           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
+       )`,
+    ).bind(cutoff),
+    env.DB.prepare(
+      `DELETE FROM payment_disputes
+       WHERE order_id IN (
+         SELECT id FROM orders
+         WHERE created_at < ?
+           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
+       )`,
+    ).bind(cutoff),
+    env.DB.prepare(
+      `DELETE FROM payment_refunds
+       WHERE order_id IN (
+         SELECT id FROM orders
+         WHERE created_at < ?
+           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
+       )`,
+    ).bind(cutoff),
+    // Only delete orders that have no invoice — invoices require long-term
+    // accounting retention and therefore keep their parent order.
     env.DB.prepare(
       `DELETE FROM orders
        WHERE created_at < ?
          AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
-         AND id NOT IN (SELECT order_id FROM invoices)`,
+         AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)`,
     ).bind(cutoff),
   ]);
 }
@@ -1093,6 +1286,7 @@ export async function getStuckGeneratingOrders(env: Env, staleMinutes = 15) {
   const result = await env.DB.prepare(
     `SELECT * FROM orders
      WHERE ai_status = 'generating'
+       AND payment_status IN ('paid', 'partially_refunded')
        AND updated_at < ?`,
   )
     .bind(cutoff)
