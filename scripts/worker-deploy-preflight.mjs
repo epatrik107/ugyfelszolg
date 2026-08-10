@@ -47,6 +47,7 @@ export function parseWorkerToml(source) {
   const parsed = {
     root: {},
     vars: {},
+    observability: {},
     d1: {},
     kv: {},
   };
@@ -58,6 +59,10 @@ export function parseWorkerToml(source) {
 
     if (line === "[vars]") {
       section = "vars";
+      continue;
+    }
+    if (line === "[observability]") {
+      section = "observability";
       continue;
     }
     if (line === "[[d1_databases]]") {
@@ -165,6 +170,13 @@ function validateProduction(config, errors) {
   }
   if (String(config.root.workers_dev) !== "false") {
     errors.push("Production deploy requires workers_dev=false.");
+  }
+  const samplingRate = Number(config.observability.head_sampling_rate);
+  if (String(config.observability.enabled) !== "true") {
+    errors.push("Production deploy requires Worker observability enabled.");
+  }
+  if (!Number.isFinite(samplingRate) || samplingRate <= 0 || samplingRate > 1) {
+    errors.push("Production Worker observability head_sampling_rate must be greater than 0 and at most 1.");
   }
   if (vars.ADMIN_API_ENABLED !== "false") {
     errors.push("Production deploy requires ADMIN_API_ENABLED=false until Access is enforced.");

@@ -149,6 +149,9 @@ describe("production deploy workflow hardening", () => {
     expect(workerWorkflow).toContain(
       "Production EMAIL_FROM must use the verified production site domain.",
     );
+    expect(workerWorkflow).toContain("[observability]");
+    expect(workerWorkflow).toContain("head_sampling_rate = ${observabilitySamplingRate}");
+    expect(workerWorkflow).toContain('deployEnv === "production" ? "0.1" : "1"');
   });
 
   it("deploys secrets atomically and rolls back to the captured active version", () => {

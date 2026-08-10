@@ -281,6 +281,7 @@ jobs:
           const defaultSellerAddress = deployEnv === "production" ? "" : "Test";
           const defaultSellerTaxNumber = deployEnv === "production" ? "" : "00000XXXXXX";
           const workersDev = deployEnv !== "production";
+          const observabilitySamplingRate = deployEnv === "production" ? "0.1" : "1";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
@@ -288,6 +289,10 @@ jobs:
           workers_dev = ${workersDev}
           preview_urls = false
           upload_source_maps = true
+
+          [observability]
+          enabled = true
+          head_sampling_rate = ${observabilitySamplingRate}
 
           [[d1_databases]]
           binding = "DB"

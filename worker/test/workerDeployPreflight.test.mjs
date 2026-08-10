@@ -7,6 +7,10 @@ main = "src/index.ts"
 compatibility_date = "2026-05-18"
 workers_dev = false
 
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ugyfelkozpont"
@@ -117,6 +121,21 @@ describe("worker deploy preflight", () => {
     expect(result.errors).toContain("Production deploy requires workers_dev=false.");
     expect(result.errors).toContain(
       "Production deploy requires ADMIN_API_ENABLED=false until Access is enforced.",
+    );
+  });
+
+  it("blocks disabled Worker observability in production", () => {
+    const unsafe = replaceConfig(
+      validProductionConfig,
+      "enabled = true",
+      "enabled = false",
+    );
+
+    const result = validateWorkerDeployConfig(unsafe, "production");
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain(
+      "Production deploy requires Worker observability enabled.",
     );
   });
 });

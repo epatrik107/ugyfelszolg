@@ -349,6 +349,7 @@ publikálja.
 - frontend security headerek tényleges HTTP headerek;
 - Stripe live webhook és kontrollált live E2E zöld;
 - monitoring/alerting aktív;
+- a Cloudflare Workers Logs aktív (production `head_sampling_rate = 0.1`, sandbox `1`), és van 5xx/health riasztási címzett;
 - jogász/könyvelő jóváhagyta a `1.2` jogi dokumentumokat és seller adatokat;
 - nincs nyitott Critical vagy pénzügyi/adatvédelmi High blocker.
 

@@ -105,4 +105,5 @@ Ezek **publikusak**, a böngésző bundle-ben láthatók; secret nem kerülhet k
 - [ ] D1 bookmark artifact és rollback stagingen kipróbálva
 - [ ] ÁSZF/privacy verzió és seller adatok jogász/könyvelő által jóváhagyva
 - [ ] Resend domain és bounce/complaint monitoring működik
+- [ ] Cloudflare Workers Logs aktív; production mintavétel 10%, sandbox mintavétel 100%; 5xx/health riasztás beállítva
 - [ ] Teljes staging payment/AI/invoice/refund/dispute teszt sikeres
