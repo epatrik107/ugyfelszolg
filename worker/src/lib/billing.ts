@@ -141,11 +141,13 @@ export function assertBillingDetails(details: BillingDetails) {
     throw new Error("INVALID_BUSINESS_TAX_NUMBER");
   }
   if (details.country !== "HU") {
-    // Prices currently contain Hungarian VAT. Restricting the market to HU is
-    // safer than issuing an invoice with an incorrect cross-border VAT rate.
+    // The current invoice flow is explicitly configured for the seller's
+    // Hungarian AAM tax status. Cross-border tax rules are not implemented.
     throw new Error("UNSUPPORTED_BILLING_COUNTRY");
   }
 }
+
+export const SELLER_VAT_CODE = "AAM" as const;
 
 export interface PriceBreakdown {
   packageId: PackageId;
@@ -153,7 +155,7 @@ export interface PriceBreakdown {
   discountAmount: 0;
   payableAmount: number;
   currency: "huf";
-  vatRate: 27;
+  vatCode: typeof SELLER_VAT_CODE;
 }
 
 export function calculateOrderPrice(packageId: PackageId): PriceBreakdown {
@@ -170,18 +172,18 @@ export function calculateOrderPrice(packageId: PackageId): PriceBreakdown {
     discountAmount: 0,
     payableAmount: selectedPackage.price,
     currency: "huf",
-    vatRate: 27,
+    vatCode: SELLER_VAT_CODE,
   };
 }
 
-export function calculateHufB2cVat(grossAmount: number, vatRate = 27) {
-  if (!Number.isSafeInteger(grossAmount) || grossAmount <= 0) {
+export function calculateAamInvoiceAmounts(payableAmount: number) {
+  if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) {
     throw new Error("INVALID_GROSS_AMOUNT");
   }
-  if (!Number.isSafeInteger(vatRate) || vatRate < 0) {
-    throw new Error("INVALID_VAT_RATE");
-  }
-  const vatAmount = Math.round((grossAmount / (100 + vatRate)) * vatRate);
-  const netAmount = grossAmount - vatAmount;
-  return { netAmount, vatAmount, grossAmount, vatRate };
+  return {
+    netAmount: payableAmount,
+    vatAmount: 0,
+    grossAmount: payableAmount,
+    vatCode: SELLER_VAT_CODE,
+  };
 }

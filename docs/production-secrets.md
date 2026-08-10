@@ -43,13 +43,13 @@ Ezek nem secretek, de környezetfüggő és biztonságkritikus konfigurációk.
 | `SITE_URL` | `https://xn--gyfelszolgalat-fsb.hu` |
 | `ALLOWED_ORIGINS` | Csak a tényleges frontend origin, jellemzően `https://xn--gyfelszolgalat-fsb.hu` |
 | `TURNSTILE_EXPECTED_HOSTNAMES` | Exact hostname scheme/path/wildcard nélkül: `xn--gyfelszolgalat-fsb.hu` |
-| `LEGAL_TERMS_VERSION` | A `frontend/src/config/legalVersions.json` publikált ÁSZF-verziója; jelenlegi release-ben `1.2` |
+| `LEGAL_TERMS_VERSION` | A `frontend/src/config/legalVersions.json` publikált ÁSZF-verziója; jelenlegi release-ben `1.3` |
 | `PRIVACY_POLICY_VERSION` | A `frontend/src/config/legalVersions.json` publikált privacy-verziója; jelenlegi release-ben `1.2` |
 | `ADMIN_API_ENABLED` | Kötelezően `false` productionben |
 | `GEMINI_MODEL` | Explicit, támogatott standard model ID |
 | `GEMINI_MODEL_PREMIUM` | Explicit, támogatott prémium model ID |
 | `GEMINI_REVIEW_MODEL` | Explicit, támogatott review model ID |
-| `EMAIL_FROM` | Resendben verifikált sender |
+| `EMAIL_FROM` | Resendben verifikált domainen lévő sender; productionben `Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>` |
 | `SELLER_NAME` | Könyvelő/jogász által jóváhagyott jogi eladónév |
 | `SELLER_ADDRESS` | Jóváhagyott jogi cím |
 | `SELLER_TAX_NUMBER` | Jóváhagyott adószám |
@@ -94,11 +94,13 @@ Ezek **publikusak**, a böngésző bundle-ben láthatók; secret nem kerülhet k
 ## 6. Patrik release előtti ellenőrzőlistája
 
 - [x] Régi, Git-historyban talált Gemini kulcs visszavonva, usage auditálva és új production kulcs beállítva — projektgazda által megerősítve 2026-07-18-án
-- [ ] Minden fenti production secret létrehozva, stagingtől elkülönítve
-- [ ] Minden fenti GitHub variable beállítva
+- [x] Mind a 8 production secret név szerint jelen van a production Environmentben (értékmentes audit: 2026-08-10)
+- [x] Mind a 24 production GitHub variable jelen van; ÁSZF `1.3`, verified-domain `EMAIL_FROM` beállítva
+- [ ] Külön sandbox `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY` felvéve, majd a két repository-szintű fallback törölve
 - [ ] Custom API `/api/health` 200/ok
 - [ ] Frontend edge-en HSTS/CSP/XFO/nosniff/referrer headerek ténylegesen jelen vannak
-- [ ] Stripe webhook dashboard zöld, test/live kulcsok külön
+- [x] Stripe live account/webhook és Számlázz.hu NAV-kapcsolat projektgazdai megerősítés alapján elkészült
+- [ ] Stripe/Számlázz.hu sandbox és production smoke bizonyított, AAM számlakép ellenőrizve
 - [ ] Turnstile idegen hostname/action tesztje blokkolt
 - [ ] D1 bookmark artifact és rollback stagingen kipróbálva
 - [ ] ÁSZF/privacy verzió és seller adatok jogász/könyvelő által jóváhagyva

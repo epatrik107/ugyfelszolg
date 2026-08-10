@@ -163,7 +163,8 @@ export async function createCheckoutSession(
     "line_items[0][price_data][unit_amount]",
     String(toStripeMinorAmount(input.amount, input.currency)),
   );
-  params.set("line_items[0][price_data][tax_behavior]", "inclusive");
+  // Tax calculation and invoicing are intentionally not delegated to Stripe.
+  // The seller is AAM and Szamlazz.hu receives the explicit AAM invoice data.
   params.set("line_items[0][price_data][product_data][name]", input.packageName);
 
   params.set("payment_intent_data[metadata][orderId]", input.orderId);

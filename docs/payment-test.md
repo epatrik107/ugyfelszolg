@@ -76,7 +76,7 @@ Minden Stripe tesztkártyához használható jövőbeli lejárat, tetszőleges h
 4. A Stripe Checkout bezárásával ellenőrizd a cancelled flow-t.
 5. Ismételd meg ugyanazt a webhook eventet; nem készülhet második számla vagy aktiválás.
 6. Paid rendelésen új checkout nem indulhat.
-7. Ellenőrizd a Számlázz.hu tesztfiókban a nevet vagy céges nevet, címet, magyar adószámot céges vevőnél, HUF összeget és 27% ÁFÁ-t, valamint hogy VAT/EU VAT ID nem kerül a számlára.
+7. Ellenőrizd a Számlázz.hu tesztfiókban a nevet vagy céges nevet, címet, magyar adószámot céges vevőnél, HUF összeget, az `AAM` áfakulcsot, a nettó=bruttó és áfa=0 összegeket, valamint hogy VAT/EU VAT ID nem kerül a számlára.
 8. Ha `RESEND_API_KEY` és `EMAIL_FROM` be van állítva sandboxban, ellenőrizd, hogy a megadott vevői email címre megérkezik:
    - az elkészült generált levél szövege;
    - a számlaértesítő, Számlázz.hu PDF/link adattal, ha a szolgáltató visszaadta.

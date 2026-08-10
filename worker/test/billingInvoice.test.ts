@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  calculateHufB2cVat,
+  calculateAamInvoiceAmounts,
   calculateOrderPrice,
   detectSuspiciousCheckoutInput,
   looksLikeBusinessName,
@@ -157,7 +157,7 @@ describe("checkout billing validation", () => {
   });
 });
 
-describe("server-side price and VAT calculations", () => {
+describe("server-side price and AAM calculations", () => {
   it.each([
     ["basic", 890],
     ["premium", 3900],
@@ -169,27 +169,27 @@ describe("server-side price and VAT calculations", () => {
       discountAmount: 0,
       payableAmount: amount,
       currency: "huf",
-      vatRate: 27,
+      vatCode: "AAM",
     });
   });
 
-  it("uses documented gross-based whole-HUF VAT rounding", () => {
-    expect(calculateHufB2cVat(890)).toEqual({
-      netAmount: 701,
-      vatAmount: 189,
+  it("uses equal net and gross amounts with zero VAT for AAM invoices", () => {
+    expect(calculateAamInvoiceAmounts(890)).toEqual({
+      netAmount: 890,
+      vatAmount: 0,
       grossAmount: 890,
-      vatRate: 27,
+      vatCode: "AAM",
     });
-    expect(calculateHufB2cVat(3900)).toEqual({
-      netAmount: 3071,
-      vatAmount: 829,
+    expect(calculateAamInvoiceAmounts(3900)).toEqual({
+      netAmount: 3900,
+      vatAmount: 0,
       grossAmount: 3900,
-      vatRate: 27,
+      vatCode: "AAM",
     });
   });
 
   it.each([0, -1, 12.5, Number.NaN])("rejects invalid payable amount %s", (amount) => {
-    expect(() => calculateHufB2cVat(amount)).toThrow("INVALID_GROSS_AMOUNT");
+    expect(() => calculateAamInvoiceAmounts(amount)).toThrow("INVALID_GROSS_AMOUNT");
   });
 });
 
@@ -228,7 +228,9 @@ describe("Stripe Checkout request", () => {
     const params = init.body as URLSearchParams;
     expect(params.get("line_items[0][price_data][unit_amount]")).toBe("89000");
     expect(params.get("line_items[0][price_data][currency]")).toBe("huf");
-    expect(params.get("line_items[0][price_data][tax_behavior]")).toBe("inclusive");
+    expect(params.get("line_items[0][price_data][tax_behavior]")).toBeNull();
+    expect(params.get("automatic_tax[enabled]")).toBeNull();
+    expect(params.get("invoice_creation[enabled]")).toBeNull();
     expect(params.get("payment_method_types[0]")).toBe("card");
     const metadata = [...params.entries()].filter(([key]) => key.includes("metadata"));
     expect(metadata.map(([key]) => key).sort()).toEqual([
@@ -261,9 +263,12 @@ describe("Szamlazz.hu invoice payload", () => {
     expect(xml).toContain("<orszag>HU</orszag>");
     expect(xml).toContain("<irsz>1111</irsz>");
     expect(xml).toContain("<adoalany>-1</adoalany>");
-    expect(xml).toContain("<nettoErtek>701</nettoErtek>");
-    expect(xml).toContain("<afaErtek>189</afaErtek>");
+    expect(xml).toContain("<nettoEgysegar>890</nettoEgysegar>");
+    expect(xml).toContain("<afakulcs>AAM</afakulcs>");
+    expect(xml).toContain("<nettoErtek>890</nettoErtek>");
+    expect(xml).toContain("<afaErtek>0</afaErtek>");
     expect(xml).toContain("<bruttoErtek>890</bruttoErtek>");
+    expect(xml).not.toContain("<afakulcs>27</afakulcs>");
     expect(xml).not.toMatch(/<adoszam(?:EU)?>|<company|<cegnev|<vat/i);
   });
 
@@ -281,6 +286,8 @@ describe("Szamlazz.hu invoice payload", () => {
     const xml = buildInvoiceXml("test-agent-key", payload, true);
     expect(xml).toContain("<nev>Minta Kft.</nev>");
     expect(xml).toContain("<adoszam>12345678-1-42</adoszam>");
+    expect(xml).toContain("<afakulcs>AAM</afakulcs>");
+    expect(xml).toContain("<afaErtek>0</afaErtek>");
     expect(xml).toContain("<sendEmail>true</sendEmail>");
     expect(xml).not.toContain("<adoalany>-1</adoalany>");
   });

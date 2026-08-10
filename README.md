@@ -237,7 +237,7 @@ STRIPE_WEBHOOK_SECRET=
 SZAMLAZZ_AGENT_KEY= # csak Számlázz.hu tesztfiók kulcsa lokális smoke teszthez
 TURNSTILE_SECRET_KEY=
 RESEND_API_KEY=
-EMAIL_FROM="Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>"
+EMAIL_FROM="Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
 ```
 
 Lokális D1 migráció:
@@ -338,7 +338,7 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 GEMINI_REVIEW_MODEL = "gemini-3.1-flash-lite"
 SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
 ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
-EMAIL_FROM = "Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>"
+EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 ```

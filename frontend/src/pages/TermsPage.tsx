@@ -29,7 +29,7 @@ export function TermsPage() {
       />
       <ContentBlock
         title="4. Megrendelés és fizetés"
-        text="A szolgáltatás magánszemély és magyar adószámmal rendelkező céges vásárló számára vehető igénybe. A felhasználónak ki kell töltenie az adatlap és a számlázási adatok minden kötelező mezőjét; céges vásárló esetén a cégnév és magyar adószám megadása kötelező. A felhasználónak el kell fogadnia az ÁSZF-et és az Adatkezelési tájékoztatót, majd sikeres bankkártyás fizetést kell végrehajtania. A fizetési folyamat a Stripe Checkout felületen zajlik – a bankkártya adatokat a Stripe dolgozza fel, azok nem kerülnek a Szolgáltató rendszereibe. A feltüntetett árak bruttó árak. Az ár megrendelés közben nem változtatható; a Szolgáltató kizárólag az általa meghatározott díjat fogadja el."
+        text="A szolgáltatás magánszemély és magyar adószámmal rendelkező céges vásárló számára vehető igénybe. A felhasználónak ki kell töltenie az adatlap és a számlázási adatok minden kötelező mezőjét; céges vásárló esetén a cégnév és magyar adószám megadása kötelező. A felhasználónak el kell fogadnia az ÁSZF-et és az Adatkezelési tájékoztatót, majd sikeres bankkártyás fizetést kell végrehajtania. A fizetési folyamat a Stripe Checkout felületen zajlik – a bankkártya adatokat a Stripe dolgozza fel, azok nem kerülnek a Szolgáltató rendszereibe. A feltüntetett árak a fizetendő végösszegek. A Szolgáltató alanyi adómentes, ezért a számlán áthárított általános forgalmi adó nem szerepel. Az ár megrendelés közben nem változtatható; a Szolgáltató kizárólag az általa meghatározott díjat fogadja el."
       />
       <ContentBlock
         title="5. Teljesítés és digitális tartalom"

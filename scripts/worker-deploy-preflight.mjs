@@ -124,6 +124,16 @@ function hasLocalhostUrl(value) {
   }
 }
 
+function emailFromDomain(value) {
+  const trimmed = String(value ?? "").trim();
+  const address = trimmed.match(/<([^<>]+)>$/u)?.[1] ?? trimmed;
+  const separator = address.lastIndexOf("@");
+  if (separator <= 0 || separator === address.length - 1 || /\s/u.test(address)) {
+    return null;
+  }
+  return address.slice(separator + 1).toLowerCase();
+}
+
 function validateBindings(config, errors) {
   const d1DatabaseId = String(config.d1.database_id ?? "");
   const kvNamespaceId = String(config.kv.id ?? "");
@@ -200,6 +210,12 @@ function validateProduction(config, errors) {
   }
   if (isPlaceholder(vars.EMAIL_FROM) || /example\.com/iu.test(String(vars.EMAIL_FROM ?? ""))) {
     errors.push("Production EMAIL_FROM must be a real sender address.");
+  }
+  if (
+    isHttpsUrl(String(vars.SITE_URL ?? "")) &&
+    emailFromDomain(vars.EMAIL_FROM) !== new URL(String(vars.SITE_URL)).hostname.toLowerCase()
+  ) {
+    errors.push("Production EMAIL_FROM must use the verified production site domain.");
   }
 }
 

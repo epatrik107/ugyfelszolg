@@ -69,7 +69,7 @@ Mindkét environmenthez külön változóként állítsd be:
 
 Jóváhagyott production szolgáltatói értékek:
 
-- `EMAIL_FROM=Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>`
+- `EMAIL_FROM=Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>`
 - `SELLER_NAME=Engelbrecht Zoltán egyéni vállalkozó`
 - `SELLER_ADDRESS=2500 Esztergom, Bánomi út 4.`
 - `SELLER_TAX_NUMBER=91250960-1-31`

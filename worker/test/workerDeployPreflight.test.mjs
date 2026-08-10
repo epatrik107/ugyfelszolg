@@ -24,7 +24,7 @@ TURNSTILE_EXPECTED_HOSTNAMES = "xn--gyfelszolgalat-fsb.hu"
 LEGAL_TERMS_VERSION = "2026-07-14"
 PRIVACY_POLICY_VERSION = "2026-07-14"
 ADMIN_API_ENABLED = "false"
-EMAIL_FROM = "Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>"
+EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
 DEMO_MODE = "false"
 PAYMENTS_ENABLED = "true"
 PAYMENT_MODE = "live"
@@ -87,6 +87,21 @@ describe("worker deploy preflight", () => {
     expect(result.errors).toContain("Production SELLER_NAME must be set to the legal seller name.");
     expect(result.errors).toContain("Production SELLER_ADDRESS must be set to the legal seller address.");
     expect(result.errors).toContain("Production SELLER_TAX_NUMBER must be set to the legal seller tax number.");
+  });
+
+  it("blocks an email sender outside the verified production domain", () => {
+    const unsafe = replaceConfig(
+      validProductionConfig,
+      'EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"',
+      'EMAIL_FROM = "Service <sender@gmail.com>"',
+    );
+
+    const result = validateWorkerDeployConfig(unsafe, "production");
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain(
+      "Production EMAIL_FROM must use the verified production site domain.",
+    );
   });
 
   it("blocks workers.dev and the static-token admin API in production", () => {

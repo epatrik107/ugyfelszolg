@@ -53,6 +53,16 @@ function isHttpsUrl(value: string) {
   }
 }
 
+function emailFromDomain(value: string) {
+  const trimmed = value.trim();
+  const address = trimmed.match(/<([^<>]+)>$/u)?.[1] ?? trimmed;
+  const separator = address.lastIndexOf("@");
+  if (separator <= 0 || separator === address.length - 1 || /\s/u.test(address)) {
+    return null;
+  }
+  return address.slice(separator + 1).toLowerCase();
+}
+
 function allowedOrigins(env: Env) {
   return String(env.ALLOWED_ORIGINS ?? "")
     .split(",")
@@ -186,6 +196,15 @@ export function validateEnv(env: Env): EnvValidationResult {
         !allowedOrigins(env).includes(new URL(String(env.SITE_URL)).origin)
       ) {
         missing.push("SITE_URL_ORIGIN_NOT_ALLOWED");
+      }
+      if (
+        hasValue(env.EMAIL_FROM) &&
+        hasValue(env.SITE_URL) &&
+        isHttpsUrl(String(env.SITE_URL)) &&
+        emailFromDomain(String(env.EMAIL_FROM)) !==
+          new URL(String(env.SITE_URL)).hostname.toLowerCase()
+      ) {
+        missing.push("EMAIL_FROM_DOMAIN_MISMATCH");
       }
     }
   }

@@ -146,6 +146,9 @@ describe("production deploy workflow hardening", () => {
     expect(frontendWorkflow).not.toContain("vars.VITE_TURNSTILE_SITE_KEY ||");
     expect(workerWorkflow).not.toContain('process.env.EMAIL_FROM || "Ügyfélközpont');
     expect(workerWorkflow).not.toContain('deployEnv === "production" ? "Engelbrecht');
+    expect(workerWorkflow).toContain(
+      "Production EMAIL_FROM must use the verified production site domain.",
+    );
   });
 
   it("deploys secrets atomically and rolls back to the captured active version", () => {

@@ -7,7 +7,7 @@ forrását és a `GO` döntéshez szükséges sorrendet.
 
 | Hely | Állapot | Teendő |
 |---|---|---|
-| GitHub Environmentek | `sandbox`, `production`, `github-pages` létezik; a névlista újra hitelesítve lett 2026-07-18-án | az alábbi scope-hibákat kell rendezni |
+| GitHub Environmentek | 2026-08-10-én értékmentesen auditálva; productionben mind a 8 secret és 24 variable név szerint teljes | külön sandbox Cloudflare- és Gemini-kulcs még hiányzik |
 | GitHub `production` protection | protected-branch policy aktív; a `main` PR + `verify` check védelemmel rendelkezik | required reviewer még nincs, admin bypass továbbra is engedett |
 | `.env.example` | tracked, placeholder-only, fájlon belüli duplikáció nincs | ez marad az összes név dokumentációs inventoryja |
 | `frontend/.env` | gitignore-olt, `0600`; két nevet definiál | a kívánt lokális értékek átvitele után törlendő |
@@ -16,9 +16,10 @@ forrását és a `GO` döntéshez szükséges sorrendet.
 | `worker/wrangler.toml` | gitignore-olt lokális config; CI nem ezt használja | lokális fejlesztésre tartható, production forrása a workflow |
 | `worker/wrangler.toml.example` | tracked kanonikus Worker példa | ezt kell másolni lokális Worker-confighoz |
 | root `wrangler.toml.example` | eltérő, nem használt duplikátum volt | eltávolítva; egyetlen példa maradt |
-| Jogi verziók | frontend és Worker példa eltért | közös `frontend/src/config/legalVersions.json`; deploy gate ellenőrzi |
+| Jogi verziók | ÁSZF `1.3`, privacy `1.2`; GitHub production és sandbox értékek egyeznek | a publikált ÁSZF AAM-szövegét jogi/könyvelői review-val jóvá kell hagyni |
 | Cloudflare erőforrások | az account, két Worker, külön production/sandbox D1 és KV Wrangler OAuth-val ellenőrizve; bindingok helyesek | GitHub Environment resource ID-k javítva, repository D1/KV duplikációk törölve |
-| Production API domain | `api.xn--gyfelszolgalat-fsb.hu` aktív Worker Custom Domain; DNS és TLS rendben; a korábbi 522 megszűnt | `/api/health` még HTTP 503/degraded a hiányzó production runtime secretek miatt |
+| Számlázás/fizetés | Stripe live account és webhook, Számlázz.hu éles mód, NAV-kapcsolat és AAM státusz projektgazdai megerősítés alapján kész | sandbox és production E2E, AAM számlakép és refund/storno ellenőrzés kell |
+| Production API domain | `api.xn--gyfelszolgalat-fsb.hu` aktív Worker Custom Domain; DNS és TLS rendben | `/api/health` 2026-08-10-én HTTP 503/degraded; az új kód és GitHub secretkészlet még nincs production Workerre deployolva |
 
 Az azonos név `sandbox` és `production` Environmentben **nem káros
 duplikáció**: ez a szükséges környezeti izoláció, és az értékeknek különbözniük
@@ -28,45 +29,32 @@ repository-szintűt.
 
 ## 2. Hitelesített GitHub név-audit
 
-A 2026-07-18-i, értékmentes audit tényleges GitHub-állapota:
+A 2026-08-10-i, értékmentes audit tényleges GitHub-állapota:
 
-- repository-szinten három alkalmazás-secret és nulla variable maradt; a célállapot
-  itt `none`, mert a sandbox és production értékeknek külön Environmentben kell
-  élniük;
-- a sandbox négy biztos duplikált secretje (`ALLOWED_ORIGINS`,
-  `D1_DATABASE_NAME`, `SITE_URL`, `WORKER_NAME`) törölve lett, mert azonos nevű
-  Environment variable létezik és a workflow azt használja;
-- sandboxban külön új `TOKEN_HASH_SECRET` készült; még hiányzik a
-  `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY` Environment-szintű példánya;
-- sandboxban az `EMAIL_FROM`, `SELLER_ADDRESS`, `SELLER_NAME` és
-  `SELLER_TAX_NUMBER` tévesen secretként él, miközben a workflow variable-ként
-  várja; az értékek GitHubból nem olvashatók vissza, ezért előbb kézzel újra fel
-  kell venni őket variable-ként;
-- productionben a variable-névlista teljes. A production Environmentben a
-  `CLOUDFLARE_API_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`,
-  `TOKEN_HASH_SECRET` és `TURNSTILE_SECRET_KEY` jelen van; még a két Stripe
-  secret és a `SZAMLAZZ_AGENT_KEY` hiányzik;
-- az audit utáni Cloudflare-ellenőrzés az account-, D1- és KV-azonosítót
-  azonosította és felvette; a production Environment variable-k név szerint
-  teljesek;
+- productionben pontosan a 8 kötelező secret és a 24 kötelező variable jelen
+  van; hiányzó, stale vagy productionben tiltott név nincs;
+- a production `LEGAL_TERMS_VERSION=1.3`, az `EMAIL_FROM` a Resendben verifikált
+  domainen van; a deploy és runtime guard az idegen sender domaint blokkolja;
+- sandboxban a teljes variable-névlista megvan, és a korábban secretként tárolt
+  `EMAIL_FROM`/`SELLER_*` adatok variable-ként kerültek át, a stale secret
+  példányok törölve lettek;
+- sandboxból még hiányzik a külön `CLOUDFLARE_API_TOKEN` és `GEMINI_API_KEY`.
+  Emiatt a két repository-szintű fallback egyelőre megmaradt; ezek productionben
+  az Environment-szintű értékek által shadowolt scope-duplikációk;
+- a repository-szintű `CLOUDFLARE_ACCOUNT_ID` secret törölve lett, mert az
+  azonosító mindkét Environmentben helyesen variable;
 - a `main` branch védett: PR, zöld `verify`, stale review eldobása,
   conversation resolution, admin enforcement, force-push és törlés tiltás;
 - a `production` Environment csak védett branchből deployolható; required
   reviewer még nincs és az admin bypass továbbra is engedett.
-- a futó production Workerben a `GEMINI_API_KEY`, `RESEND_API_KEY`,
-  `TOKEN_HASH_SECRET` és `TURNSTILE_SECRET_KEY` neve létezik, de az értékük nem
-  olvasható vissza és GitHub Environmentben reprodukálhatóan újra meg kell adni;
-  a `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` és `SZAMLAZZ_AGENT_KEY` a
-  production Workerből is hiányzik. A Workerben egy stale
-  `DEMO_ACCESS_CODE` is jelen van; ezt production deploy előtt kézzel törölni
-  kell;
+- a GitHub production Environmentből az új workflow atomikusan deployolja az
+  összes secretet, és explicit törli a stale `DEMO_ACCESS_CODE`/`OPENAI_API_KEY`
+  neveket; ez a production Workerre még nem futott le;
 - Dependabot alert/security update, provider-alapú secret scanning és push
   protection 2026-07-18-án bekapcsolva; a CodeQL JavaScript/TypeScript default
   setup első futása elindult;
-- a production Worker rollbackelt verziót futtat. A külön secret-módosítás
-  Cloudflare 10215 hibával blokkolt; a workflow ezért atomikus
-  `wrangler deploy --secrets-file` folyamatra és explicit előző-verziós
-  rollbackre lett átállítva.
+- a production Worker még a korábbi verziót futtatja; az új AAM, Resend
+  sender-domain és dependency javításokat tartalmazó PR merge/deploy előtt áll.
 
 Az aktuális állapot bármikor újraellenőrizhető:
 
@@ -162,7 +150,7 @@ Worker/deploy:
 - `GEMINI_MODEL=gemini-3.1-flash-lite`
 - `GEMINI_MODEL_PREMIUM=gemini-3.5-flash`
 - `GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite`
-- `LEGAL_TERMS_VERSION=1.2`
+- `LEGAL_TERMS_VERSION=1.3`
 - `PRIVACY_POLICY_VERSION=1.2`
 - `SELLER_ADDRESS`
 - `SELLER_NAME`

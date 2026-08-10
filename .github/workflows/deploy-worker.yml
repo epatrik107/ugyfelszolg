@@ -96,6 +96,13 @@ jobs:
           const isPlaceholder = (value) => {
             return !value || /^(test|teszt|example|placeholder|replace|replace_with|todo|tbd)$/i.test(value) || /REPLACE_WITH|PASTE|ADD_/i.test(value) || /^0+X+$/i.test(value);
           };
+          const emailFromDomain = (value) => {
+            const trimmed = String(value || "").trim();
+            const address = trimmed.match(/<([^<>]+)>$/)?.[1] || trimmed;
+            const separator = address.lastIndexOf("@");
+            if (separator <= 0 || separator === address.length - 1 || /\s/.test(address)) return null;
+            return address.slice(separator + 1).toLowerCase();
+          };
 
           if (!d1Id) errors.push("CLOUDFLARE_D1_DATABASE_ID is required but not set.");
           else if (!d1DatabaseIdPattern.test(d1Id)) {
@@ -199,6 +206,12 @@ jobs:
             if (isPlaceholder(sellerAddress)) errors.push("Production SELLER_ADDRESS must be the legal seller address.");
             if (isPlaceholder(sellerTaxNumber)) errors.push("Production SELLER_TAX_NUMBER must be the legal seller tax number.");
             if (isPlaceholder(emailFrom) || /example\.com/i.test(emailFrom)) errors.push("Production EMAIL_FROM must be a real sender address.");
+            if (
+              siteUrl &&
+              emailFromDomain(emailFrom) !== new URL(siteUrl).hostname.toLowerCase()
+            ) {
+              errors.push("Production EMAIL_FROM must use the verified production site domain.");
+            }
           }
 
           if (errors.length > 0) {

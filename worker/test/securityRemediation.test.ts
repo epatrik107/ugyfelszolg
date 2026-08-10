@@ -378,6 +378,21 @@ describe("environment validation", () => {
     ).toContain("ALLOWED_ORIGINS_HTTPS_REQUIRED");
   });
 
+  it("requires the live email sender to use the verified production domain", () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          PAYMENTS_ENABLED: "true",
+          PAYMENT_MODE: "live",
+          STRIPE_SECRET_KEY: "sk_live_secret",
+          STRIPE_WEBHOOK_SECRET: "whsec_live",
+          SZAMLAZZ_AGENT_KEY: "live-agent-key",
+          EMAIL_FROM: "Service <sender@gmail.com>",
+        }),
+      ).missing,
+    ).toContain("EMAIL_FROM_DOMAIN_MISMATCH");
+  });
+
   it("rejects an uppercase Szamlazz.hu Agent key in payment mode", () => {
     expect(
       validateEnv(
