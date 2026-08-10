@@ -278,7 +278,7 @@ jobs:
           const tomlString = (input) => JSON.stringify(input);
           const deployEnv = value("DEPLOY_ENV", "sandbox");
           const defaultAllowedOrigins = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io";
-          const defaultDemoMode = deployEnv === "production" ? "false" : "true";
+          const defaultDemoMode = "false";
           const defaultPaymentsEnabled = deployEnv === "production" ? "true" : "false";
           const defaultPaymentMode = deployEnv === "production" ? "live" : "test";
           const defaultEmailFrom = deployEnv === "production" ? "" : "Sandbox <noreply@example.com>";
