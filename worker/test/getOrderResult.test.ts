@@ -54,7 +54,7 @@ describe("getOrderResult route", () => {
 
     expect(response.status).toBe(200);
     expect(payload.data.generatedLetter).toContain("Kész levél");
-    expect(payload.data.letterHistory).toEqual(["Korábbi verzió"]);
+    expect(payload.data.letterHistory).toEqual(["Korábbi verzió"]); expect((payload.data as { aiProvenance?: { aiGenerated: boolean } }).aiProvenance?.aiGenerated).toBe(true);
   });
 
   it("rejects missing or wrong tokens", async () => {
