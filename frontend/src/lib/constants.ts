@@ -1,7 +1,7 @@
 import type { PackageId } from "./types";
 
 export const legalNotice =
-  "A szolgáltatás nem minősül jogi, pénzügyi vagy egészségügyi tanácsadásnak. Az elkészített szöveg kommunikációs segítség, amelyet az ügyfél saját felelősségére használ fel.";
+  "A levelet mesterséges intelligencia állítja elő az Ön által megadott adatok alapján; kérjük, elküldés előtt olvassa át és szükség szerint javítsa. A szolgáltatás nem minősül jogi, pénzügyi vagy egészségügyi tanácsadásnak. Az elkészített szöveg kommunikációs segítség, amelyet az ügyfél saját felelősségére használ fel.";
 
 export const letterTypes = [
   "Panaszlevél",
