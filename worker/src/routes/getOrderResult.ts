@@ -52,7 +52,7 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
         return [];
       }
     })(),
-    letterEmailSent: order.letter_email_sent === 1,
+    aiProvenance: canExposeLetter ? { aiGenerated: true, generatedAt: order.generated_at } : undefined, letterEmailSent: order.letter_email_sent === 1,
     selectedPackage: order.selected_package,
     createdAt: order.created_at,
   });
