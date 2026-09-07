@@ -89,7 +89,7 @@ function ComplaintHandlingBlock() {
         Budapest, Ostrom utca 23-25.; levelezési cím: 1525 Budapest, Pf. 75.
       </p>
       <p className="leading-7 text-slate-700">
-        A panaszkezelésre egyebekben a fogyasztóvédelemről szóló 1997. évi CLV. törvény
+        A Szolgáltató székhelye szerint illetékes békéltető testület: Komárom-Esztergom Vármegyei Békéltető Testület, 2800 Tatabánya, Fő tér 36., telefon: (34) 513-010, e-mail: bekeltetes@kemkik.hu, honlap: kem-bekeltetes.hu. A fogyasztó a lakóhelye vagy tartózkodási helye szerinti békéltető testülethez is fordulhat. A panaszkezelésre egyebekben a fogyasztóvédelemről szóló 1997. évi CLV. törvény
         rendelkezései irányadók.
       </p>
     </section>
