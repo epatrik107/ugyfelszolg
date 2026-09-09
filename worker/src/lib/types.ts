@@ -233,4 +233,4 @@ export interface BusinessBillingDetails {
   taxNumber: string;
 }
 
-export type BillingDetails = IndividualBillingDetails | BusinessBillingDetails;
+export type BillingDetails = IndividualBillingDetails;

@@ -31,7 +31,7 @@ export const PACKAGES = {
   premium: {
     id: "premium",
     name: "Prémium",
-    price: 3900,
+    price: 2990,
     currency: "huf",
     billingMode: "payment",
     capabilities: {
@@ -45,7 +45,7 @@ export const PACKAGES = {
   premium_plus: {
     id: "premium_plus",
     name: "Prémium plusz",
-    price: 10900,
+    price: 3990,
     currency: "huf",
     billingMode: "payment",
     capabilities: {

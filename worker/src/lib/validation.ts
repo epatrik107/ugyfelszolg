@@ -50,11 +50,7 @@ const businessBillingSchema = z
   })
   .strict();
 
-const billingSchema = z
-  .discriminatedUnion("buyerType", [
-    individualBillingSchema,
-    businessBillingSchema,
-  ])
+const billingSchema = individualBillingSchema
   .superRefine((billing, ctx) => {
     if (billing.buyerType === "individual" && looksLikeBusinessName(billing.name)) {
       ctx.addIssue({

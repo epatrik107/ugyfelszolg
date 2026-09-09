@@ -132,7 +132,7 @@ describe("checkout billing validation", () => {
     ).toBe(false);
   });
 
-  it("accepts a Hungarian business buyer only with a valid tax number", () => {
+  it("rejects business buyers entirely", () => {
     const businessCheckout = {
       ...validCheckout,
       billing: {
@@ -146,8 +146,9 @@ describe("checkout billing validation", () => {
         taxNumber: "12345678-1-42",
       },
     };
-    expect(checkoutSchema.safeParse(businessCheckout).success).toBe(true);
-    expect(detectSuspiciousCheckoutInput(businessCheckout)).toBeNull();
+    // The seller invoices natural persons only, so a business payload must not
+    // pass validation even when the tax number itself is well formed.
+    expect(checkoutSchema.safeParse(businessCheckout).success).toBe(false);
     expect(
       checkoutSchema.safeParse({
         ...businessCheckout,
@@ -160,8 +161,8 @@ describe("checkout billing validation", () => {
 describe("server-side price and AAM calculations", () => {
   it.each([
     ["basic", 890],
-    ["premium", 3900],
-    ["premium_plus", 10900],
+    ["premium", 2990],
+    ["premium_plus", 3990],
   ] as const)("calculates %s exclusively from the package catalog", (packageId, amount) => {
     expect(calculateOrderPrice(packageId)).toEqual({
       packageId,
@@ -180,10 +181,10 @@ describe("server-side price and AAM calculations", () => {
       grossAmount: 890,
       vatCode: "AAM",
     });
-    expect(calculateAamInvoiceAmounts(3900)).toEqual({
-      netAmount: 3900,
+    expect(calculateAamInvoiceAmounts(2990)).toEqual({
+      netAmount: 2990,
       vatAmount: 0,
-      grossAmount: 3900,
+      grossAmount: 2990,
       vatCode: "AAM",
     });
   });

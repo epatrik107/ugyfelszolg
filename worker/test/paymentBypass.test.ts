@@ -96,8 +96,8 @@ describe("checkout frontend price manipulation prevention", () => {
 
     // These must be fixed values
     expect(basicPrice).toBe(890);
-    expect(premiumPrice).toBe(3900);
-    expect(premiumPlusPrice).toBe(10900);
+    expect(premiumPrice).toBe(2990);
+    expect(premiumPlusPrice).toBe(3990);
 
     // Any frontend-provided price is ignored – the Stripe session uses server price
     const manipulatedFrontendPrice: number = 1; // attacker's price
