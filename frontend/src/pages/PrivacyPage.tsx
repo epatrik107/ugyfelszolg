@@ -21,7 +21,7 @@ export function PrivacyPage() {
       />
       <ContentBlock
         title="2. Kezelt adatok"
-        text="Név, e-mail cím, számlázási név vagy cégnév, számlázási e-mail, ország, irányítószám, település és cím, céges vásárló esetén magyar adószám, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), számlaszám és számlázási állapot, megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, személyes adatot nem tartalmazó hibakódok)."
+        text="Név, e-mail cím, számlázási név, számlázási e-mail, ország, irányítószám, település és cím, a levél elkészítéséhez megadott szöveges adatok (panasz leírása, kívánt eredmény, korábbi üzenetek), csomagválasztás, fizetési azonosítók (Stripe session ID, fizetési szándék ID – kártyaadatok nem kerülnek hozzánk), számlaszám és számlázási állapot, megrendelési állapot, rendelési eredmény token hash-e (nem visszafejthető), technikai naplók (IP-cím, időbélyeg, személyes adatot nem tartalmazó hibakódok)."
       />
       <ContentBlock
         title="3. Az adatkezelés céljai és jogalapjai"

@@ -188,8 +188,8 @@ describe("checkout AI availability preflight", () => {
 
   it.each([
     ["basic", 890],
-    ["premium", 3900],
-    ["premium_plus", 10900],
+    ["premium", 2990],
+    ["premium_plus", 3990],
   ] as const)(
     "uses the server catalog price and individual billing email for %s checkout",
     async (selectedPackage, amount) => {

@@ -12,14 +12,19 @@ export function PackageCard({
   onSelect?: (packageId: PackageId) => void;
 }) {
   const item = packages[packageId];
+  // Only render an interactive control when the card can actually be chosen.
+  // On the pricing page there is no handler, so a button would show a pointer
+  // cursor and invite a click that does nothing.
+  const Wrapper = onSelect ? "button" : "div";
   return (
-    <button
-      type="button"
-      onClick={() => onSelect?.(packageId)}
+    <Wrapper
+      {...(onSelect ? { type: "button" as const, onClick: () => onSelect(packageId) } : {})}
       className={`w-full rounded-lg border p-5 text-left transition ${
         selected
           ? "border-azure-600 bg-azure-100 shadow-soft"
-          : "border-slate-200 bg-white hover:border-slate-300"
+          : onSelect
+            ? "border-slate-200 bg-white hover:border-slate-300"
+            : "border-slate-200 bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -48,6 +53,6 @@ export function PackageCard({
           </li>
         ))}
       </ul>
-    </button>
+    </Wrapper>
   );
 }

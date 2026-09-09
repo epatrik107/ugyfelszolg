@@ -137,9 +137,6 @@ export function assertBillingDetails(details: BillingDetails) {
   if (details.buyerType === "individual" && looksLikeBusinessName(details.name)) {
     throw new Error("BUSINESS_BUYER_NOT_ALLOWED");
   }
-  if (details.buyerType === "business" && !isValidHungarianTaxNumber(details.taxNumber)) {
-    throw new Error("INVALID_BUSINESS_TAX_NUMBER");
-  }
   if (details.country !== "HU") {
     // The current invoice flow is explicitly configured for the seller's
     // Hungarian AAM tax status. Cross-border tax rules are not implemented.

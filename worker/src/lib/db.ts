@@ -124,7 +124,7 @@ export async function insertOrder(
       input.billing?.postalCode ?? null,
       input.billing?.city ?? null,
       input.billing?.addressLine1 ?? null,
-      input.billing?.buyerType === "business" ? input.billing.taxNumber : null,
+      null,
       now,
       env.LEGAL_TERMS_VERSION,
       env.PRIVACY_POLICY_VERSION,

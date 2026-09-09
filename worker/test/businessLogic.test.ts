@@ -35,8 +35,8 @@ async function hmacSha256Hex(secret: string, payload: string) {
 describe("packages", () => {
   it("keeps package pricing server-side and fixed", () => {
     expect(getPackage("basic").price).toBe(890);
-    expect(getPackage("premium").price).toBe(3900);
-    expect(getPackage("premium_plus").price).toBe(10900);
+    expect(getPackage("premium").price).toBe(2990);
+    expect(getPackage("premium_plus").price).toBe(3990);
   });
 
   it("basic package has no premium model and 1 max regeneration", () => {
@@ -671,7 +671,7 @@ describe("createInvoice szamlazz.hu path", () => {
       id: "order-prod-1",
       email: "production@example.com",
       name: "Éles Felhasználó",
-      server_calculated_price: 3900,
+      server_calculated_price: 2990,
       currency: "HUF",
       paid_at: "2024-06-15T12:00:00.000Z",
       selected_package: "premium" as const,
@@ -697,7 +697,7 @@ describe("createInvoice szamlazz.hu path", () => {
     expect(invoice.invoice_number).toBe(mockInvoiceNumber);
     expect(storedInvoiceNumber).toBe(mockInvoiceNumber);
     expect(invoice.order_id).toBe("order-prod-1");
-    expect(invoice.amount).toBe(3900);
+    expect(invoice.amount).toBe(2990);
   });
 
   it("throws when szamlazz.hu returns an error response header", async () => {

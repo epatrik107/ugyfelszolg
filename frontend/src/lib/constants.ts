@@ -47,8 +47,8 @@ export const packages: Record<
   },
   premium: {
     name: "Prémium",
-    price: "3 900 Ft",
-    numericPrice: 3900,
+    price: "2 990 Ft",
+    numericPrice: 2990,
     maxRegenerations: 3,
     bullets: [
       "Részletesebb megfogalmazás",
@@ -60,8 +60,8 @@ export const packages: Record<
   },
   premium_plus: {
     name: "Prémium plusz",
-    price: "10 900 Ft",
-    numericPrice: 10900,
+    price: "3 990 Ft",
+    numericPrice: 3990,
     maxRegenerations: 3,
     bullets: [
       "Összetettebb ügyekhez",
