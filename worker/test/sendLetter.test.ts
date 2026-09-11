@@ -115,4 +115,22 @@ describe("sendLetter route", () => {
     expect(mocks.sendLetterReadyEmail).not.toHaveBeenCalled();
     expect(mocks.markLetterEmailSent).not.toHaveBeenCalled();
   });
+
+  it("opts out of the legacy already-sent fallback when a version is named", async () => {
+    await request({ versionIndex: 0 });
+    expect(mocks.hasLetterEmailVersionSent).toHaveBeenCalledWith(
+      expect.anything(),
+      "sha256:abcdef1234567890",
+      false,
+    );
+  });
+
+  it("keeps the legacy fallback when sending the current letter", async () => {
+    await request({});
+    expect(mocks.hasLetterEmailVersionSent).toHaveBeenCalledWith(
+      expect.anything(),
+      "sha256:abcdef1234567890",
+      true,
+    );
+  });
 });

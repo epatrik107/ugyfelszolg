@@ -6,7 +6,7 @@ import {
   hasLetterEmailVersionSent,
   markLetterEmailSent,
 } from "./db";
-import { sendGeneratedLetterEmail } from "./email";
+import { EmailSendError, sendGeneratedLetterEmail } from "./email";
 import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
@@ -95,6 +95,7 @@ async function sendGeneratedLetterEmailIfConfigured(
     logEvent("letter_email_send_failed", {
       orderId: order.id,
       errorType: error instanceof Error ? error.name : "unknown",
+      providerStatus: error instanceof EmailSendError ? error.status : null,
     });
   }
 }

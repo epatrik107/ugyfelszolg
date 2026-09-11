@@ -9,6 +9,21 @@ import {
 import { buildResultCapabilityUrl } from "./resultUrl";
 import type { Env, InvoiceRow, OrderRow } from "./types";
 
+/**
+ * Carries the provider's HTTP status so failures are diagnosable from logs.
+ * The response body is deliberately never attached: it can contain recipient
+ * addresses and request details.
+ */
+export class EmailSendError extends Error {
+  readonly name = "EmailSendError";
+  constructor(
+    readonly status: number | null,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 function getSellerInfo(env: Env) {
   return {
     sellerName: env.SELLER_NAME ?? "Levélsegéd",
@@ -31,7 +46,7 @@ async function sendEmail(
   idempotencyKey?: string,
 ) {
   if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
-    throw new Error("Email service is not configured.");
+    throw new EmailSendError(null, "Email service is not configured.");
   }
 
   const headers: Record<string, string> = {
@@ -70,7 +85,7 @@ async function sendEmail(
     if (!isTransient || attempt === 1) {
       // Provider error bodies can contain recipient data or request details.
       // Retain only the status code in logs and persisted retry state.
-      throw new Error(`Resend API error (${response.status})`);
+      throw new EmailSendError(response.status, `Resend API error (${response.status})`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 1500));

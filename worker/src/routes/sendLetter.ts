@@ -5,7 +5,7 @@ import {
   hasLetterEmailVersionSent,
   markLetterEmailSent,
 } from "../lib/db";
-import { sendLetterReadyEmail } from "../lib/email";
+import { EmailSendError, sendLetterReadyEmail } from "../lib/email";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { hasActiveOrderAccess, isOrderContentExpired } from "../lib/orderState";
@@ -74,7 +74,7 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
   }
 
   const versionKey = await getLetterEmailVersionKey(letterToSend);
-  if (hasLetterEmailVersionSent(order, versionKey)) {
+  if (hasLetterEmailVersionSent(order, versionKey, body.versionIndex === undefined)) {
     return okJson(c, { alreadySent: true });
   }
 
@@ -92,6 +92,7 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
     logEvent("letter_email_send_failed", {
       orderId: order.id,
       errorType: err instanceof Error ? err.name : "unknown",
+      providerStatus: err instanceof EmailSendError ? err.status : null,
     });
     return errorJson(c, "INTERNAL_ERROR", "Az email küldése nem sikerült. Kérjük, próbálja újra.", 500);
   }
