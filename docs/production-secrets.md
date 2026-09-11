@@ -39,17 +39,17 @@ Ezek nem secretek, de környezetfüggő és biztonságkritikus konfigurációk.
 | `CLOUDFLARE_KV_NAMESPACE_ID` | A külön production rate-limit KV namespace ID-ja |
 | `D1_DATABASE_NAME` | Production D1 név; nem tartalmazhat `test`/`sandbox` szót |
 | `WORKER_NAME` | Production Worker név; nem tartalmazhat `test`/`sandbox` szót |
-| `API_HEALTH_URL` | `https://api.xn--gyfelszolgalat-fsb.hu/api/health` |
-| `SITE_URL` | `https://xn--gyfelszolgalat-fsb.hu` |
-| `ALLOWED_ORIGINS` | Csak a tényleges frontend origin, jellemzően `https://xn--gyfelszolgalat-fsb.hu` |
-| `TURNSTILE_EXPECTED_HOSTNAMES` | Exact hostname scheme/path/wildcard nélkül: `xn--gyfelszolgalat-fsb.hu` |
-| `LEGAL_TERMS_VERSION` | A `frontend/src/config/legalVersions.json` publikált ÁSZF-verziója; jelenlegi release-ben `1.3` |
-| `PRIVACY_POLICY_VERSION` | A `frontend/src/config/legalVersions.json` publikált privacy-verziója; jelenlegi release-ben `1.2` |
+| `API_HEALTH_URL` | `https://api.levelseged.hu/api/health` |
+| `SITE_URL` | `https://levelseged.hu` |
+| `ALLOWED_ORIGINS` | Csak a tényleges frontend origin, jellemzően `https://levelseged.hu` |
+| `TURNSTILE_EXPECTED_HOSTNAMES` | Exact hostname scheme/path/wildcard nélkül: `levelseged.hu` |
+| `LEGAL_TERMS_VERSION` | A `frontend/src/config/legalVersions.json` publikált ÁSZF-verziója; jelenlegi release-ben `1.5` |
+| `PRIVACY_POLICY_VERSION` | A `frontend/src/config/legalVersions.json` publikált privacy-verziója; jelenlegi release-ben `1.3` |
 | `ADMIN_API_ENABLED` | Kötelezően `false` productionben |
 | `GEMINI_MODEL` | Explicit, támogatott standard model ID |
 | `GEMINI_MODEL_PREMIUM` | Explicit, támogatott prémium model ID |
 | `GEMINI_REVIEW_MODEL` | Explicit, támogatott review model ID |
-| `EMAIL_FROM` | Resendben verifikált domainen lévő sender; productionben `Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>` |
+| `EMAIL_FROM` | Resendben verifikált domainen lévő sender; productionben `Levélsegéd <noreply@levelseged.hu>` |
 | `SELLER_NAME` | Könyvelő/jogász által jóváhagyott jogi eladónév |
 | `SELLER_ADDRESS` | Jóváhagyott jogi cím |
 | `SELLER_TAX_NUMBER` | Jóváhagyott adószám |
@@ -62,8 +62,8 @@ Ezek **publikusak**, a böngésző bundle-ben láthatók; secret nem kerülhet k
 
 | Név | Production érték/típus |
 |---|---|
-| `VITE_API_BASE_URL` | `https://api.xn--gyfelszolgalat-fsb.hu`; `workers.dev` címet a workflow már blokkol |
-| `VITE_SITE_URL` | `https://xn--gyfelszolgalat-fsb.hu` |
+| `VITE_API_BASE_URL` | `https://api.levelseged.hu`; `workers.dev` címet a workflow már blokkol |
+| `VITE_SITE_URL` | `https://levelseged.hu` |
 | `VITE_BASE_PATH` | `/` custom domainnél |
 | `VITE_TURNSTILE_SITE_KEY` | A production Turnstile widget **publikus** site key-je |
 | `VITE_DEMO_MODE` | `false` |
@@ -72,7 +72,7 @@ Ezek **publikusak**, a böngésző bundle-ben láthatók; secret nem kerülhet k
 
 - Külön production Cloudflare Worker, D1, KV és működő custom API domain.
 - Headerképes frontend edge/proxy: a repository `frontend/public/_headers` policyja Cloudflare Pages/Workers alatt használható, a jelenlegi GitHub Pages válasz viszont nem alkalmazza automatikusan; HSTS/CSP/XFO/nosniff/referrer headereket az edge-en kell igazolni.
-- Stripe live webhook: `https://api.xn--gyfelszolgalat-fsb.hu/api/stripe/webhook`.
+- Stripe live webhook: `https://api.levelseged.hu/api/stripe/webhook`.
 - Stripe események: checkout completed/expired/async failed, payment failed,
   `refund.created`, `refund.updated`, `refund.failed`, `charge.refunded`, valamint
   dispute created/updated/closed.

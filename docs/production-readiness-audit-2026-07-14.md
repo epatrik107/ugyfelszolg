@@ -4,6 +4,8 @@ Audit dátuma: 2026-07-14
 Utolsó technikai frissítés: 2026-07-17
 Külső konfigurációs státusz frissítése: 2026-08-10
 Auditált projekt: `ugyfelszolg`
+
+> **Archív dokumentum.** Ez az audit a 2026-09-11-i domainváltás előtti állapotot rögzíti, ezért a benne szereplő `ügyfelszolgalat.hu` / `api.ügyfelszolgalat.hu` címek már nem élnek. Az aktuális domain `levelseged.hu`, az API `api.levelseged.hu`. A hatályos konfigurációért lásd: `docs/go-live-runbook.md` és `docs/production-secrets.md`.
 Módszer: forráskód-, konfiguráció-, Git-előzmény-, függőség-, build-, teszt- és nem destruktív élő endpoint-vizsgálat. Valódi fizetés, ügyféladat-módosítás és production migráció nem történt. Secretérték nem szerepel ebben a jelentésben.
 
 ## 1. Executive summary

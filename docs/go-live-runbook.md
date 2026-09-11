@@ -19,7 +19,7 @@ forrását és a `GO` döntéshez szükséges sorrendet.
 | Jogi verziók | ÁSZF `1.3`, privacy `1.2`; GitHub production és sandbox értékek egyeznek | a publikált ÁSZF AAM-szövegét jogi/könyvelői review-val jóvá kell hagyni |
 | Cloudflare erőforrások | az account, két Worker, külön production/sandbox D1 és KV Wrangler OAuth-val ellenőrizve; bindingok helyesek | GitHub Environment resource ID-k javítva, repository D1/KV duplikációk törölve |
 | Számlázás/fizetés | Stripe live account és webhook, Számlázz.hu éles mód, NAV-kapcsolat és AAM státusz projektgazdai megerősítés alapján kész | sandbox és production E2E, AAM számlakép és refund/storno ellenőrzés kell |
-| Production API domain | `api.xn--gyfelszolgalat-fsb.hu` aktív Worker Custom Domain; DNS és TLS rendben | `/api/health` 2026-08-10-én HTTP 503/degraded; az új kód és GitHub secretkészlet még nincs production Workerre deployolva |
+| Production API domain | `api.levelseged.hu` aktív Worker Custom Domain; DNS és TLS rendben | `/api/health` 2026-08-10-én HTTP 503/degraded; az új kód és GitHub secretkészlet még nincs production Workerre deployolva |
 
 Az azonos név `sandbox` és `production` Environmentben **nem káros
 duplikáció**: ez a szükséges környezeti izoláció, és az értékeknek különbözniük
@@ -33,7 +33,7 @@ A 2026-08-10-i, értékmentes audit tényleges GitHub-állapota:
 
 - productionben pontosan a 8 kötelező secret és a 24 kötelező variable jelen
   van; hiányzó, stale vagy productionben tiltott név nincs;
-- a production `LEGAL_TERMS_VERSION=1.3`, az `EMAIL_FROM` a Resendben verifikált
+- a production `LEGAL_TERMS_VERSION=1.5`, az `EMAIL_FROM` a Resendben verifikált
   domainen van; a deploy és runtime guard az idegen sender domaint blokkolja;
 - sandboxban a teljes variable-névlista megvan, és a korábban secretként tárolt
   `EMAIL_FROM`/`SELLER_*` adatok variable-ként kerültek át, a stale secret
@@ -139,8 +139,8 @@ Productionben ne legyen:
 Worker/deploy:
 
 - `ADMIN_API_ENABLED=false`
-- `ALLOWED_ORIGINS=https://xn--gyfelszolgalat-fsb.hu`
-- `API_HEALTH_URL=https://api.xn--gyfelszolgalat-fsb.hu/api/health`
+- `ALLOWED_ORIGINS=https://levelseged.hu`
+- `API_HEALTH_URL=https://api.levelseged.hu/api/health`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_D1_DATABASE_ID`
 - `CLOUDFLARE_KV_NAMESPACE_ID`
@@ -149,21 +149,21 @@ Worker/deploy:
 - `GEMINI_MODEL=gemini-3.1-flash-lite`
 - `GEMINI_MODEL_PREMIUM=gemini-3.5-flash`
 - `GEMINI_REVIEW_MODEL=gemini-3.1-flash-lite`
-- `LEGAL_TERMS_VERSION=1.3`
-- `PRIVACY_POLICY_VERSION=1.2`
+- `LEGAL_TERMS_VERSION=1.5`
+- `PRIVACY_POLICY_VERSION=1.3`
 - `SELLER_ADDRESS`
 - `SELLER_NAME`
 - `SELLER_TAX_NUMBER`
-- `SITE_URL=https://xn--gyfelszolgalat-fsb.hu`
-- `TURNSTILE_EXPECTED_HOSTNAMES=xn--gyfelszolgalat-fsb.hu`
+- `SITE_URL=https://levelseged.hu`
+- `TURNSTILE_EXPECTED_HOSTNAMES=levelseged.hu`
 - `WORKER_NAME`
 
 Frontend — ezek publikusak:
 
-- `VITE_API_BASE_URL=https://api.xn--gyfelszolgalat-fsb.hu`
+- `VITE_API_BASE_URL=https://api.levelseged.hu`
 - `VITE_BASE_PATH=/`
 - `VITE_DEMO_MODE=false`
-- `VITE_SITE_URL=https://xn--gyfelszolgalat-fsb.hu`
+- `VITE_SITE_URL=https://levelseged.hu`
 - `VITE_TURNSTILE_SITE_KEY`
 
 A `SELLER_*` és `EMAIL_FROM` értékeket a könyvelő/jogász által jóváhagyott
@@ -210,14 +210,14 @@ publikálja.
    KV-erőforrásokat érhesse el; Global API Keyt ne használj.
 5. A Workerhez add hozzá custom domainként:
 
-   `api.xn--gyfelszolgalat-fsb.hu`
+   `api.levelseged.hu`
 
 6. Ellenőrizd, hogy nincs ütköző CNAME, a tanúsítvány aktív, és a Worker kapja
    az összes `/api/*` kérést.
 7. Production deploy után a workflow `workers_dev=false` beállítással publikál.
 8. Hozz létre külön production Turnstile widgetet. Engedélyezett hostname csak:
 
-   `xn--gyfelszolgalat-fsb.hu`
+   `levelseged.hu`
 
 9. A site key a `VITE_TURNSTILE_SITE_KEY` public variable, a secret key a
    `TURNSTILE_SECRET_KEY` Environment secret.
@@ -238,7 +238,7 @@ publikálja.
 1. Workbench → Webhooks → Create event destination.
 2. Endpoint:
 
-   `https://api.xn--gyfelszolgalat-fsb.hu/api/stripe/webhook`
+   `https://api.levelseged.hu/api/stripe/webhook`
 
 3. Csak ezeket az eseményeket add hozzá:
 
