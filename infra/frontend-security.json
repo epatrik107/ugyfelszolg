@@ -1,0 +1,25 @@
+{
+  "hostname": "levelseged.hu",
+  "zoneId": "98cbeb6d58788a32a5d399efa9b83768",
+  "ruleName": "Levélsegéd frontend security headers",
+  "expression": "(http.host eq \"levelseged.hu\")",
+  "headers": {
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(self)",
+    "content-security-policy": "default-src 'self'; script-src 'self' 'sha256-QTawT2mLPjDCR4Y0PRorY1FoRmrLn7JaX/F7YglX0jo=' https://challenges.cloudflare.com; style-src 'self'; frame-src https://challenges.cloudflare.com; connect-src 'self' https://api.levelseged.hu https://challenges.cloudflare.com; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  },
+  "legacyCspHashReason": "Allows only the previous release’s exact inline SPA redirect while edge/browser caches expire. New releases use an external script.",
+  "canonicalRedirect": {
+    "expression": "(http.host eq \"www.levelseged.hu\")",
+    "target": "concat(\"https://levelseged.hu\", http.request.uri.path)",
+    "status": 301,
+    "preserveQueryString": true,
+    "ruleId": "06a72a4e5111456bafe59670f8f9296f"
+  },
+  "sslMode": "strict",
+  "apexProxy": true,
+  "ruleId": "3e7f66449c764acf9781774ef23665be"
+}

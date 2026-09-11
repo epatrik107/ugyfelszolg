@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const policy = JSON.parse(readFileSync(new URL("../infra/frontend-security.json", import.meta.url), "utf8"));
 const site = new URL(process.env.SITE_URL || "https://levelseged.hu");
 assert.equal(site.protocol, "https:");
 const required = ["content-security-policy", "strict-transport-security", "x-frame-options", "x-content-type-options", "referrer-policy"];
@@ -10,7 +12,7 @@ async function verify() {
   const response = await fetch(new URL(`?verify=${process.env.EXPECTED_REVISION || Date.now()}`, site), { signal: AbortSignal.timeout(10000) });
   assert.equal(response.status, 200);
   for (const header of required) assert.ok(response.headers.get(header), `Missing ${header}`);
-  assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  for (const [header, value] of Object.entries(policy.headers)) assert.equal(response.headers.get(header), value, `Incorrect ${header}`);
   const html = await response.text();
   const asset = html.match(/<script[^>]+src="([^"]+)"/);
   assert.ok(asset, "Missing application script");

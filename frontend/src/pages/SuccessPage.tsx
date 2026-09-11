@@ -411,7 +411,7 @@ export function SuccessPage() {
                 </span>
                 <button
                   className="button-primary text-sm py-1.5 px-3"
-                  disabled={sendingVersion === "current"}
+                  disabled={sendingVersion === "current" || result.aiStatus !== "completed"}
                   onClick={() => void handleSendEmail("current")}
                 >
                   {sendingVersion === "current" ? (
@@ -432,7 +432,7 @@ export function SuccessPage() {
                   <span className="text-sm text-slate-600">{idx + 1}. változat (korábbi)</span>
                   <button
                     className="button-secondary text-sm py-1.5 px-3"
-                    disabled={sendingVersion === idx}
+                    disabled={sendingVersion === idx || result.aiStatus !== "completed"}
                     onClick={() => void handleSendEmail(idx)}
                   >
                     {sendingVersion === idx ? (
