@@ -1178,13 +1178,21 @@ export async function getLetterEmailVersionKey(letter: string) {
 export function hasLetterEmailVersionSent(
   order: Pick<OrderRow, "letter_email_sent" | "letter_email_sent_versions">,
   versionKey: string,
+  // Orders created before per-version tracking have a NULL version list even
+  // though an email went out, so the boolean flag is the only evidence we have.
+  // That fallback is right for "send the current letter", but for an explicit
+  // request to send a *named* version it would return a silent "already sent"
+  // and no email would ever be delivered. Those callers opt out.
+  allowLegacyFallback = true,
 ) {
-  if (!order.letter_email_sent_versions) return order.letter_email_sent === 1;
+  if (!order.letter_email_sent_versions) {
+    return allowLegacyFallback && order.letter_email_sent === 1;
+  }
   try {
     const versions = JSON.parse(order.letter_email_sent_versions) as unknown;
     return Array.isArray(versions) && versions.includes(versionKey);
   } catch {
-    return order.letter_email_sent === 1;
+    return allowLegacyFallback && order.letter_email_sent === 1;
   }
 }
 
