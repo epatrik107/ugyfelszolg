@@ -123,7 +123,7 @@ export function SuccessPage() {
     }
   }, [incomingToken, storageKey]);
 
-  const MAX_POLL_ATTEMPTS = 75; // ~5 minutes at 4s interval
+  const MAX_POLL_ATTEMPTS = 60; // Under 120 requests/10 min, with backoff and no overlapping fetches
   const pollCountRef = useRef(0);
 
   useEffect(() => {
@@ -141,6 +141,7 @@ export function SuccessPage() {
         const payload = await getOrderResult(activePublicId, activeToken);
         if (!active) return;
         setResult(payload);
+        setRegenError(payload.regenerationError ?? null);
         setError(null);
         const isTerminal =
           payload.aiStatus === "completed" ||
@@ -155,35 +156,40 @@ export function SuccessPage() {
           payload.paymentStatus === "chargeback_lost" ||
           payload.paymentStatus === "chargeback_won";
         if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
-          window.clearInterval(intervalRef.current);
+          window.clearTimeout(intervalRef.current);
           if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
             setError(
               "A generálás a vártnál hosszabb ideig tart. Töltse újra az oldalt néhány perc múlva, vagy vegye fel velünk a kapcsolatot.",
             );
           }
+        } else {
+          intervalRef.current = window.setTimeout(poll, Math.min(4000 + pollCountRef.current * 1000, 15000));
         }
       } catch (pollError) {
         if (active) {
-          window.clearInterval(intervalRef.current);
+          window.clearTimeout(intervalRef.current);
           setError(pollError instanceof Error ? pollError.message : "Ismeretlen hiba.");
         }
       }
     }
 
     void poll();
-    intervalRef.current = window.setInterval(poll, 4000);
+
     return () => {
       active = false;
-      window.clearInterval(intervalRef.current);
+      window.clearTimeout(intervalRef.current);
     };
     // pollKey causes this effect to restart polling after regeneration
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicId, token, pollKey])
 
   useEffect(() => {
-    if (result?.letterEmailSent) {
-      setSentVersions((prev) => new Set([...prev, "current"]));
-    }
+    setSentVersions((prev) => {
+      const next = new Set(prev);
+      if (result?.letterEmailSent) next.add("current");
+      else next.delete("current");
+      return next;
+    });
   }, [result?.letterEmailSent]);
 
   // Auto-expand history when previous versions exist
@@ -246,7 +252,8 @@ export function SuccessPage() {
     setRegenError(null);
     try {
       await requestRegeneration(publicId, token, feedback);
-      setResult((prev) => prev ? { ...prev, aiStatus: "generating" } : prev);
+      setResult((prev) => prev ? { ...prev, aiStatus: "generating", regenerationError: undefined } : prev);
+      setSentVersions(new Set());
       setRegenFeedback("");
       // Restart polling via pollKey — this cleans up the old interval and starts fresh
       setPollKey((k) => k + 1);
@@ -353,8 +360,13 @@ export function SuccessPage() {
             </Link>
           </div>
         </div>
-      ) : result?.aiStatus === "completed" && result.generatedLetter ? (
+      ) : result?.generatedLetter ? (
         <div className="space-y-5">
+          {result.aiStatus === "generating" && (
+            <p role="status" className="rounded-lg bg-azure-50 p-4 text-sm text-azure-700">
+              A módosítás folyamatban van. Addig a korábbi levél továbbra is elérhető.
+            </p>
+          )}
           <div>
             <h2 className="text-2xl font-semibold">Elkészült a levele</h2>
             <p className="mt-2 text-slate-600">
@@ -399,7 +411,7 @@ export function SuccessPage() {
                 </span>
                 <button
                   className="button-primary text-sm py-1.5 px-3"
-                  disabled={sendingVersion === "current"}
+                  disabled={sendingVersion === "current" || result.aiStatus !== "completed"}
                   onClick={() => void handleSendEmail("current")}
                 >
                   {sendingVersion === "current" ? (
@@ -420,7 +432,7 @@ export function SuccessPage() {
                   <span className="text-sm text-slate-600">{idx + 1}. változat (korábbi)</span>
                   <button
                     className="button-secondary text-sm py-1.5 px-3"
-                    disabled={sendingVersion === idx}
+                    disabled={sendingVersion === idx || result.aiStatus !== "completed"}
                     onClick={() => void handleSendEmail(idx)}
                   >
                     {sendingVersion === idx ? (
@@ -486,7 +498,7 @@ export function SuccessPage() {
                 />
                 <button
                   className="button-secondary"
-                  disabled={regenBusy}
+                  disabled={regenBusy || result.aiStatus === "generating"}
                   onClick={() => void handleRegenerate()}
                 >
                   {regenBusy ? (

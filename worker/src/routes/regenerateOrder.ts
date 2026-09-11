@@ -2,7 +2,6 @@ import type { Context } from "hono";
 import { beginRegeneration, getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
-import { generateLetterForPaidOrder } from "../lib/ai";
 import { canRequestRegeneration } from "../lib/orderState";
 import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
@@ -55,7 +54,7 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
     );
   }
 
-  const started = await beginRegeneration(c.env, order.id, getPackage(order.selected_package).capabilities.maxRegenerations);
+  const started = await beginRegeneration(c.env, order.id, getPackage(order.selected_package).capabilities.maxRegenerations, feedback);
   if (!started) {
     return errorJson(c, "CONFLICT", "A módosítás elindítása nem sikerült. Kérjük, próbálja újra.", 409);
   }
@@ -67,7 +66,6 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
   }
 
   logEvent("regeneration_started", { orderId: order.id, generationCount: freshOrder.generation_count });
-  c.executionCtx.waitUntil(generateLetterForPaidOrder(c.env, freshOrder, feedback));
 
   return okJson(c, {});
 }

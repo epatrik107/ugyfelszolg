@@ -184,7 +184,7 @@ describe("secondary AI review gate", () => {
     await generateLetterForPaidOrder(env, order);
 
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null);
+    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null, null);
     expect(failGeneration).not.toHaveBeenCalled();
   });
 
@@ -203,8 +203,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
   });
 
   it("blocks generation after retryable review HTTP errors exceed the retry limit", async () => {
@@ -222,8 +221,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
   });
 
   it("blocks malformed review JSON without retrying", async () => {
@@ -238,8 +236,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
   });
 
   it("blocks incomplete or schema-invalid review JSON", async () => {
@@ -253,8 +250,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
   });
 
   it("allows generation when review output is valid and approving", async () => {
@@ -262,11 +258,11 @@ describe("secondary AI review gate", () => {
 
     await generateLetterForPaidOrder(env, order);
 
-    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null);
+    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null, null);
     expect(failGeneration).not.toHaveBeenCalled();
   });
 
-  it("emails the generated letter after successful generation when email is configured", async () => {
+  it("does not automatically email packages that promise user-initiated delivery", async () => {
     const { sendGeneratedLetterEmail } = await import("../src/lib/email");
     fetchMock(geminiResponse(safeLetter), reviewResponse({ ok: true, issues: [] }));
 
@@ -287,18 +283,9 @@ describe("secondary AI review gate", () => {
       }),
       order.id,
       safeLetter,
-      null,
-    );
-    expect(sendGeneratedLetterEmail).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ id: order.id, email: order.email }),
-      safeLetter,
-    );
-    expect(markLetterEmailSent).toHaveBeenCalledWith(
-      expect.anything(),
-      order.id,
-      "sha256:test-letter",
-    );
+      null, null);
+    expect(sendGeneratedLetterEmail).not.toHaveBeenCalled();
+    expect(markLetterEmailSent).not.toHaveBeenCalled();
   });
 
   it("does not send email or commit quota if completion lost the state race", async () => {
@@ -320,7 +307,7 @@ describe("secondary AI review gate", () => {
       },
     );
 
-    expect(completeGeneration).toHaveBeenCalledWith(expect.anything(), order.id, safeLetter, null);
+    expect(completeGeneration).toHaveBeenCalledWith(expect.anything(), order.id, safeLetter, null, null);
     expect(commitReservedQuota).not.toHaveBeenCalled();
     expect(sendGeneratedLetterEmail).not.toHaveBeenCalled();
     expect(markLetterEmailSent).not.toHaveBeenCalled();
@@ -362,9 +349,8 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       "Automatikus minőségellenőrzés sikertelen.",
-      null,
-    );
-    expect(consoleSpy.mock.calls.map((call) => call.join(" ")).join("\n")).not.toContain(
+      null, null);
+    expect(consoleSpy.mock.calls.map((call: unknown[]) => call.join(" ")).join("\n")).not.toContain(
       "private@example.com",
     );
   });
@@ -384,15 +370,14 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
     const persistedError = vi.mocked(failGeneration).mock.calls[0][3];
     expect(persistedError).not.toContain(providerBody);
     expect(persistedError).not.toContain(env.GEMINI_API_KEY);
-    expect(consoleSpy.mock.calls.map((call) => call.join(" ")).join("\n")).not.toContain(
+    expect(consoleSpy.mock.calls.map((call: unknown[]) => call.join(" ")).join("\n")).not.toContain(
       providerBody,
     );
-    expect(consoleSpy.mock.calls.map((call) => call.join(" ")).join("\n")).not.toContain(
+    expect(consoleSpy.mock.calls.map((call: unknown[]) => call.join(" ")).join("\n")).not.toContain(
       env.GEMINI_API_KEY,
     );
   });
@@ -415,8 +400,7 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      "sub_1",
-    );
+      "sub_1", null);
     expect(commitReservedQuota).not.toHaveBeenCalled();
   });
 
@@ -439,43 +423,14 @@ describe("secondary AI review gate", () => {
       order.id,
       "failed_review",
       AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null,
-    );
+      null, null);
     expect(createRefund).not.toHaveBeenCalled();
   });
 
-  it("records a pending automatic refund without claiming success or emailing it", async () => {
-    const { markOrderPaymentStatus, upsertPaymentRefund } = await import("../src/lib/db");
-    const { sendRefundEmail } = await import("../src/lib/email");
-    vi.mocked(createRefund).mockResolvedValueOnce({
-      id: "re_pending",
-      payment_intent: "pi_test_1",
-      amount: 89000,
-      currency: "huf",
-      status: "pending",
-    });
-    fetchMock(
-      geminiResponse(safeLetter),
-      new DOMException("timed out", "TimeoutError"),
-      new DOMException("timed out again", "TimeoutError"),
-    );
-
-    await generateLetterForPaidOrder(env, {
-      ...order,
-      stripe_payment_intent_id: "pi_test_1",
-      billing_source: "checkout",
-    });
-
-    expect(upsertPaymentRefund).toHaveBeenCalledWith(
-      env,
-      expect.objectContaining({ stripeRefundId: "re_pending", status: "pending" }),
-    );
-    expect(markOrderPaymentStatus).not.toHaveBeenCalledWith(
-      env,
-      order.id,
-      "refunded",
-      expect.anything(),
-    );
-    expect(sendRefundEmail).not.toHaveBeenCalled();
+  it("defers automatic refund I/O to the durable scheduler", async () => {
+    fetchMock(geminiResponse(safeLetter), new DOMException("timed out", "TimeoutError"), new DOMException("timed out", "TimeoutError"));
+    await generateLetterForPaidOrder(env, { ...order, stripe_payment_intent_id: "pi_test_1", billing_source: "checkout" });
+    expect(failGeneration).toHaveBeenCalledOnce();
+    expect(createRefund).not.toHaveBeenCalled();
   });
 });

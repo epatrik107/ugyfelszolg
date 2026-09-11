@@ -6,14 +6,11 @@ import {
   hasLetterEmailVersionSent,
   markLetterEmailSent,
 } from "./db";
-import { sendGeneratedLetterEmail, sendRefundEmail } from "./email";
-import { getInvoiceByOrderId } from "./invoice";
+import { sendGeneratedLetterEmail } from "./email";
 import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewLetterWithRules } from "./review";
-import { createRefund } from "./stripe";
-import { reconcileStripeRefund } from "./refund";
 import type { Env, OrderRow } from "./types";
 
 const systemPrompt =
@@ -79,7 +76,7 @@ async function sendGeneratedLetterEmailIfConfigured(
   order: OrderRow,
   letter: string,
 ) {
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+  if (!getPackage(order.selected_package).capabilities.sendsEmailByDefault || !env.RESEND_API_KEY || !env.EMAIL_FROM) {
     return;
   }
   const versionKey = await getLetterEmailVersionKey(letter);
@@ -381,43 +378,15 @@ export async function generateLetterForPaidOrder(
   const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
-    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id);
+    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id, order.generation_run_id ?? null);
     if (!failureRecorded) {
       logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason });
       return;
     }
     logEvent("ai_generation_failed", { orderId: order.id, reason });
 
-    // Auto-refund for one-time checkout payments only (skip for user-initiated regenerations
-    // where generation_count > 1 — the user already received at least one successful letter)
-    if (order.generation_count <= 1 && order.stripe_payment_intent_id && order.billing_source === "checkout") {
-      try {
-        const refund = await createRefund(env, order.stripe_payment_intent_id);
-        const refundResult = await reconcileStripeRefund(env, order, refund, "ai");
-        if (refundResult.status !== "succeeded") {
-          logEvent("auto_refund_not_settled", {
-            orderId: order.id,
-            refundStatus: refundResult.status,
-          });
-          return;
-        }
-        logEvent("auto_refund_succeeded", { orderId: order.id });
+    // failGeneration atomically records the refund intent; the scheduler retries it.
 
-        const invoice = await getInvoiceByOrderId(env, order.id);
-        const userReason =
-          status === "failed_review"
-            ? "Az elkészült levél nem ment át az automatikus minőségellenőrzésen, ezért a rendelést visszatérítettük."
-            : "A levélgeneráló szolgáltatás átmeneti hibája miatt a rendelést nem tudtuk teljesíteni.";
-        if (refundResult.paymentStatusChanged && refundResult.paymentStatus === "refunded") {
-          await sendRefundEmail(env, order, invoice?.invoice_number ?? null, userReason);
-        }
-      } catch (refundError) {
-        logEvent("auto_refund_failed", {
-          orderId: order.id,
-          errorType: refundError instanceof Error ? refundError.name : "unknown",
-        });
-      }
-    }
   }
 
   try {
@@ -461,7 +430,7 @@ export async function generateLetterForPaidOrder(
 
       if (ruleReview.ok && aiBlockers.length === 0) {
         const safeLetter = validateAiOutput(letter);
-        const completed = await completeGeneration(env, order.id, safeLetter, order.generated_letter);
+        const completed = await completeGeneration(env, order.id, safeLetter, order.generated_letter, order.generation_run_id ?? null);
         if (!completed) {
           logEvent("ai_generation_completion_state_unchanged", { orderId: order.id });
           return;

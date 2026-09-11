@@ -62,20 +62,21 @@ describe("getOrderResult route", () => {
     expect((await request("wrong-token")).status).toBe(401);
   });
 
-  it("does not expose the letter while generation is not completed", async () => {
+  it("preserves the previous letter while regenerating", async () => {
     mocks.getOrderByPublicId.mockResolvedValue(
       orderFixture({
         result_token_hash: await hashToken("owner-token", "token-secret"),
         payment_status: "paid",
         ai_status: "generating",
-        generated_letter: "Nem küldhető még.",
+        generated_letter: "Korábbi elkészült levél.",
+        generation_count: 2,
       }),
     );
 
     const response = await request("owner-token");
     const payload = await response.json() as { data: { generatedLetter?: string } };
     expect(response.status).toBe(200);
-    expect(payload.data.generatedLetter).toBeUndefined();
+    expect(payload.data.generatedLetter).toBe("Korábbi elkészült levél.");
   });
 
   it("does not expose completed letters or history after full refund", async () => {

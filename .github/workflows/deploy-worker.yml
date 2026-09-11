@@ -20,6 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   validate-source:
     runs-on: ubuntu-latest
     steps:
@@ -33,7 +36,7 @@ jobs:
           fi
 
   deploy:
-    needs: validate-source
+    needs: [validate-source, quality]
     environment:
       name: ${{ inputs.target_environment }}
     env:
@@ -50,10 +53,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      - run: npm ci --ignore-scripts
       - name: Validate isolated deploy config
         run: |
           node <<'NODE'
@@ -310,6 +310,7 @@ jobs:
           id = ${tomlString(value("KV_NAMESPACE_ID", ""))}
 
           [vars]
+          BUILD_SHA = ${tomlString(process.env.GITHUB_SHA)}
           GEMINI_MODEL = ${tomlString(value("GEMINI_MODEL", "gemini-3.1-flash-lite"))}
           GEMINI_MODEL_PREMIUM = ${tomlString(value("GEMINI_MODEL_PREMIUM", "gemini-3.5-flash"))}
           GEMINI_REVIEW_MODEL = ${tomlString(value("GEMINI_REVIEW_MODEL", "gemini-3.1-flash-lite"))}
@@ -329,7 +330,7 @@ jobs:
           SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", defaultSellerTaxNumber))}
 
           [triggers]
-          crons = [ "17 2 * * *" ]
+          crons = [ "* * * * *" ]
           `;
 
           fs.writeFileSync("worker/wrangler.toml", config.replace(/^          /gm, ""));
@@ -469,11 +470,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'ugyfelkozpont' }}
       - name: Deploy Cloudflare Worker
+        id: deploy-worker
         run: npx wrangler deploy --strict --message "${{ inputs.target_environment }} deploy from ${GITHUB_SHA}" --secrets-file /tmp/worker-secrets.json --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Remove obsolete Worker secrets
+        id: stale-secrets
         run: |
           node <<'NODE'
           const fs = require("fs");
@@ -494,16 +497,28 @@ jobs:
         run: rm -f /tmp/worker-secrets.json /tmp/stale-worker-secrets.json
       - name: Verify deployed Worker health
         id: deployment-health
+        if: ${{ !cancelled() && steps.deploy-worker.outcome != 'skipped' && steps.deploy-worker.outcome != '' }}
         continue-on-error: true
         run: node scripts/check-deployment-health.mjs
         env:
           API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+          EXPECTED_REVISION: ${{ github.sha }}
       - name: Roll back unhealthy Worker
-        if: steps.deployment-health.outcome == 'failure' && steps.previous-deployment.outputs.version_id != ''
+        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure') && steps.previous-deployment.outputs.version_id != '' }}
         run: npx wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}" --yes --message "Automatic rollback after failed health check" --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Fail deployment after rollback
-        if: steps.deployment-health.outcome == 'failure'
+        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure') }}
         run: exit 1
+      - name: Exercise scheduled sandbox generation and regeneration
+        if: ${{ inputs.target_environment == 'sandbox' && success() }}
+        timeout-minutes: 35
+        run: node scripts/smoke-sandbox-worker.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}

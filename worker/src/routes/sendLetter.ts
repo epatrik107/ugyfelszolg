@@ -8,7 +8,7 @@ import {
 import { sendLetterReadyEmail } from "../lib/email";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
-import { hasActiveOrderAccess } from "../lib/orderState";
+import { hasActiveOrderAccess, isOrderContentExpired } from "../lib/orderState";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
@@ -42,7 +42,7 @@ export async function sendLetterRoute(c: Context<{ Bindings: Env }>) {
     return errorJson(c, "ACCESS_REVOKED", "A rendeléshez tartozó hozzáférés nem aktív.", 409);
   }
 
-  if (order.ai_status !== "completed" || !order.generated_letter) {
+  if (order.ai_status !== "completed" || !order.generated_letter || isOrderContentExpired(order)) {
     return errorJson(c, "GENERATION_PENDING", "A levél még nem áll rendelkezésre.", 409);
   }
 

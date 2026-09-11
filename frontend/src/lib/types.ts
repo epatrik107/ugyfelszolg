@@ -81,6 +81,7 @@ export interface OrderResult {
   generatedLetter?: string;
   letterHistory?: string[];
   letterEmailSent?: boolean;
+  regenerationError?: string;
   selectedPackage: PackageId;
   createdAt: string;
 }

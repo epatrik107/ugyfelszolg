@@ -1,7 +1,7 @@
 import type { OrderRow } from "../src/lib/types";
 
 export function orderFixture(overrides: Partial<OrderRow> = {}): OrderRow {
-  const now = "2026-06-22T10:00:00.000Z";
+  const now = new Date().toISOString();
   return {
     id: "order_1",
     public_id: "public_1",

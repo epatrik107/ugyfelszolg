@@ -29,6 +29,7 @@ function validateHealthUrl(rawUrl) {
 
 export async function checkDeploymentHealth({
   healthUrl,
+  expectedRevision,
   fetchImpl = fetch,
   attempts = 6,
   delayMs = 3_000,
@@ -47,10 +48,11 @@ export async function checkDeploymentHealth({
         (header) => !response.headers.get(header),
       );
 
-      if (response.status === 200 && payload?.status === "ok" && missingHeaders.length === 0) {
+      if (response.status === 200 && payload?.status === "ok" && missingHeaders.length === 0 &&
+          (!expectedRevision || (payload?.revision === expectedRevision && payload?.schemaVersion === 13))) {
         return { ok: true, attempt };
       }
-      lastFailure = `status=${response.status}, health=${payload?.status ?? "invalid"}, missingHeaders=${missingHeaders.join(",") || "none"}`;
+      lastFailure = `status=${response.status}, health=${payload?.status ?? "invalid"}, revision=${payload?.revision ?? "missing"}, schema=${payload?.schemaVersion ?? "missing"}, missingHeaders=${missingHeaders.join(",") || "none"}`;
     } catch (error) {
       lastFailure = error instanceof Error ? error.message : "network error";
     }
@@ -69,7 +71,7 @@ export async function run(env = process.env) {
   }
 
   try {
-    const result = await checkDeploymentHealth({ healthUrl });
+    const result = await checkDeploymentHealth({ healthUrl, expectedRevision: env.EXPECTED_REVISION });
     console.log(`Deployment health check passed on attempt ${result.attempt}.`);
     return 0;
   } catch (error) {

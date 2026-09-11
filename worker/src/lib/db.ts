@@ -283,21 +283,28 @@ export async function beginRegeneration(
   env: Env,
   orderId: string,
   maxRegenerations: number,
+  feedback = "",
 ) {
   const now = new Date().toISOString();
   const result = await env.DB.prepare(
     `UPDATE orders
      SET ai_status = 'generating',
          generation_count = generation_count + 1,
-         letter_email_sent = 0,
+         generation_feedback = ?,
+         generation_claimed_at = NULL,
+         generation_run_id = NULL,
+         generation_attempts = 0,
+         error_message = NULL,
          updated_at = ?
      WHERE id = ?
        AND payment_status = 'paid'
        AND ai_status = 'completed'
        AND generation_count > 0
-       AND generation_count <= ?`,
+       AND generation_count <= ?
+       AND personal_data_redacted_at IS NULL
+       AND created_at >= ?`,
   )
-    .bind(now, orderId, maxRegenerations)
+    .bind(feedback, now, orderId, maxRegenerations, new Date(Date.now() - 90 * 86400000).toISOString())
     .run();
   return result.meta.changes === 1;
 }
@@ -324,6 +331,7 @@ export async function completeGeneration(
   orderId: string,
   generatedLetter: string,
   previousLetter?: string | null,
+  runId: string | null = null,
 ) {
   const now = new Date().toISOString();
   let result: D1Result;
@@ -343,11 +351,18 @@ export async function completeGeneration(
            ),
            generated_at = ?,
            updated_at = ?,
+           generation_feedback = NULL,
+           generation_claimed_at = NULL,
+           generation_run_id = NULL,
+           letter_email_sent = 0,
            error_message = NULL
        WHERE id = ?
          AND ai_status = 'generating'
-         AND payment_status IN ('paid', 'partially_refunded')`,
-    ).bind(generatedLetter, previousLetter, now, now, orderId).run();
+         AND payment_status IN ('paid', 'partially_refunded')
+         AND generation_run_id IS ?
+         AND personal_data_redacted_at IS NULL
+         AND created_at >= ?`,
+    ).bind(generatedLetter, previousLetter, now, now, orderId, runId, new Date(Date.now() - 90 * 86400000).toISOString()).run();
   } else {
     result = await env.DB.prepare(
       `UPDATE orders
@@ -355,11 +370,18 @@ export async function completeGeneration(
            generated_letter = ?,
            generated_at = ?,
            updated_at = ?,
+           generation_feedback = NULL,
+           generation_claimed_at = NULL,
+           generation_run_id = NULL,
+           letter_email_sent = 0,
            error_message = NULL
        WHERE id = ?
          AND ai_status = 'generating'
-         AND payment_status IN ('paid', 'partially_refunded')`,
-    ).bind(generatedLetter, now, now, orderId).run();
+         AND payment_status IN ('paid', 'partially_refunded')
+         AND generation_run_id IS ?
+         AND personal_data_redacted_at IS NULL
+         AND created_at >= ?`,
+    ).bind(generatedLetter, now, now, orderId, runId, new Date(Date.now() - 90 * 86400000).toISOString()).run();
   }
   return result.meta.changes === 1;
 }
@@ -370,18 +392,28 @@ export async function failGeneration(
   status: "failed" | "failed_review",
   errorMessage: string,
   subscriptionId?: string | null,
+  runId: string | null = null,
 ) {
   const now = new Date().toISOString();
   const failStatement = env.DB.prepare(
     `UPDATE orders
-     SET ai_status = ?,
+     SET ai_status = CASE WHEN generated_letter IS NOT NULL THEN 'completed' ELSE ? END,
+         generation_count = CASE WHEN generated_letter IS NOT NULL AND generation_count > 1
+           THEN generation_count - 1 ELSE generation_count END,
+         generation_feedback = NULL,
+         generation_claimed_at = NULL,
+         generation_run_id = NULL,
+         refund_requested_at = CASE WHEN generated_letter IS NULL AND generation_count <= 1
+           AND billing_source = 'checkout' AND stripe_payment_intent_id IS NOT NULL
+           THEN COALESCE(refund_requested_at, ?) ELSE refund_requested_at END,
          error_message = ?,
          updated_at = ?
      WHERE id = ?
        AND ai_status IN ('generating', 'not_started')
+       AND generation_run_id IS ?
        AND payment_status IN ('paid', 'partially_refunded')`,
   )
-    .bind(status, errorMessage, now, orderId);
+    .bind(status, now, errorMessage, now, orderId, runId);
 
   const result = await failStatement.run();
   if (result.meta.changes !== 1) return false;
@@ -817,7 +849,8 @@ export async function getInvoiceRetryCandidates(env: Env, limit = 20) {
        AND billing_source = 'checkout'
        AND invoice_retry_count < 5
        AND (
-         (invoice_status = 'retry_required' AND (invoice_next_retry_at IS NULL OR invoice_next_retry_at <= ?))
+         invoice_status = 'pending'
+         OR (invoice_status = 'retry_required' AND (invoice_next_retry_at IS NULL OR invoice_next_retry_at <= ?))
          OR (invoice_status = 'processing' AND invoice_last_attempted_at < ?)
        )
      ORDER BY COALESCE(invoice_next_retry_at, invoice_last_attempted_at) ASC
@@ -1211,10 +1244,11 @@ export async function cleanupExpiredData(env: Env) {
            generated_letter = NULL,
            letter_history = NULL,
            error_message = NULL,
-           personal_data_redacted_at = ?,
+           generation_feedback = NULL,
+           generation_run_id = NULL,
+           personal_data_redacted_at = COALESCE(personal_data_redacted_at, ?),
            updated_at = ?
        WHERE created_at < ?
-         AND personal_data_redacted_at IS NULL
          AND (
            recipient <> ?
            OR problem_description <> ?
@@ -1224,6 +1258,7 @@ export async function cleanupExpiredData(env: Env) {
            OR generated_letter IS NOT NULL
            OR letter_history IS NOT NULL
            OR error_message IS NOT NULL
+           OR generation_feedback IS NOT NULL
          )`,
     ).bind(
       redacted,
