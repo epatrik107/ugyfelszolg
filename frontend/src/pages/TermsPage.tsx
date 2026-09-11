@@ -17,11 +17,11 @@ export function TermsPage() {
       <LegalNotice />
       <ContentBlock
         title="1. Szolgáltató adatai"
-        text="Szolgáltató neve: Engelbrecht Zoltán egyéni vállalkozó. Vállalkozás formája: egyéni vállalkozó. Székhelye: 2500 Esztergom, Bánomi út 4. Adószáma: 91250960-1-31. Közösségi adószáma: HU91250960. EV nyilvántartási száma: 60722263. E-mail: Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>. Weboldal: ügyfelszolgalat.hu."
+        text="Szolgáltató neve: Engelbrecht Zoltán egyéni vállalkozó. Vállalkozás formája: egyéni vállalkozó. Székhelye: 2500 Esztergom, Bánomi út 4. Adószáma: 91250960-1-31. Közösségi adószáma: HU91250960. EV nyilvántartási száma: 60722263. E-mail: Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>. Weboldal: levelseged.hu."
       />
       <ContentBlock
         title="2. A szolgáltatás leírása"
-        text="Az ügyfelszolgalat.hu online, automatizált digitális levélkészítő szolgáltatás. A felhasználó által megadott adatok (panasz leírása, kívánt eredmény, hangnem) alapján mesterséges intelligencia segítségével hivatalos hangvételű szöveg (panaszlevél, reklamáció, egyéb hivatalos levél) kerül előállításra. A szolgáltatás kommunikációs segítséget nyújt – nem helyettesít jogi, pénzügyi vagy egészségügyi szakmai tanácsadást."
+        text="A Levélsegéd (levelseged.hu) online, automatizált digitális levélkészítő szolgáltatás. A felhasználó által megadott adatok (panasz leírása, kívánt eredmény, hangnem) alapján mesterséges intelligencia segítségével hivatalos hangvételű szöveg (panaszlevél, reklamáció, egyéb hivatalos levél) kerül előállításra. A szolgáltatás kommunikációs segítséget nyújt – nem helyettesít jogi, pénzügyi vagy egészségügyi szakmai tanácsadást."
       />
       <ContentBlock
         title="3. Nem jogi tanácsadás"

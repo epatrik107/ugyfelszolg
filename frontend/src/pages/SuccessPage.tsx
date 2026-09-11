@@ -229,7 +229,7 @@ export function SuccessPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "ugyfelszolgalat-level.txt";
+    anchor.download = "levelseged-level.txt";
     anchor.click();
     URL.revokeObjectURL(url);
   }

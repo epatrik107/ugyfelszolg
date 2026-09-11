@@ -91,11 +91,11 @@ describe("token comparison", () => {
 
 describe("cors origin matching", () => {
   const env = {
-    ALLOWED_ORIGINS: "https://ügyfelszolgalat.hu,https://epatrik107.github.io",
+    ALLOWED_ORIGINS: "https://levelseged.hu,https://epatrik107.github.io",
   } as unknown as Env;
 
   it("matches IDN domains in browser origin format", () => {
-    expect(isAllowedOrigin("https://xn--gyfelszolgalat-fsb.hu", env)).toBe(true);
+    expect(isAllowedOrigin("https://levelseged.hu", env)).toBe(true);
   });
 
   it("rejects origins outside the allowlist", () => {

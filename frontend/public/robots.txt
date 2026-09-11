@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://xn--gyfelszolgalat-fsb.hu/sitemap.xml
+Sitemap: https://levelseged.hu/sitemap.xml

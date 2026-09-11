@@ -11,7 +11,7 @@ import type { Env, InvoiceRow, OrderRow } from "./types";
 
 function getSellerInfo(env: Env) {
   return {
-    sellerName: env.SELLER_NAME ?? "Ügyfélszolgálat",
+    sellerName: env.SELLER_NAME ?? "Levélsegéd",
     sellerAddress: env.SELLER_ADDRESS ?? "",
     sellerTaxNumber: env.SELLER_TAX_NUMBER ?? "",
   };
@@ -156,7 +156,7 @@ export async function sendPaymentFailedEmail(
   return sendEmail(
     env,
     order.email,
-    "A fizetés nem sikerült – Ügyfélszolgálat",
+    "A fizetés nem sikerült – Levélsegéd",
     html,
     `payment-failed-${order.id}`,
   );
@@ -177,7 +177,7 @@ export async function sendCheckoutExpiredEmail(
   return sendEmail(
     env,
     order.email,
-    "A fizetési munkamenet lejárt – Ügyfélszolgálat",
+    "A fizetési munkamenet lejárt – Levélsegéd",
     html,
     `expired-${order.id}`,
   );
@@ -213,7 +213,7 @@ export async function sendLetterReadyEmail(
   return sendEmail(
     env,
     order.email,
-    "Elkészült a levele – Ügyfélszolgálat",
+    "Elkészült a levele – Levélsegéd",
     html,
     idempotencyKey,
   );
@@ -237,7 +237,7 @@ export async function sendGeneratedLetterEmail(
   return sendEmail(
     env,
     order.email,
-    "Elkészült a levele – Ügyfélszolgálat",
+    "Elkészült a levele – Levélsegéd",
     html,
     `generated-letter-${order.id}-g${generationCount}`,
   );
