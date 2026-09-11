@@ -12,7 +12,6 @@ import {
   upsertPaymentDispute,
 } from "../lib/db";
 import { sendCheckoutExpiredEmail, sendPaymentFailedEmail, sendRefundEmail } from "../lib/email";
-import { generateLetterForPaidOrder } from "../lib/ai";
 import { getInvoiceByOrderId, processInvoiceForOrder } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
 import { reconcileStripeRefund } from "../lib/refund";
@@ -82,16 +81,7 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
 
   if (order.payment_status === "paid") {
     schedulePaidOrderSideEffects(c, order);
-    const recoveredActivation = await beginGeneration(c.env, order.id);
-    if (recoveredActivation) {
-      const generatingOrder = (await getOrderById(c.env, order.id)) ?? order;
-      runLater(
-        c,
-        generateLetterForPaidOrder(c.env, generatingOrder),
-        "paid_order_activation_error",
-        order.id,
-      );
-    }
+    await beginGeneration(c.env, order.id);
     return;
   }
   if (["cancelled", "expired", "refunded", "partially_refunded"].includes(order.payment_status)) {
@@ -148,16 +138,7 @@ export async function handleCheckoutCompleted(c: WorkerContext, sessionId: strin
   if (order.payment_status !== "paid") return;
   schedulePaidOrderSideEffects(c, order);
 
-  const started = await beginGeneration(c.env, order.id);
-  if (started) {
-    const generatingOrder = (await getOrderById(c.env, order.id)) ?? order;
-    runLater(
-      c,
-      generateLetterForPaidOrder(c.env, generatingOrder),
-      "paid_order_activation_error",
-      order.id,
-    );
-  }
+  await beginGeneration(c.env, order.id);
 }
 
 async function resolveOrderIdForPaymentIntent(

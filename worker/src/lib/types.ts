@@ -56,6 +56,7 @@ export type OrderStatusChangeSource =
 
 export interface Env {
   DB: D1Database;
+  BUILD_SHA?: string;
   RATE_LIMIT_KV?: KVNamespace;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
@@ -110,6 +111,15 @@ export interface OrderRow {
   stripe_payment_intent_id: string | null;
   generated_letter: string | null;
   generation_count: number;
+  generation_feedback?: string | null;
+  generation_claimed_at?: string | null;
+  generation_run_id?: string | null;
+  generation_attempts?: number;
+  refund_requested_at?: string | null;
+  refund_next_attempt_at?: string | null;
+  refund_claimed_at?: string | null;
+  refund_attempt_count?: number;
+  refund_manual_required?: number;
   created_at: string;
   updated_at: string;
   paid_at: string | null;

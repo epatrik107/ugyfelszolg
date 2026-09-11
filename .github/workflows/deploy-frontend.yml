@@ -10,9 +10,12 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   validate-source:
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +27,7 @@ jobs:
           fi
 
   build:
-    needs: validate-source
+    needs: [validate-source, quality]
     environment:
       name: production
     runs-on: ubuntu-latest
@@ -34,7 +37,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Validate frontend production config
         run: |
           node <<'NODE'
@@ -111,6 +114,9 @@ jobs:
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
+      - name: Stamp deployment revision
+        run: |
+          node -e 'require("fs").writeFileSync("frontend/dist/build.json", JSON.stringify({revision: process.env.GITHUB_SHA}))'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -124,3 +130,12 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify published frontend
+        run: node scripts/check-frontend-health.mjs
+        env:
+          SITE_URL: https://levelseged.hu
+          EXPECTED_REVISION: ${{ github.sha }}

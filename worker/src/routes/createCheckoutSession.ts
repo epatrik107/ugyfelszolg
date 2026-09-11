@@ -15,7 +15,6 @@ import {
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { checkAiServiceAvailable } from "../lib/health";
 import { logEvent } from "../lib/logger";
-import { generateLetterForPaidOrder } from "../lib/ai";
 import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { buildResultCapabilityUrl } from "../lib/resultUrl";
@@ -243,13 +242,7 @@ export async function createCheckoutSessionRoute(c: Context<{ Bindings: Env }>) 
     }
     logEvent("order_created", { orderId, publicId, packageId: input.selectedPackage });
     logEvent("demo_order_created", { orderId, publicId, packageId: input.selectedPackage });
-    const started = await beginGeneration(c.env, orderId);
-    if (started) {
-      const order = await getOrderById(c.env, orderId);
-      if (order) {
-        c.executionCtx.waitUntil(generateLetterForPaidOrder(c.env, order));
-      }
-    }
+    await beginGeneration(c.env, orderId);
 
     return okJson(c, {
       checkoutUrl: buildResultCapabilityUrl(

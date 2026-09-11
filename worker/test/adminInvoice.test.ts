@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env, InvoiceRow } from "../src/lib/types";
 import { orderFixture } from "./fixtures";
+import { sqliteEnv } from "./helpers/sqlite";
 
 const mocks = vi.hoisted(() => ({
   getOrderByPublicId: vi.fn(),
@@ -64,24 +65,12 @@ function app() {
   return instance;
 }
 
-function kvMock() {
-  const values = new Map<string, string>();
-  return {
-    async get(key: string) {
-      return values.get(key) ?? null;
-    },
-    async put(key: string, value: string) {
-      values.set(key, value);
-    },
-  } as unknown as KVNamespace;
-}
-
 function adminEnv(overrides: Partial<Env> = {}) {
   return {
     ADMIN_API_ENABLED: "true",
     ADMIN_API_TOKEN: ADMIN_TOKEN,
     TOKEN_HASH_SECRET: "admin-rate-limit-test-secret-32-chars",
-    RATE_LIMIT_KV: kvMock(),
+    DB: sqliteEnv().env.DB,
     ...overrides,
   } as Env;
 }
@@ -147,12 +136,7 @@ describe("admin invoice backend", () => {
         headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
       }),
       adminEnv({
-        RATE_LIMIT_KV: {
-          async get() {
-            return "30";
-          },
-          async put() {},
-        } as unknown as KVNamespace,
+        DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as D1Database,
       }),
     );
     expect(response.status).toBe(429);

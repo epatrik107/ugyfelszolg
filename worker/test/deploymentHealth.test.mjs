@@ -65,4 +65,20 @@ describe("deployment health gate", () => {
       ).rejects.toThrow("must not contain");
     }
   });
+  it("rejects a healthy old revision or an incompatible schema after deployment", async () => {
+    for (const payload of [
+      { status: "ok", revision: "old", schemaVersion: 13 },
+      { status: "ok", revision: "new", schemaVersion: 12 },
+    ]) {
+      await expect(checkDeploymentHealth({
+        healthUrl: "https://api.example.com/api/health", expectedRevision: "new", attempts: 1,
+        fetchImpl: async () => Response.json(payload, { headers: secureHeaders }),
+      })).rejects.toThrow("Deployment health check failed");
+    }
+    await expect(checkDeploymentHealth({
+      healthUrl: "https://api.example.com/api/health", expectedRevision: "new", attempts: 1,
+      fetchImpl: async () => Response.json({ status: "ok", revision: "new", schemaVersion: 13 }, { headers: secureHeaders }),
+    })).resolves.toEqual({ ok: true, attempt: 1 });
+  });
+
 });

@@ -169,7 +169,9 @@ describe("Stripe webhook business flow", () => {
     expect(response.status).toBe(200);
     expect(mocks.markOrderPaid).toHaveBeenCalledOnce();
     expect(mocks.beginGeneration).toHaveBeenCalledOnce();
-    expect(mocks.generateLetterForPaidOrder).toHaveBeenCalledOnce();
+    expect(mocks.generateLetterForPaidOrder).not.toHaveBeenCalled();
+    expect(currentOrder.ai_status).toBe("generating");
+    expect(currentOrder.generation_count).toBe(1);
     expect(mocks.processInvoiceForOrder).toHaveBeenCalledWith(expect.anything(), "order_1");
     expect(mocks.completeStripeEvent).toHaveBeenCalledWith(expect.anything(), "evt_1");
   });
@@ -179,7 +181,9 @@ describe("Stripe webhook business flow", () => {
     const response = await deliver([]);
     expect(response.status).toBe(200);
     expect(currentOrder.payment_status).toBe("paid");
-    expect(mocks.generateLetterForPaidOrder).toHaveBeenCalledOnce();
+    expect(mocks.generateLetterForPaidOrder).not.toHaveBeenCalled();
+    expect(currentOrder.ai_status).toBe("generating");
+    expect(currentOrder.generation_count).toBe(1);
   });
 
   it("detects amount mismatch and creates neither access nor invoice", async () => {
@@ -252,7 +256,9 @@ describe("Stripe webhook business flow", () => {
     );
     await deliver([]);
     expect(mocks.markOrderPaid).toHaveBeenCalledOnce();
-    expect(mocks.generateLetterForPaidOrder).toHaveBeenCalledOnce();
+    expect(mocks.generateLetterForPaidOrder).not.toHaveBeenCalled();
+    expect(currentOrder.ai_status).toBe("generating");
+    expect(currentOrder.generation_count).toBe(1);
   });
 
   it.each([

@@ -24,6 +24,8 @@ export function ContactPage() {
       setValues({ name: "", email: "", message: "", turnstileToken: "" });
       setTurnstileKey((current) => current + 1);
     } catch (error) {
+      setValues((current) => ({ ...current, turnstileToken: "" }));
+      setTurnstileKey((key) => key + 1);
       setStatus(error instanceof Error ? error.message : "Ismeretlen hiba.");
     } finally {
       setBusy(false);

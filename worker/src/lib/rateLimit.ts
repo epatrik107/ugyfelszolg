@@ -8,6 +8,7 @@ export type RateLimitScope =
   | "create-checkout-email"
   | "cancel-checkout-ip"
   | "result-ip"
+  | "result-order"
   | "contact-ip"
   | "contact-email"
   | "regenerate-ip"
@@ -21,7 +22,8 @@ export const RATE_LIMITS: Record<
   "create-checkout-ip": { limit: 5, windowSeconds: 600 },
   "create-checkout-email": { limit: 5, windowSeconds: 600 },
   "cancel-checkout-ip": { limit: 10, windowSeconds: 600 },
-  "result-ip": { limit: 60, windowSeconds: 600 },
+  "result-ip": { limit: 600, windowSeconds: 600 },
+  "result-order": { limit: 120, windowSeconds: 600 },
   "contact-ip": { limit: 3, windowSeconds: 600 },
   "contact-email": { limit: 3, windowSeconds: 600 },
   "regenerate-ip": { limit: 10, windowSeconds: 600 },
@@ -45,33 +47,23 @@ export async function isRateLimited(
   identifier: string,
   now = new Date(),
 ) {
-  if (!env.RATE_LIMIT_KV) {
-    // KV binding missing — in demo mode, fail-open so local dev works without KV.
-    // In production (non-demo), fail-closed to prevent unlimited access.
-    if (env.DEMO_MODE === "true") {
-      return false;
-    }
-    // The identifier can be an IP address or email address. It is useful for
-    // enforcing the limit, but it must not be copied into application logs.
-    logEvent("rate_limit_kv_missing", { scope });
+  if (!env.DB || !env.TOKEN_HASH_SECRET) {
+    logEvent("rate_limit_configuration_missing", { scope });
     return true;
   }
-  if (!env.TOKEN_HASH_SECRET) {
-    logEvent("rate_limit_hash_secret_missing", { scope });
+  try {
+    const rule = RATE_LIMITS[scope];
+    const key = await getWindowKey(env, scope, identifier, now);
+    const expiry = (Math.floor(now.getTime() / 1000 / rule.windowSeconds) + 1) * rule.windowSeconds;
+    const accepted = await env.DB.prepare(
+      `INSERT INTO rate_limits (key, count, expires_at) VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET count = count + 1 WHERE count < ?
+       RETURNING count`,
+    ).bind(key, expiry, rule.limit).first<{ count: number }>();
+    if (!accepted) logEvent("rate_limited", { scope });
+    return !accepted;
+  } catch {
+    logEvent("rate_limit_storage_unavailable", { scope });
     return true;
   }
-
-  const rule = RATE_LIMITS[scope];
-  const key = await getWindowKey(env, scope, identifier, now);
-  const current = Number(await env.RATE_LIMIT_KV.get(key)) || 0;
-
-  if (current >= rule.limit) {
-    logEvent("rate_limited", { scope });
-    return true;
-  }
-
-  await env.RATE_LIMIT_KV.put(String(key), String(current + 1), {
-    expirationTtl: rule.windowSeconds + 5,
-  });
-  return false;
 }

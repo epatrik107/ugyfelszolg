@@ -64,17 +64,13 @@ describe("regenerateOrder route", () => {
       .mockResolvedValueOnce({ ...completedOrder, ai_status: "generating", generation_count: 2 });
   });
 
-  it("authenticates, atomically starts regeneration, and schedules generation", async () => {
+  it("authenticates and atomically queues regeneration with durable feedback", async () => {
     const { response, waitUntil } = await request({ feedback: "Legyen rövidebb és tárgyilagosabb." });
 
     expect(response.status).toBe(200);
-    expect(mocks.beginRegeneration).toHaveBeenCalledWith(expect.anything(), "order_1", 3);
-    expect(waitUntil).toHaveBeenCalledOnce();
-    expect(mocks.generateLetterForPaidOrder).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ generation_count: 2 }),
-      "Legyen rövidebb és tárgyilagosabb.",
-    );
+    expect(mocks.beginRegeneration).toHaveBeenCalledWith(expect.anything(), "order_1", 3, "Legyen rövidebb és tárgyilagosabb.");
+    expect(waitUntil).not.toHaveBeenCalled();
+    expect(mocks.generateLetterForPaidOrder).not.toHaveBeenCalled();
   });
 
   it("rejects invalid feedback before loading the order", async () => {

@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { getOrderByPublicId } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
-import { hasActiveOrderAccess } from "../lib/orderState";
+import { hasActiveOrderAccess, isOrderContentExpired } from "../lib/orderState";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
@@ -33,11 +33,17 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
   }
 
   logEvent("result_fetch", { orderId: order.id, publicId });
-  const canExposeLetter = hasActiveOrderAccess(order) && order.ai_status === "completed";
+  if (await isRateLimited(c.env, "result-order", order.id)) {
+    return errorJson(c, "RATE_LIMITED", "Túl sok lekérdezés.", 429);
+  }
+  const canExposeLetter = hasActiveOrderAccess(order) && !isOrderContentExpired(order) &&
+    (order.ai_status === "completed" || (order.ai_status === "generating" && order.generation_count > 1));
 
   return okJson(c, {
     paymentStatus: order.payment_status,
-    refundStatus: order.stripe_refund_status,
+    refundStatus: order.stripe_refund_status ?? (order.refund_requested_at ? "pending" : null),
+    regenerationError: canExposeLetter && order.ai_status === "completed" && order.error_message
+      ? "A módosítás nem sikerült. A korábbi levél elérhető, és a módosítás újra kérhető." : undefined,
     invoiceStatus: order.invoice_status,
     aiStatus: order.ai_status,
     generationCount: order.generation_count,

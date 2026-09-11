@@ -8,8 +8,7 @@
       "WebWorker"
     ],
     "types": [
-      "@cloudflare/workers-types",
-      "vitest/globals"
+      "@cloudflare/workers-types"
     ],
     "strict": true,
     "skipLibCheck": true,
@@ -17,7 +16,6 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "src",
-    "test"
+    "src"
   ]
 }

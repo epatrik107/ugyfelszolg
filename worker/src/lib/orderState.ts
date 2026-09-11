@@ -66,15 +66,21 @@ export const MAX_REGENERATIONS = 3;
  *
  * @param maxRegenerations Per-package limit; defaults to MAX_REGENERATIONS.
  */
+export function isOrderContentExpired(order: Partial<Pick<OrderRow, "created_at" | "personal_data_redacted_at">>) {
+  return Boolean(order.personal_data_redacted_at) ||
+    Boolean(order.created_at && Date.parse(order.created_at) < Date.now() - 90 * 86400000);
+}
+
 export function canRequestRegeneration(
-  order: Pick<OrderRow, "payment_status" | "ai_status" | "generation_count">,
+  order: Pick<OrderRow, "payment_status" | "ai_status" | "generation_count"> & Partial<Pick<OrderRow, "created_at" | "personal_data_redacted_at">>,
   maxRegenerations = MAX_REGENERATIONS,
 ) {
   return (
     order.payment_status === "paid" &&
     order.ai_status === "completed" &&
     order.generation_count > 0 &&
-    order.generation_count <= maxRegenerations
+    order.generation_count <= maxRegenerations &&
+    !isOrderContentExpired(order)
   );
 }
 
