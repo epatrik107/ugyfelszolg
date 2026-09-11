@@ -72,7 +72,7 @@ function baseHtml(title: string, body: string, sellerName: string, sellerAddress
           <!-- Header -->
           <tr>
             <td style="background:#10233f;padding:24px 32px;">
-              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Ügyfélszolgálat</p>
+              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Levélsegéd</p>
               <p style="margin:4px 0 0;font-size:13px;color:#94a3b8;">Hivatalos levélírási asszisztens</p>
             </td>
           </tr>
@@ -323,7 +323,7 @@ export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
 
     <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Új levél megrendelése</a>
   `;
-  return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
+  return baseHtml("Elkészült a levele – Levélsegéd", body, data.sellerName, data.sellerAddress);
 }
 
 export interface ExpiredCheckoutEmailData {
@@ -417,5 +417,5 @@ export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
 
     <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
   `;
-  return baseHtml("Elkészült a levele – Ügyfélszolgálat", body, data.sellerName, data.sellerAddress);
+  return baseHtml("Elkészült a levele – Levélsegéd", body, data.sellerName, data.sellerAddress);
 }

@@ -22,13 +22,13 @@ binding = "RATE_LIMIT_KV"
 id = "330e31489f97415989d94972003b0202"
 
 [vars]
-SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"
-ALLOWED_ORIGINS = "https://xn--gyfelszolgalat-fsb.hu,https://epatrik107.github.io"
-TURNSTILE_EXPECTED_HOSTNAMES = "xn--gyfelszolgalat-fsb.hu"
+SITE_URL = "https://levelseged.hu"
+ALLOWED_ORIGINS = "https://levelseged.hu,https://epatrik107.github.io"
+TURNSTILE_EXPECTED_HOSTNAMES = "levelseged.hu"
 LEGAL_TERMS_VERSION = "2026-07-14"
 PRIVACY_POLICY_VERSION = "2026-07-14"
 ADMIN_API_ENABLED = "false"
-EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"
+EMAIL_FROM = "Levélsegéd <noreply@levelseged.hu>"
 DEMO_MODE = "false"
 PAYMENTS_ENABLED = "true"
 PAYMENT_MODE = "live"
@@ -61,7 +61,7 @@ describe("worker deploy preflight", () => {
 
   it("blocks localhost and test payment mode in production", () => {
     const unsafe = replaceConfig(
-      replaceConfig(validProductionConfig, 'SITE_URL = "https://xn--gyfelszolgalat-fsb.hu"', 'SITE_URL = "http://localhost:5173"'),
+      replaceConfig(validProductionConfig, 'SITE_URL = "https://levelseged.hu"', 'SITE_URL = "http://localhost:5173"'),
       'PAYMENT_MODE = "live"',
       'PAYMENT_MODE = "test"',
     );
@@ -96,7 +96,7 @@ describe("worker deploy preflight", () => {
   it("blocks an email sender outside the verified production domain", () => {
     const unsafe = replaceConfig(
       validProductionConfig,
-      'EMAIL_FROM = "Ügyfélszolgálat.hu <noreply@xn--gyfelszolgalat-fsb.hu>"',
+      'EMAIL_FROM = "Levélsegéd <noreply@levelseged.hu>"',
       'EMAIL_FROM = "Service <sender@gmail.com>"',
     );
 
