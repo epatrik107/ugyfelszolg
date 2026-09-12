@@ -11,3 +11,6 @@ wrangler.toml
 coverage
 frontend/dist
 worker/dist
+
+playwright-report
+test-results

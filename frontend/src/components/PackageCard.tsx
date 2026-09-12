@@ -18,7 +18,7 @@ export function PackageCard({
   const Wrapper = onSelect ? "button" : "div";
   return (
     <Wrapper
-      {...(onSelect ? { type: "button" as const, onClick: () => onSelect(packageId) } : {})}
+      {...(onSelect ? { type: "button" as const, "aria-pressed": !!selected, onClick: () => onSelect(packageId) } : {})}
       className={`w-full rounded-lg border p-5 text-left transition ${
         selected
           ? "border-azure-600 bg-azure-100 shadow-soft"

@@ -32,7 +32,7 @@ async function request<T>(
     });
   } catch {
     throw new Error(
-      "Nem sikerült elérni a szervert. Kérjük, frissítse az oldalt, majd próbálja újra.",
+      "Nem sikerült elérni a szervert. Ellenőrizze az internetkapcsolatot, majd próbálja újra.",
     );
   }
 

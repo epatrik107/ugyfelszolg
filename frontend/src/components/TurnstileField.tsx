@@ -22,7 +22,8 @@ export function TurnstileField({
   if (failed) {
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        A robot-védelmi ellenőrzés nem töltődött be. Kérjük, töltse újra az oldalt.
+        A biztonsági ellenőrzés nem töltődött be. Az űrlap adatai megmaradtak.
+        <button type="button" className="button-secondary mt-3 w-full" onClick={() => setFailed(false)}>Ellenőrzés újrapróbálása</button>
       </div>
     );
   }
@@ -36,7 +37,7 @@ export function TurnstileField({
         onSuccess("");
         setFailed(true);
       }}
-      options={{ theme: "light", action }}
+      options={{ theme: "light", action, size: "compact" }}
     />
   );
 }
