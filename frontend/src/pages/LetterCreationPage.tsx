@@ -1,6 +1,5 @@
 import { CheckCircle2, KeyRound, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { LetterForm } from "../components/LetterForm";
 import { LegalNotice } from "../components/LegalNotice";
 import { TurnstileField } from "../components/TurnstileField";
@@ -17,7 +16,7 @@ export function LetterCreationPage() {
   const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
   const serverErrorRef = useRef<HTMLDivElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
-  const navigate = useNavigate();
+  const formContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (serverError) {
@@ -27,12 +26,14 @@ export function LetterCreationPage() {
 
   useEffect(() => {
     if (summary) {
-      summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      summaryRef.current?.focus();
     }
   }, [summary]);
 
   async function handleSubmit(values: LetterFormValues) {
-    setSummary({ ...values, checkoutAttemptId: crypto.randomUUID() });
+    setServerError(null);
+    setServerErrorCode(null);
+    setSummary({ ...values, turnstileToken: "", checkoutAttemptId: crypto.randomUUID() });
   }
 
   async function continueToPayment() {
@@ -67,7 +68,7 @@ export function LetterCreationPage() {
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-4 py-10">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div ref={formContainerRef} hidden={!!summary} className={summary ? "hidden" : "grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]"}>
         <div className="space-y-6">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-azure-600">
@@ -76,11 +77,10 @@ export function LetterCreationPage() {
             <h1 className="mt-2 text-3xl font-semibold">Levélkészítés</h1>
             <p className="mt-3 text-slate-600">
               Adja meg a szükséges részleteket, mi pedig elkészítjük az Önnek
-              szóló hivatalos levelet. A fizetés előtt a lap alján még egyszer
-              átnézheti a rendelését.
+              szóló hivatalos levelet. Három rövid lépés, a végén ellenőrizhető összegzéssel.
             </p>
           </div>
-          <LegalNotice />
+          <p className="text-sm text-slate-500">AI-val készített levél, amelyet elküldés előtt átnézhet és szerkeszthet. Nem minősül jogi tanácsadásnak.</p>
           <LetterForm
             busy={busy}
             submitLabel="Összegzés megnyitása"
@@ -88,14 +88,18 @@ export function LetterCreationPage() {
           />
         </div>
 
-        <aside className="h-fit space-y-4 lg:sticky lg:top-24">
-          <ExamplesPanel />
+        <aside className="h-fit lg:sticky lg:top-24">
+          <div className="hidden lg:block"><ExamplesPanel /></div>
+          <details className="rounded-xl border border-slate-200 p-4 lg:hidden">
+            <summary className="cursor-pointer font-medium">Mintalevelek megtekintése</summary>
+            <div className="mt-4"><ExamplesPanel /></div>
+          </details>
         </aside>
       </div>
 
-      <PaymentSummary
+      {summary && <PaymentSummary
         busy={busy}
-        onChangePackage={() => navigate("/arak")}
+        onChangePackage={() => { setSummary(null); setServerError(null); setServerErrorCode(null); window.requestAnimationFrame(() => formContainerRef.current?.querySelector<HTMLElement>("h2[tabindex]")?.focus()); }}
         onContinue={continueToPayment}
         onDemoAccessCodeChange={updateDemoAccessCode}
         onTurnstileTokenChange={updateTurnstileToken}
@@ -104,7 +108,7 @@ export function LetterCreationPage() {
         serverErrorRef={serverErrorRef}
         summary={summary}
         summaryRef={summaryRef}
-      />
+      />}
     </section>
   );
 }
@@ -176,7 +180,9 @@ function PaymentSummary({
   return (
     <section
       ref={summaryRef}
-      className="scroll-mt-24 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm md:p-6"
+      tabIndex={-1}
+      aria-label="Fizetés előtti összegzés"
+      className="outline-none scroll-mt-24 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm md:p-6"
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
@@ -202,17 +208,21 @@ function PaymentSummary({
         </div>
       )}
 
+      <div className="mt-4"><LegalNotice /></div>
       {summary ? (
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="grid gap-3 text-sm md:grid-cols-2">
-            <SummaryRow label="Név" value={summary.name} />
-            <SummaryRow label="Email" value={summary.email} />
-            <SummaryRow label="Számlázási név" value={summary.billing.name} />
+            <SummaryRow label="Az Ön adatai" value={`${summary.name}\n${summary.email}`} />
+
             <SummaryRow
-              label="Számlázási cím"
-              value={`${summary.billing.postalCode} ${summary.billing.city}, ${summary.billing.addressLine1}`}
+              label="Számlázási adatok"
+              value={`${summary.billing.name}\n${summary.billing.postalCode} ${summary.billing.city}, ${summary.billing.addressLine1}\n${summary.billing.email}`}
             />
             <SummaryRow label="Levél típusa" value={summary.letterType} />
+            <SummaryRow label="Címzett" value={summary.recipient} />
+            <SummaryRow label="Mi történt?" value={summary.problemDescription} />
+            <SummaryRow label="Kért megoldás" value={summary.desiredResult} />
+            <SummaryRow label="Hangnem" value={summary.tone} />
             <SummaryRow
               label="Csomag"
               value={packages[summary.selectedPackage].name}
@@ -231,21 +241,22 @@ function PaymentSummary({
               )}
             </p>
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Az ár szerveroldalon kerül újraszámításra, ezért nem manipulálható
-              a böngészőből.
+              Egyszeri fizetés, előfizetés nélkül. Egy levél és {packages[summary.selectedPackage].maxRegenerations} AI-módosítás; másolás, letöltés és kézi szerkesztés. A számlát emailben küldjük.
             </p>
             {serverError && (
               <div
                 ref={serverErrorRef}
+                role="alert"
                 className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
               >
                 {serverError}
+                <p className="mt-2">Az adatai megmaradtak. Az alábbi ellenőrzés után újrapróbálhatja.</p>
               </div>
             )}
             {!DEMO_MODE && !summary.turnstileToken && (
               <div className="mt-4 space-y-2">
                 <p className="text-sm text-slate-600">
-                  A biztonságos újrapróbáláshoz végezze el ismét a spamvédelmi ellenőrzést.
+                  A fizetéshez végezze el a biztonsági ellenőrzést. Hiba után új ellenőrzés szükséges.
                 </p>
                 <TurnstileField action="checkout" onSuccess={onTurnstileTokenChange} />
               </div>
@@ -276,10 +287,10 @@ function PaymentSummary({
                 disabled={busy || (!DEMO_MODE && !summary.turnstileToken)}
                 onClick={onContinue}
               >
-                {primaryActionLabel}
+                {busy ? "Átirányítás folyamatban…" : `${primaryActionLabel}${shouldShowDemoCodeField ? "" : ` · ${packages[summary.selectedPackage].price}`}`}
               </button>
-              <button className="button-secondary w-full" onClick={onChangePackage}>
-                Árak újra megtekintése
+              <button className="button-secondary w-full" disabled={busy} onClick={onChangePackage}>
+                Adatok és csomag módosítása
               </button>
             </div>
           </div>
@@ -298,7 +309,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-      <strong className="mt-1 block text-slate-900">{value}</strong>
+      <p className="mt-1 whitespace-pre-wrap break-words text-slate-900">{value}</p>
     </div>
   );
 }
