@@ -132,7 +132,7 @@ export function validateAiOutput(text: string): string {
 const GEMINI_MAX_RETRIES = 2;
 const GEMINI_RETRY_BASE_MS = 2000;
 
-async function callGemini(env: Env, model: string, input: string) {
+export async function callGemini(env: Env, model: string, input: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = JSON.stringify({
     system_instruction: { parts: [{ text: GENERATION_SYSTEM_PROMPT }] },

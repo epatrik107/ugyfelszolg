@@ -27,6 +27,10 @@ async function result() {
 async function awaitLetter(expectedCount) {
   for (let attempt = 0; attempt < 90; attempt++) {
     const current = await result();
+    if (current.regenerationError) {
+      const rows = await query("SELECT error_message FROM orders WHERE id = ?", [id]);
+      throw new Error(`Synthetic regeneration rejected: ${rows[0]?.error_message}`);
+    }
     assert.ok(!["failed", "failed_review"].includes(current.aiStatus), `Generation failed: ${current.aiStatus}`);
     if (current.aiStatus === "completed") {
       assert.equal(current.generationCount, expectedCount);
