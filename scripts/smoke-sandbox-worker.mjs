@@ -2,6 +2,7 @@
 // Synthetic data only: no Stripe session, invoice, or email is created.
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 assert.equal(process.env.DEPLOY_ENV, "sandbox", "Synthetic order tests are sandbox-only");
 const api = new URL(process.env.API_HEALTH_URL);
 assert.ok(api.hostname.includes("-sandbox."), "Sandbox hostname required");
@@ -54,6 +55,8 @@ try {
   const unauthorized = await fetch(new URL(`/api/orders/${id}/result`, api));
   assert.equal(unauthorized.status, 401);
   const first = await awaitLetter(1);
+  // Only this run's hard-coded synthetic letter; never credentials or customer data.
+  writeFileSync("/tmp/synthetic-prompt-letter.json", JSON.stringify({ letter: first.generatedLetter }));
   function verifyFacts(letter) {
     assert.ok(letter.includes("Teszt Elek"), "The supplied signer must be preserved");
     assert.ok(letter.includes("RND-2048"), "The order reference must be preserved");

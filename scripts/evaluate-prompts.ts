@@ -1,5 +1,6 @@
 // Bounded evaluation using synthetic facts. No customer data or payment calls.
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { callGemini, reviewWithAi } from "../worker/src/lib/ai";
 import { buildUserPrompt } from "../worker/src/lib/prompts";
 import { getGenerationModel } from "../worker/src/lib/geminiModels";
@@ -47,7 +48,9 @@ console.log(`Real sandbox prompt evaluation passed: ${cases.length} cases.`);
 
 // Exercise the generation/repair loop with fixed synthetic input, so failures
 // include actionable review reasons without logging any customer content.
-const source = { ...order, generated_letter: valid };
+const captured = existsSync("/tmp/synthetic-prompt-letter.json")
+  ? JSON.parse(readFileSync("/tmp/synthetic-prompt-letter.json", "utf8")).letter as string : null;
+const source = captured ? { ...order, recipient: "Teszt Ügyfélszolgálat", letter_type: "Panaszlevél", problem_description: order.problem_description.replace("A csomag nem érkezett meg.", "A megadott szállítási idő után sem érkezett meg."), generated_letter: captured } : { ...order, generated_letter: valid };
 const edit = 'Csak a lezárást módosítsd: szerepeljen benne ez a mondat: "Kérem, válaszukat emailben küldjék el." A korábbi bekezdéseket szó szerint őrizd meg.';
 let issues: string[] = [];
 let candidate: string | undefined;
