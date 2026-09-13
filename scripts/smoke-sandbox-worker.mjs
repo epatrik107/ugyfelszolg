@@ -44,25 +44,39 @@ try {
     problem_description, desired_result, tone, selected_package, server_calculated_price, currency,
     payment_status, ai_status, generation_count, created_at, updated_at, paid_at, invoice_status)
     VALUES (?, ?, ?, ?, 'Teszt Elek', 'Panaszlevél', 'Teszt Ügyfélszolgálat',
-    'Egy tesztcsomag a megadott szállítási idő után sem érkezett meg. Két napja várjuk.',
+    '2026. szeptember 2-án RND-2048 azonosítóval, 12 490 Ft értékben rendeltem egy csomagot. A megadott szállítási idő után sem érkezett meg.',
     'Kérek tájékoztatást a csomag várható érkezéséről.', 'Udvarias', 'basic', 890, 'huf',
     'paid', 'not_started', 0, ?, ?, ?, 'not_required')`, [id, id, hash, `${id}@example.invalid`, now, now, now]);
   const unauthorized = await fetch(new URL(`/api/orders/${id}/result`, api));
   assert.equal(unauthorized.status, 401);
   const first = await awaitLetter(1);
+  function verifyFacts(letter) {
+    assert.ok(letter.includes("Teszt Elek"), "The supplied signer must be preserved");
+    assert.ok(letter.includes("RND-2048"), "The order reference must be preserved");
+    assert.match(letter, /12[\s\u00a0]*490\s*(?:Ft|forint)/i, "The supplied amount must be preserved");
+    assert.match(letter, /(?:szeptember\s+0?2|09[.\/-]\s*0?2)/i, "The event date must be preserved");
+  }
+  verifyFacts(first.generatedLetter);
+  // Only the ending may change. Compare the earlier paragraphs without
+  // requiring a particular line-wrap or closing formula from the model.
+  const unchangedPrefix = first.generatedLetter.split(/\n\s*\n/).slice(0, -2).join(" ").replace(/\s+/g, " ").trim();
+  assert.ok(unchangedPrefix.length > 80, "Expected a meaningful body to compare");
   const regenerated = await fetch(new URL(`/api/orders/${id}/regenerate`, api), {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ feedback: "Legyen rövidebb, és a végén kérjen emailes választ." }),
+    body: JSON.stringify({ feedback: 'Csak a lezárást módosítsd: szerepeljen benne ez a mondat: "Kérem, válaszukat emailben küldjék el." A korábbi bekezdéseket szó szerint őrizd meg.' }),
   });
   assert.equal(regenerated.status, 200);
   const pending = await result();
   assert.equal(pending.generatedLetter, first.generatedLetter, "Previous letter must remain accessible");
   const second = await awaitLetter(2);
   assert.ok(second.letterHistory.includes(first.generatedLetter));
+  verifyFacts(second.generatedLetter);
+  assert.ok(second.generatedLetter.includes("Kérem, válaszukat emailben küldjék el."), "The targeted change must be present");
+  assert.ok(second.generatedLetter.replace(/\s+/g, " ").trim().startsWith(unchangedPrefix), "Untargeted paragraphs must remain unchanged");
   const rows = await query("SELECT generation_run_id, generation_feedback, refund_requested_at, invoice_status FROM orders WHERE id = ?", [id]);
   assert.equal(rows[0].generation_run_id, null); assert.equal(rows[0].generation_feedback, null);
   assert.equal(rows[0].refund_requested_at, null); assert.equal(rows[0].invoice_status, "not_required");
-  console.log("Sandbox smoke passed: authorization, real scheduled Gemini generation/review, regeneration, previous letter/history, no automatic email.");
+  console.log("Sandbox smoke passed: authorization, real scheduled Gemini generation/review, regeneration, source facts and signer, targeted closing change with unchanged earlier paragraphs, previous letter/history, no automatic email.");
 } finally {
   // The run owns this UUID; no other order or user data is touched.
   await query("DELETE FROM order_status_log WHERE order_id = ?", [id]);

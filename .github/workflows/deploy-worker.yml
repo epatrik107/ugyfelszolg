@@ -522,3 +522,13 @@ jobs:
           CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+
+      - name: Verify prompt grounding with the real sandbox review model
+        if: ${{ inputs.target_environment == 'sandbox' && success() }}
+        timeout-minutes: 5
+        run: |
+          npx esbuild scripts/evaluate-prompts.ts --bundle --platform=node --format=esm --outfile=/tmp/evaluate-prompts.mjs
+          node /tmp/evaluate-prompts.mjs
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}
