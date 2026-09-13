@@ -81,4 +81,17 @@ describe("deployment health gate", () => {
     })).resolves.toEqual({ ok: true, attempt: 1 });
   });
 
+  it("waits for a slowly propagating new revision rather than accepting the old one", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const assertion = expect(checkDeploymentHealth({
+        healthUrl: "https://api.example.com/api/health", expectedRevision: "new",
+        fetchImpl: async () => Response.json({ status: "ok", revision: ++calls < 8 ? "old" : "new", schemaVersion: 13 }, { headers: secureHeaders }),
+      })).resolves.toEqual({ ok: true, attempt: 8 });
+      await vi.runAllTimersAsync();
+      await assertion;
+    } finally { vi.useRealTimers(); }
+  });
+
 });

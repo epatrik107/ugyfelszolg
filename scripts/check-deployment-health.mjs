@@ -31,8 +31,9 @@ export async function checkDeploymentHealth({
   healthUrl,
   expectedRevision,
   fetchImpl = fetch,
-  attempts = 6,
-  delayMs = 3_000,
+  // Allow edge propagation before rollback, while requiring the exact revision.
+  attempts = 24,
+  delayMs = 5_000,
 }) {
   const url = validateHealthUrl(healthUrl);
   let lastFailure = "unknown";
