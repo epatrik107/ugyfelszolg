@@ -130,7 +130,7 @@ export function LetterForm({ busy = false, submitLabel, onSubmit }: {
         </Field>
         <Field label="A levél hangneme" id="tone"><select {...fieldProps("tone")} className="input" value={values.tone} onChange={(event) => update("tone", event.target.value)}>{tones.map((tone) => <option key={tone}>{tone}</option>)}</select></Field>
         <Field label="Az Ön neve" id="name" error={errors.name}><input {...fieldProps("name")} className="input" autoComplete="name" maxLength={120} placeholder="A levél aláírójának neve" value={values.name} onChange={(event) => update("name", event.target.value)} /></Field>
-        <Field label="Emailcím a visszaigazoláshoz" id="email" error={errors.email}><input {...fieldProps("email")} className="input" autoComplete="email" maxLength={254} type="email" placeholder="nev@pelda.hu" value={values.email} onChange={(event) => update("email", event.target.value)} /></Field>
+        <Field label="E-mail-cím" id="email" error={errors.email}><input {...fieldProps("email")} className="input" autoComplete="email" maxLength={254} type="email" placeholder="nev@pelda.hu" value={values.email} onChange={(event) => update("email", event.target.value)} /></Field>
       </fieldset>
 
       <fieldset hidden={step !== 2} disabled={busy} className="space-y-6">
