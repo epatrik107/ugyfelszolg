@@ -17,3 +17,5 @@ Sandbox deploy után a valódi ütemezett Gemini-generálás és újragenerálá
 Production deploy csak sikeres CI és sandbox után történik. Utána ellenőrizni kell a pontos Worker-verziót, a health választ, a sémát, valamint a meglévő frontend/API elérhetőségét. Ez a kiadás nem változtat a frontendben, az árakon vagy az adatbázissémán.
 
 Az AI-ellenőrzés forráshűséget vizsgál, nem igazolja az ügy valóságtartalmát. A promptvédelem és a sikeres szintetikus tesztek nem garantálnak hibamentességet minden lehetséges bemenetre. A vásárló átolvasása továbbra is szükséges.
+
+A sandbox ellenőrzésében tapasztalt késleltetett Cloudflare-verzióterjedés miatt a health kapu legfeljebb 24 próbát végez, próbák között 5 másodperccel. Továbbra is megköveteli a pontos commitot, sémát és biztonsági fejléceket; sikertelenségkor megmarad az automatikus visszaállítás.
