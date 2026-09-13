@@ -478,4 +478,12 @@ describe("secondary AI review gate", () => {
     expect(failGeneration).toHaveBeenCalledOnce();
   });
 
+  it("blocks out-of-scope changes even when the model approves both candidates", async () => {
+    const changed = safeLetter.replace("a megbeszéltek szerint", "az elvárások szerint");
+    fetchMock(geminiResponse(changed), reviewResponse({ ok: true, issues: [] }), geminiResponse(changed), reviewResponse({ ok: true, issues: [] }));
+    await generateLetterForPaidOrder(env, { ...order, generated_letter: safeLetter, generation_count: 2 }, "Csak a lezárást módosítsd.");
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).toHaveBeenCalledOnce();
+  });
+
 });

@@ -2,7 +2,7 @@
 
 A generálás és a független AI-ellenőrzés ugyanazokat a forrásadatokat kapja, beleértve az aláíró nevét. A számlázási cím, emailcím, fizetési azonosítók és hozzáférési tokenek nem kerülnek a promptokba. A ténymegőrzési szabály tiltja adatok kitalálását, megkülönbözteti a kérést a megtörtént eseménytől és az idézett harmadik fél állítását a felhasználó tényközlésétől. Hiányzó vagy ellentmondó opcionális adatot a modell nem pótolhat önkényesen.
 
-Módosításkor mindkét modell megkapja az előző mentett levelet és a módosítási kérést. Csak a kért rész módosítandó, a nem érintett részek megőrzésével. A korábbi levél nem önálló tényforrás. Az ellenőrzés által elutasított első próbálkozás szövege a javító generálásba is bekerül; így az észrevételek konkrét jelöltre vonatkoznak.
+Módosításkor mindkét modell megkapja az előző mentett levelet és a módosítási kérést. Csak a kért rész módosítandó, a nem érintett részek megőrzésével. A kifejezetten csak lezárásra vonatkozó kéréseknél külön, determinisztikus ellenőrzés is blokkolja a korábbi bekezdések átírását; bizonytalan lezáráshatár esetén nem enged át találgatáson alapuló módosítást. A korábbi levél nem önálló tényforrás. Az ellenőrzés által elutasított első próbálkozás szövege a javító generálásba is bekerül; így az észrevételek konkrét jelöltre vonatkoznak.
 
 Minden felhasználói mező, korábbi levél, jelölt szöveg és ellenőrzési észrevétel escape-elt adathatárba kerül. A rendszerutasítás külön kezeli a legitim levélmódosítást és a szabályfelülírásra, szerepváltásra vagy jóváhagyás kikényszerítésére irányuló utasításokat. A review strukturált JSON-t ad; ellentmondásos jóváhagyás vagy túlméretes hibajegyzék nem enged át levelet. A promptverzió `2026-09-13.1`, a generálás indítási naplójában is szerepel.
 

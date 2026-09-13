@@ -59,7 +59,9 @@ try {
   verifyFacts(first.generatedLetter);
   // Only the ending may change. Compare the earlier paragraphs without
   // requiring a particular line-wrap or closing formula from the model.
-  const unchangedPrefix = first.generatedLetter.split(/\n\s*\n/).slice(0, -2).join(" ").replace(/\s+/g, " ").trim();
+  const closing = /^(?:(?:Tisztelettel|Üdvözlettel|Köszönettel)\s*[:!,.]?|(?:Előre is )?köszön(?:öm|jük)[^\n]*)\s*$/imu.exec(first.generatedLetter);
+  assert.ok(closing, "Expected an identifiable closing");
+  const unchangedPrefix = first.generatedLetter.slice(0, closing.index).replace(/\s+/g, " ").trim();
   assert.ok(unchangedPrefix.length > 80, "Expected a meaningful body to compare");
   const regenerated = await fetch(new URL(`/api/orders/${id}/regenerate`, api), {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

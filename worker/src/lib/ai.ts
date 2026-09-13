@@ -10,6 +10,7 @@ import { EmailSendError, sendGeneratedLetterEmail } from "./email";
 import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
+import { reviewRevisionScope } from "./revision";
 import { reviewLetterWithRules } from "./review";
 import type { Env, OrderRow } from "./types";
 
@@ -248,7 +249,9 @@ export async function reviewWithAi(env: Env, order: OrderRow, letter: string, re
 
   for (let attempt = 0; attempt < AI_REVIEW_MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await reviewWithAiOnce(env, order, letter, regenerationFeedback);
+      const review = await reviewWithAiOnce(env, order, letter, regenerationFeedback);
+      const scopeIssues = reviewRevisionScope(order.generated_letter, letter, regenerationFeedback);
+      return { ok: review.ok && scopeIssues.length === 0, issues: [...review.issues, ...scopeIssues] };
     } catch (error) {
       const failure =
         error instanceof AiReviewFailure
