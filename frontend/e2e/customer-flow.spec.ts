@@ -17,7 +17,7 @@ async function stepOne(page: Page) {
 async function stepTwo(page: Page) {
   await page.getByLabel("Milyen megoldást kér?", { exact: true }).fill("Kérem a vételár visszatérítését.");
   await page.getByLabel("Az Ön neve", { exact: true }).fill("Teszt Elek");
-  await page.getByLabel("Emailcím a visszaigazoláshoz", { exact: true }).fill("teszt@example.invalid");
+  await page.getByLabel("E-mail-cím", { exact: true }).fill("teszt@example.invalid");
   await page.getByRole("button", { name: "Tovább", exact: true }).click();
 }
 async function review(page: Page) {
