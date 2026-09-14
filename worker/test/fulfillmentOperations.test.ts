@@ -334,3 +334,13 @@ describe("operator email configuration", () => {
     expect(performance.now() - started).toBeLessThan(200);
   });
 });
+
+describe("checkout expired email", () => {
+  it("does not claim a session lifetime the checkout does not configure", async () => {
+    const { checkoutExpiredEmailHtml } = await import("../src/lib/emailTemplates");
+    const html = checkoutExpiredEmailHtml({ customerName: "Teszt <b>Elek</b>", siteUrl: "https://levelseged.hu", sellerName: "Eladó", sellerAddress: "Cím" });
+    expect(html).not.toMatch(/\d+\s*perc/u);
+    expect(html).toContain("Semmilyen összeg nem lett levonva");
+    expect(html).toContain("Teszt &lt;b&gt;Elek&lt;/b&gt;");
+  });
+});
