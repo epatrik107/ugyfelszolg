@@ -326,37 +326,6 @@ export function letterDeliveryEmailHtml(data: LetterDeliveryEmailData): string {
   return baseHtml("Elkészült a levele – Levélsegéd", body, data.sellerName, data.sellerAddress);
 }
 
-export interface ExpiredCheckoutEmailData {
-  customerName: string;
-  siteUrl: string;
-  sellerName: string;
-  sellerAddress: string;
-}
-
-export function expiredCheckoutEmailHtml(data: ExpiredCheckoutEmailData): string {
-  const customerName = escapeHtml(data.customerName);
-  const orderHref = safeHtmlUrl(data.siteUrl, "level-keszites");
-
-  const body = `
-    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">A fizetési munkamenet lejárt</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
-
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#0369a1;line-height:1.6;">
-        A fizetési oldal lejárt, mielőtt a megrendelés véglegesítve lett volna.
-        <strong>Semmilyen összeg nem lett levonva</strong> bankszámlájáról.
-      </p>
-    </div>
-
-    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
-      Ha szeretné, bármikor újra elindíthatja a megrendelést — a korábbi adatait meg kell adni újra.
-    </p>
-
-    <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Újra megrendelem</a>
-  `;
-  return baseHtml("Fizetési munkamenet lejárt", body, data.sellerName, data.sellerAddress);
-}
-
 export interface CheckoutExpiredEmailData {
   customerName: string;
   siteUrl: string;
@@ -373,7 +342,7 @@ export function checkoutExpiredEmailHtml(data: CheckoutExpiredEmailData): string
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
 
     <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
-      A korábban megkezdett fizetési folyamat 30 percen belül nem fejeződött be, ezért automatikusan lejárt.
+      A korábban megkezdett fizetés nem fejeződött be, ezért a fizetési oldal automatikusan lejárt.
       <strong>Semmilyen összeg nem lett levonva</strong> a bankszámlájáról.
     </p>
 
