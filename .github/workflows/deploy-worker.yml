@@ -160,7 +160,9 @@ jobs:
             errors.push("API_HEALTH_URL must be a valid HTTPS URL.");
           }
           if (!allowedOrigins) errors.push("ALLOWED_ORIGINS is required.");
-          if (operatorEmail && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(operatorEmail)) {
+          const operatorAt = operatorEmail.indexOf("@");
+          const operatorDomain = operatorEmail.slice(operatorAt + 1);
+          if (operatorEmail && (operatorAt <= 0 || operatorAt !== operatorEmail.lastIndexOf("@") || /[\s<>]/.test(operatorEmail) || operatorDomain.lastIndexOf(".") <= 0 || operatorDomain.endsWith("."))) {
             errors.push("OPERATOR_EMAIL must be a plain email address.");
           }
           if (generationBatchSize && !/^[1-8]$/.test(generationBatchSize)) {

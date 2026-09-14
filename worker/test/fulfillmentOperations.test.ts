@@ -321,3 +321,16 @@ describe("operator visibility and actions", () => {
     sqlite.close();
   });
 });
+
+describe("operator email configuration", () => {
+  it("accepts plain addresses and rejects display names, spaces and malformed domains in linear time", async () => {
+    const { isPlainEmailAddress } = await import("../src/lib/envValidation");
+    expect(isPlainEmailAddress("ugyfelszolgalat2026@gmail.com")).toBe(true);
+    for (const value of ["Ops <ops@example.com>", "ops@example", "ops@@example.com", "o ps@example.com", "@example.com", "ops@example."]) {
+      expect(isPlainEmailAddress(value)).toBe(false);
+    }
+    const started = performance.now();
+    isPlainEmailAddress(`!@!.${"!.".repeat(50_000)}`);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+});

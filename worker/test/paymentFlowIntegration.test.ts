@@ -48,14 +48,16 @@ function setup(orderOverrides: Partial<OrderRow> = {}) {
   const calls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
+    const { hostname, pathname } = new URL(url);
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("/v1/checkout/sessions/")) {
+    if (hostname === "api.resend.com") return Response.json({ id: "email_1" });
+    if (hostname !== "api.stripe.com") throw new Error(`Unexpected outbound request ${url}`);
+    if (pathname.startsWith("/v1/checkout/sessions/")) {
       if (stripe.sessionFailures > 0) { stripe.sessionFailures -= 1; return new Response("{}", { status: 500 }); }
       return Response.json(stripe.session);
     }
-    if (url.includes("/v1/refunds")) return Response.json(stripe.refund);
-    if (url.includes("/v1/disputes/")) return Response.json(stripe.dispute);
-    if (url.includes("api.resend.com")) return Response.json({ id: "email_1" });
+    if (pathname.startsWith("/v1/refunds")) return Response.json(stripe.refund);
+    if (pathname.startsWith("/v1/disputes/")) return Response.json(stripe.dispute);
     throw new Error(`Unexpected outbound request ${url}`);
   }));
   async function deliver(type: string, object: Record<string, unknown>, id = "evt_1", options: { secret?: string; livemode?: boolean } = {}) {
