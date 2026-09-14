@@ -62,6 +62,7 @@ export interface OrderResult {
     | "failed"
     | "canceled"
     | "unknown"
+    | "manual_review"
     | null;
   invoiceStatus:
     | "not_required"
@@ -82,6 +83,8 @@ export interface OrderResult {
   letterHistory?: string[];
   letterEmailSent?: boolean;
   regenerationError?: string;
+  generationRetryScheduled?: boolean;
+  regenerationRequestsExhausted?: boolean;
   selectedPackage: PackageId;
   createdAt: string;
 }

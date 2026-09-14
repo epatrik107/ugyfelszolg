@@ -185,3 +185,52 @@ test("layout stays inside the viewport on form, review and long documents", asyn
   const toolbar = page.getByRole("button", { name: "Szerkesztés", exact: true });
   await expect(toolbar).toBeVisible();
 });
+
+test("order access survives closing the tab and a missing link offers recovery", async ({ page, context }) => {
+  await page.route("**/api/orders/ui-test/result", (route) => route.fulfill({ json: { ok: true, data: completed } }));
+  await page.goto("/sikeres-fizetes?order=ui-test#token=abcdefghijklmnopqrstuvwxyz123456");
+  await expect(page.getByTestId("letter-text")).toHaveText(letter);
+  await page.close();
+
+  const reopened = await context.newPage();
+  let authorization = "";
+  await reopened.route("**/api/orders/ui-test/result", (route) => {
+    authorization = route.request().headers().authorization ?? "";
+    return route.fulfill({ json: { ok: true, data: completed } });
+  });
+  await reopened.goto("/sikeres-fizetes?order=ui-test");
+  await expect(reopened.getByTestId("letter-text")).toHaveText(letter);
+  expect(authorization).toBe("Bearer abcdefghijklmnopqrstuvwxyz123456");
+
+  await reopened.goto("/sikeres-fizetes?order=other-order");
+  await reopened.getByRole("link", { name: "kérjen új linket" }).click();
+  await expect(reopened.getByRole("heading", { name: "Rendelési link újraküldése" })).toBeVisible();
+});
+
+test("link recovery shows the same neutral confirmation and requires a fresh check", async ({ page }) => {
+  await stubTurnstile(page);
+  let payload: Record<string, string> = {};
+  await page.route("**/api/orders/access-link", (route) => {
+    payload = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, data: { message: "Ha ehhez az email-címhez tartozik elérhető rendelés, néhány percen belül elküldjük a linkjeit." } } });
+  });
+  await page.goto("/rendeles-link");
+  await page.getByLabel("Email-cím", { exact: true }).fill("vevo@example.com");
+  await expect(page.getByRole("button", { name: "Linkek küldése" })).toBeDisabled();
+  await page.getByRole("button", { name: "Tesztellenőrzés", exact: true }).click();
+  await page.getByRole("button", { name: "Linkek küldése" }).click();
+  await expect(page.getByRole("status")).toContainText("néhány percen belül elküldjük");
+  expect(payload).toEqual({ email: "vevo@example.com", turnstileToken: "test-token" });
+});
+
+test("provider retries are explained without asking to pay again", async ({ page }) => {
+  await order(page, { ...completed, aiStatus: "generating", generatedLetter: undefined, generationRetryScheduled: true });
+  await expect(page.getByRole("status").first()).toContainText("automatikusan újrapróbáljuk");
+  await expect(page.getByText("A rendelés linkjét emailben is elküldtük", { exact: false })).toBeVisible();
+});
+
+test("manual refund review is not presented as an automatic refund in progress", async ({ page }) => {
+  await order(page, { ...completed, aiStatus: "failed", generatedLetter: undefined, refundStatus: "manual_review" });
+  await expect(page.getByRole("status").first()).toContainText("munkatársunk ellenőrzi");
+  await expect(page.getByRole("status").first()).not.toContainText("Stripe visszaigazolására várunk");
+});
