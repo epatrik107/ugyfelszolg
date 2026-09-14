@@ -33,6 +33,7 @@ export const REQUIRED_WORKER_VARIABLES = [
   "GEMINI_MODEL_PREMIUM",
   "GEMINI_REVIEW_MODEL",
   "LEGAL_TERMS_VERSION",
+  "OPERATOR_EMAIL",
   "PRIVACY_POLICY_VERSION",
   "SELLER_ADDRESS",
   "SELLER_NAME",
@@ -51,6 +52,8 @@ export const REQUIRED_FRONTEND_VARIABLES = [
 ];
 
 const OPTIONAL_SANDBOX_SECRETS = ["ADMIN_API_TOKEN"];
+// Encrypts the production database backup; kept only in the production environment.
+export const REQUIRED_PRODUCTION_ONLY_SECRETS = ["BACKUP_ENCRYPTION_PASSPHRASE"];
 const FORBIDDEN_PRODUCTION_SECRETS = ["ADMIN_API_TOKEN", "DEMO_ACCESS_CODE"];
 
 function sorted(values) {
@@ -79,7 +82,7 @@ export function auditEnvironment({
       ? []
       : environment === "sandbox"
         ? REQUIRED_SANDBOX_WORKER_SECRETS
-        : REQUIRED_WORKER_SECRETS;
+        : [...REQUIRED_WORKER_SECRETS, ...REQUIRED_PRODUCTION_ONLY_SECRETS];
   const requiredVariables =
     environment === "production"
       ? [...REQUIRED_WORKER_VARIABLES, ...REQUIRED_FRONTEND_VARIABLES]

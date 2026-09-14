@@ -9,7 +9,7 @@ workers_dev = false
 
 [observability]
 enabled = true
-head_sampling_rate = 0.1
+head_sampling_rate = 1
 
 [[d1_databases]]
 binding = "DB"
@@ -36,6 +36,7 @@ SZAMLAZZ_TEST_ACCOUNT_CONFIRMED = "false"
 SELLER_NAME = "Engelbrecht Zoltán egyéni vállalkozó"
 SELLER_ADDRESS = "2500 Esztergom, Bánomi út 4."
 SELLER_TAX_NUMBER = "91250960-1-31"
+OPERATOR_EMAIL = "ugyfelszolgalat2026@gmail.com"
 `;
 
 function replaceConfig(source, from, to) {

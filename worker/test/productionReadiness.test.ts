@@ -151,7 +151,9 @@ describe("production deploy workflow hardening", () => {
     );
     expect(workerWorkflow).toContain("[observability]");
     expect(workerWorkflow).toContain("head_sampling_rate = ${observabilitySamplingRate}");
-    expect(workerWorkflow).toContain('deployEnv === "production" ? "0.1" : "1"');
+    // Rare payment and alert events must not be sampled away.
+    expect(workerWorkflow).toContain('const observabilitySamplingRate = "1";');
+    expect(workerWorkflow).toContain("OPERATOR_EMAIL = ${tomlString(value(\"OPERATOR_EMAIL\", \"\"))}");
     expect(workerWorkflow).toContain("inputs.target_environment == 'production' && 'true' || 'false'");
     expect(workerWorkflow).toContain(
       "Sandbox deploy without an isolated billing test account requires PAYMENTS_ENABLED=false.",

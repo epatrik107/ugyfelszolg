@@ -196,6 +196,9 @@ function validateProduction(config, errors) {
   if (!hasValue(vars.SITE_URL)) {
     errors.push("Production SITE_URL is missing.");
   }
+  if (!hasValue(vars.OPERATOR_EMAIL)) {
+    errors.push("Production OPERATOR_EMAIL is missing; alerts and contact messages would go unread.");
+  }
   if (origins.length === 0) {
     errors.push("Production ALLOWED_ORIGINS is missing.");
   }
