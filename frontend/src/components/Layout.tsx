@@ -76,6 +76,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link to="/aszf">ÁSZF</Link>
             <Link to="/adatkezeles">Adatkezelés</Link>
             <Link to="/kapcsolat">Kapcsolat</Link>
+            <Link to="/rendeles-link">Rendelési link</Link>
           </div>
         </div>
       </footer>

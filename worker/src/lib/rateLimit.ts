@@ -13,6 +13,8 @@ export type RateLimitScope =
   | "contact-email"
   | "regenerate-ip"
   | "send-letter-ip"
+  | "access-link-ip"
+  | "access-link-email"
   | "admin-ip";
 
 export const RATE_LIMITS: Record<
@@ -28,6 +30,8 @@ export const RATE_LIMITS: Record<
   "contact-email": { limit: 3, windowSeconds: 600 },
   "regenerate-ip": { limit: 10, windowSeconds: 600 },
   "send-letter-ip": { limit: 10, windowSeconds: 600 },
+  "access-link-ip": { limit: 5, windowSeconds: 3600 },
+  "access-link-email": { limit: 3, windowSeconds: 3600 },
   "admin-ip": { limit: 30, windowSeconds: 600 },
 };
 

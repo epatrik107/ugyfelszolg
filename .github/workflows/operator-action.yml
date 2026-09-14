@@ -1,0 +1,65 @@
+name: Operator action
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Environment"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - sandbox
+      action:
+        description: "Action (report is read-only)"
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - resend_access_link
+          - retry_invoice
+          - retry_invoice_email
+          - mark_storno_done
+          - reconcile_refund
+          - retry_refund
+          - requeue_generation
+          - resolve_anomalies
+      public_id:
+        description: "Order public ID (from the alert email)"
+        required: false
+        type: string
+      argument:
+        description: "Storno invoice number, or Stripe object ID for resolve_anomalies"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operator-action-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target_environment }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Execute
+        run: node scripts/operator-action.mjs
+        env:
+          OPERATOR_ACTION: ${{ inputs.action }}
+          PUBLIC_ID: ${{ inputs.public_id }}
+          ARGUMENT: ${{ inputs.argument }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}

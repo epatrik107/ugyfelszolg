@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_FRONTEND_VARIABLES,
+  REQUIRED_PRODUCTION_ONLY_SECRETS,
   REQUIRED_SANDBOX_WORKER_SECRETS,
   REQUIRED_WORKER_SECRETS,
   REQUIRED_WORKER_VARIABLES,
@@ -13,11 +14,22 @@ describe("GitHub environment name-only audit", () => {
   it("accepts an exact production environment without repository-level shadowing", () => {
     const result = auditEnvironment({
       environment: "production",
-      secrets: REQUIRED_WORKER_SECRETS,
+      secrets: [...REQUIRED_WORKER_SECRETS, ...REQUIRED_PRODUCTION_ONLY_SECRETS],
       variables: [...REQUIRED_WORKER_VARIABLES, ...REQUIRED_FRONTEND_VARIABLES],
     });
 
     expect(auditPassed(result)).toBe(true);
+  });
+
+  it("requires the operator alert address and the production backup key", () => {
+    const result = auditEnvironment({
+      environment: "production",
+      secrets: REQUIRED_WORKER_SECRETS,
+      variables: [...REQUIRED_WORKER_VARIABLES, ...REQUIRED_FRONTEND_VARIABLES].filter((name) => name !== "OPERATOR_EMAIL"),
+    });
+
+    expect(result.missingVariables).toEqual(["OPERATOR_EMAIL"]);
+    expect(result.missingSecrets).toEqual(["BACKUP_ENCRYPTION_PASSPHRASE"]);
   });
 
   it("reports missing, stale, forbidden, and shadowed production names", () => {

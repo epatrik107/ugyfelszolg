@@ -58,7 +58,7 @@ describe("database-level payment and invoice guards", () => {
       }),
     ).resolves.toBe(true);
     expect(calls[0].sql).toContain("INSERT INTO order_status_log");
-    expect(calls[1].sql).toContain("payment_status IN ('pending', 'checkout_created', 'failed')");
+    expect(calls[1].sql).toContain("payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')");
     expect(calls[1].sql).toContain("invoice_status = CASE");
     expect(calls[1].sql).toContain("THEN 'pending'");
   });
@@ -76,6 +76,8 @@ describe("database-level payment and invoice guards", () => {
     expect(calls[0].sql).toContain("payment_status = 'paid'");
     expect(calls[0].sql).toContain("billing_source = 'checkout'");
     expect(calls[0].sql).toContain("invoice_retry_count < 5");
+    // Invoices follow fulfillment so a failed, refunded order never needs a storno.
+    expect(calls[0].sql).toContain("generated_at IS NOT NULL");
     expect(calls[0].sql).toContain("invoice_status = 'pending'");
   });
 

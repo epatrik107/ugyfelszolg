@@ -7,7 +7,7 @@ export function TurnstileField({
   action,
 }: {
   onSuccess: (token: string) => void;
-  action: "checkout" | "contact";
+  action: "checkout" | "contact" | "access_link";
 }) {
   const [failed, setFailed] = useState(false);
 

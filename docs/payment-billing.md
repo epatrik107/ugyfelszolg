@@ -28,7 +28,7 @@
 
 ## Számlázási flow
 
-- Sikeres fizetéskor az order `invoice_status=pending` lesz; az aktiválás ettől függetlenül elindul.
+- Sikeres fizetéskor az order `invoice_status=pending` lesz, de a számla csak a teljesítés (`generated_at`) után készül el. Ha a levél végleg nem készülhet el és teljes refund történik, a számla `not_required` lesz, így sztornó sem kell.
 - A számlázási worker atomikusan `processing` állapotot foglal. Párhuzamos webhook csak az egyik hívást engedi a providerhez.
 - A Számla Agent kérés hivatalos `action-xmlagentxmlfile` multipart mezőt és aktuális XSD-sorrendet használ.
 - Magánszemély vevőnél `<adoalany>-1</adoalany>` kerül a payloadba; céges vevőnél a validált magyar `<adoszam>` kerül átadásra. `<adoszamEU>` nincs támogatva.
@@ -38,14 +38,14 @@
 - Retry-olható hiba `retry_required`, legfeljebb 5 próbálkozás, 5/30/120/720 perces backoff. Validáció/auth hiba `failed`, kézi javítást igényel.
 - Az ütemezett Worker feldolgozza a due és stale invoice állapotokat. A fizetés közben végig `paid` marad.
 - A Számlázz.hu vevői fiók/PDF linkje, ha érkezik, D1-be kerül; live módban a Számlázz.hu küldi ki az e-számlát a validált számlázási emailre. Teszt/sandbox módban a Számlázz.hu emailküldés kényszerítetten tiltott.
-- Admin API-n keresztül lekérdezhető a számla státusza, retry-zhető a sikertelen számlakészítés és retry-zhető a sikertelen számlaemail küldés. Az admin endpointok `ADMIN_API_TOKEN` bearer tokennel védettek.
+- Productionben a számla újrapróbálása és a sztornó rögzítése a GitHub `Operator action` workflow-val történik (lásd `docs/operations-runbook.md`); a bearer tokenes admin API csak sandboxban engedélyezhető.
 - `PAYMENT_MODE=test` esetén a Számlázz.hu vevői email küldése kényszerítetten ki van kapcsolva, és `SZAMLAZZ_TEST_ACCOUNT_CONFIRMED=true` szükséges.
 
 ## Refund szabály
 
 - Teljes és részleges refund külön payment státuszt kap.
 - Chargeback/dispute eseménynél a rendelés `chargeback_open`, `chargeback_lost` vagy `chargeback_won` státuszt kap, és az esemény a `payment_disputes` audit táblába kerül.
-- Ha már készült számla, `refund_invoice_status=manual_required` lesz és monitoring esemény készül.
+- Ha már készült számla, `refund_invoice_status=manual_required` lesz, és az üzemeltetői riasztás addig ismétlődik, amíg a sztornót a `mark_storno_done` operátori művelettel rögzítik.
 - Automatikus sztornó/helyesbítő számla nincs engedélyezve, amíg a pénzügyi/jogi szabály (teljes vs. részleges refund, teljesítési állapot) nincs jóváhagyva. Productionben ezt adminnak kell rendeznie Számlázz.hu-ban.
 
 ## Production előtti checklist

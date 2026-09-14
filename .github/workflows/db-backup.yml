@@ -1,0 +1,89 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Environment"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - sandbox
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup-${{ inputs.target_environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target_environment || 'production' }}
+    timeout-minutes: 15
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'production' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+      D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+      BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Require the encryption key for production
+        run: |
+          if [ "$TARGET_ENVIRONMENT" = "production" ] && [ -z "$BACKUP_ENCRYPTION_PASSPHRASE" ]; then
+            echo "BACKUP_ENCRYPTION_PASSPHRASE is not configured in the production environment; refusing to export customer data unencrypted."
+            exit 1
+          fi
+      - name: Export database
+        run: |
+          umask 077
+          mkdir -p /tmp/backup
+          node scripts/count-d1-tables.mjs /tmp/backup/expected-counts.json
+          cat > /tmp/backup/wrangler.toml <<TOML
+          name = "backup-export"
+          compatibility_date = "2026-05-18"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${D1_DATABASE_NAME}"
+          database_id = "${CLOUDFLARE_D1_DATABASE_ID}"
+          TOML
+          npx wrangler d1 export "$D1_DATABASE_NAME" --remote --output /tmp/backup/backup.sql --config /tmp/backup/wrangler.toml
+      - name: Restore drill
+        run: node scripts/verify-d1-backup.mjs /tmp/backup/backup.sql /tmp/backup/expected-counts.json
+      - name: Encrypt
+        if: ${{ env.BACKUP_ENCRYPTION_PASSPHRASE != '' }}
+        run: |
+          umask 077
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          gzip -9 /tmp/backup/backup.sql
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in /tmp/backup/backup.sql.gz \
+            -out "/tmp/backup/d1-${TARGET_ENVIRONMENT}-${stamp}.sql.gz.enc" -pass env:BACKUP_ENCRYPTION_PASSPHRASE
+          (cd /tmp/backup && sha256sum d1-*.enc > SHA256SUMS)
+          rm -f /tmp/backup/backup.sql.gz /tmp/backup/wrangler.toml
+          echo "Restore: openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in <file> -pass env:BACKUP_ENCRYPTION_PASSPHRASE | gunzip > backup.sql"
+      - name: Upload encrypted backup
+        if: ${{ env.BACKUP_ENCRYPTION_PASSPHRASE != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ env.TARGET_ENVIRONMENT }}-${{ github.run_id }}
+          path: |
+            /tmp/backup/*.enc
+            /tmp/backup/SHA256SUMS
+          retention-days: 35
+          if-no-files-found: error
+      - name: Remove plaintext
+        if: always()
+        run: rm -rf /tmp/backup

@@ -1,5 +1,6 @@
 import type { Context } from "hono";
-import { insertContactMessage } from "../lib/db";
+import { insertContactMessageStatement } from "../lib/db";
+import { enqueueEmailStatement } from "../lib/outbox";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import { verifyTurnstileToken } from "../lib/turnstile";
@@ -32,11 +33,22 @@ export async function contactRoute(c: Context<{ Bindings: Env }>) {
     return errorJson(c, "TURNSTILE_FAILED", "A spamvédelem ellenőrzése sikertelen.", 400);
   }
 
-  await insertContactMessage(c.env, {
+  const message = {
+    id: crypto.randomUUID(),
     name: input.name,
     email: input.email.toLowerCase(),
     message: input.message,
-  });
+    createdAt: new Date().toISOString(),
+  };
+  // Stored and queued atomically so a support request can never be silently unread.
+  await c.env.DB.batch([
+    insertContactMessageStatement(c.env, message),
+    enqueueEmailStatement(c.env, {
+      kind: "contact_notification",
+      dedupeKey: `contact:${message.id}`,
+      payload: { name: message.name, email: message.email, message: message.message, receivedAt: message.createdAt },
+    }),
+  ]);
 
   return okJson(c, {});
 }

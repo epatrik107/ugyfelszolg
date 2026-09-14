@@ -85,7 +85,6 @@ describe("reviewLetterWithRules — unsafe promise blockers", () => {
     "kötelezően meg kell téríteni",
     "bírságot fog kapni",
     "bírságot kapnak",
-    "hatóságnak jelent",
     "GDPR szerint bírság",
     "feljelentést tesz",
     "feljelentést teszek",
@@ -111,6 +110,8 @@ describe("reviewLetterWithRules — aggressive warning patterns", () => {
     "nyilvánosságra hozom",
     "sajtónak adom",
     "ügyvédet fogad",
+    "hatóságnak jelent",
+    "hatósághoz fordulok",
   ];
 
   for (const phrase of warningPhrases) {
@@ -124,6 +125,16 @@ describe("reviewLetterWithRules — aggressive warning patterns", () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
   }
+});
+
+describe("reviewLetterWithRules — ordinary complaint wording", () => {
+  it("does not block naming a suspected violation or a consumer authority", () => {
+    const letter = SAFE_LETTER +
+      "\n\nA késedelmes szállítás véleményem szerint fogyasztói jogsértés. Ellenkező esetben a fogyasztóvédelmi hatósághoz fordulok.";
+    const result = reviewLetterWithRules(letter);
+    expect(result.blockers).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("reviewLetterWithRules — combined blocker + warning", () => {

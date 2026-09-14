@@ -9,8 +9,11 @@ import {
   getRemainingRegenerations,
 } from "../lib/regeneration";
 import {
+  loadResultToken,
+  pruneResultTokens,
   readResultCapabilityToken,
   removeResultCapabilityFromBrowserUrl,
+  saveResultToken,
 } from "../lib/resultCapability";
 import type { OrderResult } from "../lib/types";
 
@@ -68,9 +71,8 @@ export function SuccessPage() {
     () => readResultCapabilityToken(searchParams, window.location.hash),
     [searchParams],
   );
-  const storageKey = useMemo(() => `result-token:${publicId}`, [publicId]);
   const [token, setToken] = useState<string | null>(
-    incomingToken || sessionStorage.getItem(storageKey),
+    () => incomingToken || (publicId ? loadResultToken(publicId) : null),
   );
   const [result, setResult] = useState<OrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,15 +86,20 @@ export function SuccessPage() {
   const intervalRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (incomingToken) {
-      sessionStorage.setItem(storageKey, incomingToken);
+    pruneResultTokens();
+    if (incomingToken && publicId) {
+      saveResultToken(publicId, incomingToken);
       setToken(incomingToken);
       removeResultCapabilityFromBrowserUrl();
     }
-  }, [incomingToken, storageKey]);
+  }, [incomingToken, publicId]);
 
-  const MAX_POLL_ATTEMPTS = 60; // Under 120 requests/10 min, with backoff and no overlapping fetches
+  // Fast polling first, then once a minute while the server retries a provider
+  // outage (up to about an hour). Stays far below 120 requests / 10 minutes.
+  const FAST_POLL_ATTEMPTS = 60;
+  const MAX_POLL_ATTEMPTS = 150;
   const pollCountRef = useRef(0);
+  const [slowPolling, setSlowPolling] = useState(false);
 
   useEffect(() => {
     if (!publicId || !token) {
@@ -125,13 +132,16 @@ export function SuccessPage() {
           payload.paymentStatus === "chargeback_won";
         if (isTerminal || pollCountRef.current >= MAX_POLL_ATTEMPTS) {
           window.clearTimeout(intervalRef.current);
+          setSlowPolling(false);
           if (!isTerminal && pollCountRef.current >= MAX_POLL_ATTEMPTS) {
             setError(
-              "A generálás a vártnál hosszabb ideig tart. Töltse újra az oldalt néhány perc múlva, vagy vegye fel velünk a kapcsolatot.",
+              "A generálás a vártnál hosszabb ideig tart. Töltse újra az oldalt később, vagy vegye fel velünk a kapcsolatot. A rendelés linkjét emailben is elküldtük.",
             );
           }
         } else {
-          intervalRef.current = window.setTimeout(poll, Math.min(4000 + pollCountRef.current * 1000, 15000));
+          const slow = pollCountRef.current >= FAST_POLL_ATTEMPTS;
+          setSlowPolling(slow);
+          intervalRef.current = window.setTimeout(poll, slow ? 60000 : Math.min(4000 + pollCountRef.current * 1000, 15000));
         }
       } catch (pollError) {
         if (active) {
@@ -223,6 +233,11 @@ export function SuccessPage() {
     result?.refundStatus === "failed" ||
     result?.refundStatus === "canceled" ||
     result?.refundStatus === "requires_action";
+  const refundInManualReview = result?.refundStatus === "manual_review";
+  if (result?.paymentStatus === "paid" && result.aiStatus === "generating" && result.generationRetryScheduled) {
+    statusMessage =
+      "A levélgeneráló szolgáltatás átmenetileg túlterhelt, ezért automatikusan újrapróbáljuk. Nem kell újra fizetnie; ha a levél nagyjából egy órán belül sem készül el, a teljes összeget automatikusan visszatérítjük.";
+  }
   const refundInProgress =
     result?.refundStatus === "pending" || result?.refundStatus === "unknown";
   if (result?.aiStatus === "failed_review") {
@@ -238,6 +253,9 @@ export function SuccessPage() {
   }
   if (refundNeedsManualFollowup) {
     statusMessage += " Az automatikus visszatérítés nem zárult le; kérjük, vegye fel velünk a kapcsolatot.";
+  }
+  if (refundInManualReview) {
+    statusMessage += " A visszatérítést munkatársunk ellenőrzi és rendezi, erről értesítést kaptunk. Nem kell újra fizetnie.";
   }
   if (result?.refundStatus === "succeeded" && result.paymentStatus !== "refunded") {
     statusMessage += " A részleges visszatérítést a Stripe visszaigazolta.";
@@ -281,7 +299,8 @@ export function SuccessPage() {
 
       {!publicId || !token ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-700">
-          A levél megnyitásához használja a visszaigazoló emailben kapott teljes hivatkozást. Ha nem találja, kérjen segítséget a Kapcsolat oldalon.
+          A levél megnyitásához használja a rendelés visszaigazoló emailjében kapott linket.
+          Ha nem találja, <Link className="underline" to="/rendeles-link">kérjen új linket</Link> a rendeléskor megadott email-címére.
         </div>
       ) : isRefunded ? (
         <div className="space-y-4">
@@ -384,7 +403,11 @@ export function SuccessPage() {
           {/* Regeneration section */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
             <p className="text-sm font-medium text-slate-700">Módosítsuk a levél megfogalmazását?</p>
-            {remainingRegenerations > 0 ? (
+            {remainingRegenerations > 0 && result.regenerationRequestsExhausted ? (
+              <p className="text-sm text-slate-600">
+                Ennél a rendelésnél túl sok sikertelen módosítási kísérlet történt. A kézi szerkesztést továbbra is használhatja, vagy <Link className="underline" to="/kapcsolat">írjon nekünk</Link>.
+              </p>
+            ) : remainingRegenerations > 0 ? (
               <>
                 <p className="text-sm text-slate-600">{regenerationMessage}</p>
                 <p className="text-sm text-slate-600">Minden alábbi gomb 1 AI-módosítást indít a legújabb mentett levélből. Sikertelen próbálkozáskor a keret visszaáll.</p>
@@ -448,7 +471,8 @@ export function SuccessPage() {
                 </Link>
               </div>
             )}
-            {!isError && !paymentStopped && !hasChargebackIssue && !error && <p className="mt-3 text-sm text-slate-600">Az állapot automatikusan frissül. A feldolgozás több percig is eltarthat; nem kell újra fizetnie.</p>}
+            {!isError && !paymentStopped && !hasChargebackIssue && !error && <p className="mt-3 text-sm text-slate-600">Az állapot automatikusan frissül{slowPolling ? " (percenként)" : ""}. A feldolgozás több percig is eltarthat; nem kell újra fizetnie.</p>}
+            {result?.paymentStatus === "paid" && <p className="mt-3 text-sm text-slate-600">A rendelés linkjét emailben is elküldtük, így az oldal bezárása után is visszatérhet ide.</p>}
             {pollCountRef.current >= 12 && <p className="mt-3 text-sm text-amber-800">Még nincs kész eredmény. Ha segítségre van szüksége, <Link to="/kapcsolat" className="underline">írjon nekünk</Link> a rendelés azonosítójával: <strong className="break-all">{publicId}</strong>.</p>}
             {error && (
               <div className="mt-3 space-y-2">

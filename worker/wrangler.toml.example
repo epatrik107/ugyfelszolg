@@ -32,6 +32,8 @@ EMAIL_FROM = "Levélsegéd <noreply@levelseged.hu>"
 DEMO_MODE = "true"
 PAYMENTS_ENABLED = "false"
 PAYMENT_MODE = "test"
+OPERATOR_EMAIL = ""
+GENERATION_BATCH_SIZE = "4"
 
 # Add these as secrets in payment environments:
 # - SZAMLAZZ_AGENT_KEY: Számlázz.hu Agent key

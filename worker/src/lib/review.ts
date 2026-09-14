@@ -17,10 +17,11 @@ const blockerPatterns: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /pénzügyi tanács/i, label: "Pénzügyi tanácsadás." },
   // Expanded blocker patterns
   { pattern: /bűncselekményt követ(ett)? el/i, label: "Konkrét bűncselekmény-minősítés." },
-  { pattern: /jogsértés(t követ(ett)? el)?/i, label: "Konkrét jogsértés-megállapítás." },
+  // Naming a suspected violation is normal in a complaint; asserting that the
+  // recipient committed one is a legal finding.
+  { pattern: /jogsértést követ(ett|nek|tek)? el/i, label: "Konkrét jogsértés-megállapítás." },
   { pattern: /kötelező(en)? meg kell téríten/i, label: "Kötelező kártérítés állítása." },
   { pattern: /bírságot (fog |kap|kapnak|fizetnek)/i, label: "Bírság biztos bekövetkezése." },
-  { pattern: /hatóság(hoz fordul|nak jelent)/i, label: "Hatósági feljelentés jogi tanácsként." },
   { pattern: /GDPR szerint (kötelez|per|bírság)/i, label: "Jogszabályi következmény megállapítása." },
   { pattern: /feljelentést (tesz|teszek|teszünk|fog)/i, label: "Feljelentés jogi tanácsként." },
 ];
@@ -37,6 +38,7 @@ const warningPatterns: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /nyilvánosságra hoz(om|zuk|za)?/i, label: "Nyilvánosságra hozatal fenyegetése." },
   { pattern: /sajtónak (ad(om|juk)|el(mondom|mesélem|mesélj))/i, label: "Sajtóval való fenyegetés." },
   { pattern: /ügyvéd(et fogad|hez fordul|hez megy)/i, label: "Ügyvédi lépés fenyegetésként megfogalmazva." },
+  { pattern: /hatóság(hoz fordul|nak jelent)/i, label: "Hatósági lépés megemlítése." },
 ];
 
 export function reviewLetterWithRules(letter: string): RuleReviewResult {

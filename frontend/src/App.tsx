@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { AccessLinkPage } from "./pages/AccessLinkPage";
 import { CancelPage } from "./pages/CancelPage";
 import { ContactPage } from "./pages/ContactPage";
 import { HomePage } from "./pages/HomePage";
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/arak" element={<PricingPage />} />
           <Route path="/sikeres-fizetes" element={<SuccessPage />} />
           <Route path="/sikertelen-fizetes" element={<CancelPage />} />
+          <Route path="/rendeles-link" element={<AccessLinkPage />} />
           <Route path="/kapcsolat" element={<ContactPage />} />
           <Route path="/aszf" element={<TermsPage />} />
           <Route path="/adatkezeles" element={<PrivacyPage />} />

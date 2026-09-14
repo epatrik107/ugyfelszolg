@@ -3,6 +3,12 @@ import { fromStripeMinorAmount, normalizeStripeRefundStatus } from "./stripe";
 import type { Env, OrderRow, OrderStatusChangeSource } from "./types";
 import type { StripeRefund } from "./stripe";
 
+export const REFUND_REASON_MESSAGES: Record<string, string> = {
+  generation_failed: "A levélgeneráló szolgáltatás technikai hibája miatt a rendelést nem tudtuk teljesíteni.",
+  amount_mismatch: "A fizetett összeg nem egyezett a rendelés összegével, ezért a fizetést visszatérítettük.",
+  currency_mismatch: "A fizetés pénzneme nem egyezett a rendelésével, ezért a fizetést visszatérítettük.",
+};
+
 export async function reconcileStripeRefund(
   env: Env,
   order: OrderRow,

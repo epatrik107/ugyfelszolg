@@ -91,6 +91,13 @@ export function sendLetterByEmail(publicId: string, token: string, versionIndex?
   );
 }
 
+export function requestOrderAccessLink(values: { email: string; turnstileToken: string }) {
+  return request<{ message: string }>("/api/orders/access-link", {
+    method: "POST",
+    body: JSON.stringify(values),
+  });
+}
+
 export function sendContactMessage(values: {
   name: string;
   email: string;

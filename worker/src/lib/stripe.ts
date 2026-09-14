@@ -222,6 +222,33 @@ export async function retrieveRefund(env: Env, refundId: string) {
   return stripeRequest<StripeRefund>(env, `/refunds/${encodeURIComponent(refundId)}`);
 }
 
+export interface StripeDispute {
+  id: string;
+  charge: string | null;
+  payment_intent: string | null;
+  amount: number;
+  currency: string;
+  reason: string | null;
+  status: string;
+  metadata?: Record<string, string>;
+}
+
+export async function retrieveDispute(env: Env, disputeId: string) {
+  if (!disputeId.startsWith("dp_") && !disputeId.startsWith("du_")) {
+    throw new Error("INVALID_STRIPE_DISPUTE_ID");
+  }
+  return stripeRequest<StripeDispute>(env, `/disputes/${encodeURIComponent(disputeId)}`);
+}
+
+export async function listRefundsForPaymentIntent(env: Env, paymentIntentId: string) {
+  if (!paymentIntentId.startsWith("pi_")) {
+    throw new Error("INVALID_STRIPE_PAYMENT_INTENT_ID");
+  }
+  const params = new URLSearchParams({ payment_intent: paymentIntentId, limit: "10" });
+  const response = await stripeRequest<{ data: StripeRefund[] }>(env, `/refunds?${params}`);
+  return response.data;
+}
+
 function parseStripeSignature(signatureHeader: string) {
   const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);

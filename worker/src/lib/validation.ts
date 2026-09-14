@@ -90,6 +90,11 @@ export const accessLinkSchema = z.object({
   turnstileToken: trimmed(1, 2048),
 });
 
+export const orderAccessLinkSchema = z.object({
+  email: z.string().trim().email().max(254),
+  turnstileToken: trimmed(1, 2048),
+}).strict();
+
 export const exchangeMagicLinkSchema = z.object({
   token: trimmed(20, 512),
 });

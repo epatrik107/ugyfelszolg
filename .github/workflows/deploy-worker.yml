@@ -91,6 +91,8 @@ jobs:
           const sellerName = (process.env.SELLER_NAME || "").trim();
           const sellerAddress = (process.env.SELLER_ADDRESS || "").trim();
           const sellerTaxNumber = (process.env.SELLER_TAX_NUMBER || "").trim();
+          const operatorEmail = (process.env.OPERATOR_EMAIL || "").trim();
+          const generationBatchSize = (process.env.GENERATION_BATCH_SIZE || "").trim();
           const d1DatabaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const kvNamespaceIdPattern = /^[0-9a-f]{32}$/i;
           const isPlaceholder = (value) => {
@@ -158,6 +160,14 @@ jobs:
             errors.push("API_HEALTH_URL must be a valid HTTPS URL.");
           }
           if (!allowedOrigins) errors.push("ALLOWED_ORIGINS is required.");
+          const operatorAt = operatorEmail.indexOf("@");
+          const operatorDomain = operatorEmail.slice(operatorAt + 1);
+          if (operatorEmail && (operatorAt <= 0 || operatorAt !== operatorEmail.lastIndexOf("@") || /[\s<>]/.test(operatorEmail) || operatorDomain.lastIndexOf(".") <= 0 || operatorDomain.endsWith("."))) {
+            errors.push("OPERATOR_EMAIL must be a plain email address.");
+          }
+          if (generationBatchSize && !/^[1-8]$/.test(generationBatchSize)) {
+            errors.push("GENERATION_BATCH_SIZE must be an integer from 1 to 8.");
+          }
           if (!siteUrl) errors.push("SITE_URL is required.");
 
           if (deployEnv === "sandbox") {
@@ -204,6 +214,7 @@ jobs:
             if (parsedApiHealthUrl?.hostname.toLowerCase().endsWith(".workers.dev")) {
               errors.push("Production API_HEALTH_URL must use the custom API domain, not workers.dev.");
             }
+            if (!operatorEmail) errors.push("Production OPERATOR_EMAIL is required for alerts and contact notifications.");
             if (!sellerName) errors.push("Production SELLER_NAME is required.");
             if (!sellerAddress) errors.push("Production SELLER_ADDRESS is required.");
             if (!sellerTaxNumber) errors.push("Production SELLER_TAX_NUMBER is required.");
@@ -251,6 +262,8 @@ jobs:
           SELLER_NAME: ${{ vars.SELLER_NAME }}
           SELLER_ADDRESS: ${{ vars.SELLER_ADDRESS }}
           SELLER_TAX_NUMBER: ${{ vars.SELLER_TAX_NUMBER }}
+          OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
+          GENERATION_BATCH_SIZE: ${{ vars.GENERATION_BATCH_SIZE }}
       - name: Create Worker config
         env:
           D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
@@ -270,6 +283,8 @@ jobs:
           LEGAL_TERMS_VERSION: ${{ vars.LEGAL_TERMS_VERSION }}
           PRIVACY_POLICY_VERSION: ${{ vars.PRIVACY_POLICY_VERSION }}
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
+          OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
+          GENERATION_BATCH_SIZE: ${{ vars.GENERATION_BATCH_SIZE }}
         run: |
           node <<'NODE'
           const fs = require("fs");
@@ -286,7 +301,8 @@ jobs:
           const defaultSellerAddress = deployEnv === "production" ? "" : "Test";
           const defaultSellerTaxNumber = deployEnv === "production" ? "" : "00000XXXXXX";
           const workersDev = deployEnv !== "production";
-          const observabilitySamplingRate = deployEnv === "production" ? "0.1" : "1";
+          // Payment, refund and alert events are rare but must never be sampled away.
+          const observabilitySamplingRate = "1";
 
           const config = `name = ${tomlString(value("WORKER_NAME", "ugyfelkozpont-api"))}
           main = "src/index.ts"
@@ -328,6 +344,8 @@ jobs:
           SELLER_NAME = ${tomlString(value("SELLER_NAME", defaultSellerName))}
           SELLER_ADDRESS = ${tomlString(value("SELLER_ADDRESS", defaultSellerAddress))}
           SELLER_TAX_NUMBER = ${tomlString(value("SELLER_TAX_NUMBER", defaultSellerTaxNumber))}
+          OPERATOR_EMAIL = ${tomlString(value("OPERATOR_EMAIL", ""))}
+          GENERATION_BATCH_SIZE = ${tomlString(value("GENERATION_BATCH_SIZE", "4"))}
 
           [triggers]
           crons = [ "* * * * *" ]
@@ -512,6 +530,19 @@ jobs:
       - name: Fail deployment after rollback
         if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure') }}
         run: exit 1
+      - name: Verify scheduler heartbeat, alert delivery and Stripe webhook configuration
+        if: ${{ success() }}
+        timeout-minutes: 6
+        run: |
+          # The first scheduled run of this revision records the heartbeat.
+          sleep 90
+          node scripts/ops-watch.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+          STRIPE_SECRET_KEY: ${{ inputs.target_environment == 'production' && secrets.STRIPE_SECRET_KEY || '' }}
       - name: Exercise scheduled sandbox generation and regeneration
         if: ${{ inputs.target_environment == 'sandbox' && success() }}
         timeout-minutes: 35

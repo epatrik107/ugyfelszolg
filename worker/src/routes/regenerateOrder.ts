@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { beginRegeneration, getOrderByPublicId } from "../lib/db";
+import { beginRegeneration, getOrderByPublicId, regenerationRequestCap } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { canRequestRegeneration } from "../lib/orderState";
@@ -54,7 +54,18 @@ export async function regenerateOrderRoute(c: Context<{ Bindings: Env }>) {
     );
   }
 
-  const started = await beginRegeneration(c.env, order.id, getPackage(order.selected_package).capabilities.maxRegenerations, feedback);
+  const maxRegenerations = getPackage(order.selected_package).capabilities.maxRegenerations;
+  if ((order.regeneration_request_count ?? 0) >= regenerationRequestCap(maxRegenerations)) {
+    logEvent("regeneration_request_cap_reached", { orderId: order.id });
+    return errorJson(
+      c,
+      "REGENERATION_LIMIT",
+      "Túl sok sikertelen módosítási kísérlet történt ennél a rendelésnél. A levelet kézzel szerkesztheti, vagy írjon nekünk.",
+      409,
+    );
+  }
+
+  const started = await beginRegeneration(c.env, order.id, maxRegenerations, feedback);
   if (!started) {
     return errorJson(c, "CONFLICT", "A módosítás elindítása nem sikerült. Kérjük, próbálja újra.", 409);
   }

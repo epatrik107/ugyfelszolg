@@ -63,6 +63,17 @@ function emailFromDomain(value: string) {
   return address.slice(separator + 1).toLowerCase();
 }
 
+/** Linear-time structural check; avoids backtracking regexes on configuration input. */
+export function isPlainEmailAddress(value: string) {
+  const trimmed = value.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0 || at !== trimmed.lastIndexOf("@") || trimmed.length > 254) return false;
+  if (/[\s<>]/u.test(trimmed)) return false;
+  const domain = trimmed.slice(at + 1);
+  const dot = domain.lastIndexOf(".");
+  return dot > 0 && dot < domain.length - 1;
+}
+
 function allowedOrigins(env: Env) {
   return String(env.ALLOWED_ORIGINS ?? "")
     .split(",")
@@ -181,6 +192,10 @@ export function validateEnv(env: Env): EnvValidationResult {
     missing.push(...validatePaymentMode(env));
 
     if (env.PAYMENT_MODE === "live") {
+      missing.push(...missingKeys(env, ["OPERATOR_EMAIL"]));
+      if (hasValue(env.OPERATOR_EMAIL) && !isPlainEmailAddress(String(env.OPERATOR_EMAIL))) {
+        missing.push("OPERATOR_EMAIL_INVALID");
+      }
       if (isAdminApiEnabled(env)) {
         missing.push("ADMIN_API_NOT_ALLOWED_IN_LIVE_MODE");
       }

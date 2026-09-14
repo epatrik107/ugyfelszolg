@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/lib/db", () => ({
+  regenerationRequestCap: (max: number) => max + 5,
   beginRegeneration: mocks.beginRegeneration,
   getOrderByPublicId: mocks.getOrderByPublicId,
 }));

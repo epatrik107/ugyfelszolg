@@ -34,6 +34,7 @@ describe("durable generation and financial recovery", () => {
   });
 
   it("recovers paid orders even if the HTTP handler stopped before queue activation; claims once", async () => {
+    vi.stubGlobal("setTimeout", (fn: () => void) => { fn(); return 0; });
     const { env, sqlite, addOrder } = sqliteEnv();
     addOrder("queued", { payment_status: "paid", ai_status: "not_started" });
     let release!: (response: Response) => void;
@@ -45,9 +46,15 @@ describe("durable generation and financial recovery", () => {
     await called;
     expect(await processGenerationJobs(env)).toBe(0);
     release(new Response("{}", { status: 503 }));
+    fetchMock.mockImplementation(async () => new Response("{}", { status: 503 }));
     expect(await first).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect((await getOrderById(env, "queued"))?.ai_status).toBe("failed");
+    // Two in-run retries, then the claim is released for a later scheduled run.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const deferred = (await getOrderById(env, "queued"))!;
+    expect(deferred.ai_status).toBe("generating");
+    expect(deferred.generation_claimed_at).toBeNull();
+    expect(deferred.generation_retry_count).toBe(1);
+    expect(deferred.refund_requested_at).toBeNull();
     sqlite.close();
   });
 
@@ -125,8 +132,10 @@ describe("durable generation and financial recovery", () => {
 
   it("recovers pending invoices and enforces retry dates", async () => {
     const { env, sqlite, addOrder } = sqliteEnv();
-    addOrder("invoice", { payment_status: "paid", invoice_status: "pending" });
-    addOrder("later", { payment_status: "paid", invoice_status: "retry_required", invoice_next_retry_at: new Date(Date.now() + 60000).toISOString() });
+    const generatedAt = new Date().toISOString();
+    addOrder("invoice", { payment_status: "paid", invoice_status: "pending", generated_at: generatedAt });
+    addOrder("later", { payment_status: "paid", invoice_status: "retry_required", generated_at: generatedAt, invoice_next_retry_at: new Date(Date.now() + 60000).toISOString() });
+    addOrder("unfulfilled", { payment_status: "paid", invoice_status: "pending", generated_at: null });
     expect((await getInvoiceRetryCandidates(env)).map((o) => o.id)).toEqual(["invoice"]);
     sqlite.close();
   });

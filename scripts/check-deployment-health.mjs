@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 
+export const EXPECTED_SCHEMA_VERSION = 14;
+
 const REQUIRED_SECURITY_HEADERS = [
   "content-security-policy",
   "referrer-policy",
@@ -50,7 +52,7 @@ export async function checkDeploymentHealth({
       );
 
       if (response.status === 200 && payload?.status === "ok" && missingHeaders.length === 0 &&
-          (!expectedRevision || (payload?.revision === expectedRevision && payload?.schemaVersion === 13))) {
+          (!expectedRevision || (payload?.revision === expectedRevision && payload?.schemaVersion === EXPECTED_SCHEMA_VERSION))) {
         return { ok: true, attempt };
       }
       lastFailure = `status=${response.status}, health=${payload?.status ?? "invalid"}, revision=${payload?.revision ?? "missing"}, schema=${payload?.schemaVersion ?? "missing"}, missingHeaders=${missingHeaders.join(",") || "none"}`;

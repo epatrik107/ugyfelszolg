@@ -1,15 +1,19 @@
 import { generateLetterForPaidOrder } from "./ai";
 import { failGeneration } from "./db";
-import { sendRefundEmail } from "./email";
-import { getInvoiceByOrderId } from "./invoice";
 import { logEvent } from "./logger";
-import { reconcileStripeRefund } from "./refund";
+import { enqueueEmail } from "./outbox";
+import { REFUND_REASON_MESSAGES, reconcileStripeRefund } from "./refund";
 import { createRefund, retrieveRefund } from "./stripe";
 import type { Env, OrderRow } from "./types";
 
 // Scheduled handlers have a 15-minute wall-time budget. A longer claim lease
 // prevents a replacement execution overlapping a still-running predecessor.
 const LEASE_MS = 20 * 60_000;
+
+export function generationBatchSize(env: Env) {
+  const configured = Number.parseInt(env.GENERATION_BATCH_SIZE ?? "", 10);
+  return Number.isInteger(configured) && configured >= 1 && configured <= 8 ? configured : 4;
+}
 
 export async function processGenerationJobs(env: Env) {
   const now = new Date().toISOString();
@@ -25,10 +29,11 @@ export async function processGenerationJobs(env: Env) {
        SELECT id FROM orders WHERE payment_status IN ('paid', 'partially_refunded')
          AND (ai_status = 'generating' OR (ai_status = 'not_started' AND generation_count = 0))
          AND (generation_claimed_at IS NULL OR generation_claimed_at < ?)
+         AND (generation_next_attempt_at IS NULL OR generation_next_attempt_at <= ?)
          AND personal_data_redacted_at IS NULL AND created_at >= ?
-       ORDER BY COALESCE(generation_claimed_at, updated_at) LIMIT 4
+       ORDER BY COALESCE(generation_next_attempt_at, generation_claimed_at, updated_at) LIMIT ?
      ) RETURNING *`,
-  ).bind(now, runId, now, expiredLease, cutoff).all<OrderRow>();
+  ).bind(now, runId, now, expiredLease, now, cutoff, generationBatchSize(env)).all<OrderRow>();
   await Promise.all(claimed.results.map(async (order) => {
     try {
       if ((order.generation_attempts ?? 0) > 3) {
@@ -51,10 +56,13 @@ export async function processRefundJobs(env: Env) {
     `UPDATE orders SET refund_claimed_at = ?, refund_attempt_count = refund_attempt_count + 1
      WHERE id IN (
        SELECT id FROM orders WHERE refund_requested_at IS NOT NULL
-         AND refund_manual_required = 0 AND payment_status = 'paid'
-         AND ai_status IN ('failed', 'failed_review') AND generated_letter IS NULL
-         AND generation_count <= 1 AND billing_source = 'checkout'
+         AND refund_manual_required = 0 AND billing_source = 'checkout'
          AND stripe_payment_intent_id IS NOT NULL
+         AND (
+           (payment_status = 'paid' AND ai_status IN ('failed', 'failed_review')
+             AND generated_letter IS NULL AND generation_count <= 1)
+           OR payment_status IN ('amount_mismatch', 'currency_mismatch')
+         )
          AND (refund_next_attempt_at IS NULL OR refund_next_attempt_at <= ?)
          AND (refund_claimed_at IS NULL OR refund_claimed_at < ?)
        ORDER BY refund_requested_at LIMIT 10
@@ -81,9 +89,13 @@ export async function processRefundJobs(env: Env) {
         await env.DB.prepare("UPDATE orders SET refund_claimed_at = NULL, refund_next_attempt_at = NULL WHERE id = ?")
           .bind(order.id).run();
         if (result.paymentStatusChanged && result.paymentStatus === "refunded") {
-          const invoice = await getInvoiceByOrderId(env, order.id);
-          await sendRefundEmail(env, order, invoice?.invoice_number ?? null,
-            "A levélgeneráló szolgáltatás technikai hibája miatt a rendelést nem tudtuk teljesíteni.");
+          // Durable and retried independently: an email outage must not hide a settled refund.
+          await enqueueEmail(env, {
+            kind: "refund_notice",
+            dedupeKey: `refund-notice:${order.id}`,
+            orderId: order.id,
+            payload: { reason: REFUND_REASON_MESSAGES[order.refund_reason ?? "generation_failed"] ?? REFUND_REASON_MESSAGES.generation_failed },
+          });
         }
       } else if (result.status === "pending") {
         await scheduleRefundRetry(env, order, 5);
