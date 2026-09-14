@@ -34,8 +34,17 @@ export function checkStripeWebhookEndpoints(endpoints, expectedUrl) {
   return problems;
 }
 
-export function evaluateOpsState({ now, heartbeatAt, undeliveredAlerts, oldFailedWebhooks }) {
+export function evaluateOpsState({ now, heartbeatAt, heartbeatDetail = null, undeliveredAlerts, oldFailedWebhooks }) {
   const problems = [];
+  let failures = [];
+  try {
+    failures = JSON.parse(heartbeatDetail ?? "{}").failures ?? [];
+  } catch {
+    failures = [];
+  }
+  if (Array.isArray(failures) && failures.length > 0) {
+    problems.push(`The last scheduled run had failing jobs: ${failures.join(", ")}.`);
+  }
   if (!heartbeatAt) problems.push("The scheduled Worker has never recorded a heartbeat.");
   else if (now - Date.parse(heartbeatAt) > 10 * 60_000) {
     problems.push(`The scheduled Worker has not run since ${heartbeatAt}; generation, refunds, invoices and emails are stalled.`);
@@ -73,7 +82,7 @@ export async function run(env = process.env) {
 
   try {
     const query = d1Client();
-    const [heartbeat] = await query("SELECT last_run_at FROM ops_heartbeat WHERE name = 'scheduled'");
+    const [heartbeat] = await query("SELECT last_run_at, detail FROM ops_heartbeat WHERE name = 'scheduled'");
     const [alerts] = await query(
       `SELECT COUNT(*) AS n FROM email_outbox WHERE kind = 'operator_digest'
        AND (status = 'dead' OR (status IN ('pending', 'sending') AND created_at < ?)) AND created_at > ?`,
@@ -86,6 +95,7 @@ export async function run(env = process.env) {
     problems.push(...evaluateOpsState({
       now,
       heartbeatAt: heartbeat?.last_run_at ?? null,
+      heartbeatDetail: heartbeat?.detail ?? null,
       undeliveredAlerts: Number(alerts?.n ?? 0),
       oldFailedWebhooks: Number(webhooks?.n ?? 0),
     }));

@@ -38,6 +38,7 @@ describe("ops watchdog", () => {
     expect(evaluateOpsState({ now, heartbeatAt: "2026-09-14T11:59:00Z", undeliveredAlerts: 0, oldFailedWebhooks: 0 })).toEqual([]);
     expect(evaluateOpsState({ now, heartbeatAt: "2026-09-14T11:40:00Z", undeliveredAlerts: 1, oldFailedWebhooks: 2 })).toHaveLength(3);
     expect(evaluateOpsState({ now, heartbeatAt: null, undeliveredAlerts: 0, oldFailedWebhooks: 0 })).toHaveLength(1);
+    expect(evaluateOpsState({ now, heartbeatAt: "2026-09-14T11:59:00Z", heartbeatDetail: '{"failures":["email_outbox"]}', undeliveredAlerts: 0, oldFailedWebhooks: 0 })[0]).toContain("email_outbox");
   });
 
   it("requires exactly one enabled Stripe endpoint on the API domain with every handled event", () => {
