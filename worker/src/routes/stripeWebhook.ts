@@ -1,191 +1,85 @@
 import type { Context } from "hono";
+import { completeCheckoutSession } from "../lib/checkoutCompletion";
 import {
-  beginGeneration,
   claimStripeEvent,
   completeStripeEvent,
   failStripeEvent,
   getOrderById,
   getOrderByPaymentIntentId,
   getProcessedStripeEventStatus,
-  markOrderPaid,
   markOrderPaymentStatus,
   upsertPaymentDispute,
 } from "../lib/db";
-import { sendCheckoutExpiredEmail, sendPaymentFailedEmail, sendRefundEmail } from "../lib/email";
-import { getInvoiceByOrderId, processInvoiceForOrder } from "../lib/invoice";
 import { logEvent } from "../lib/logger";
-import { reconcileStripeRefund } from "../lib/refund";
+import { enqueueEmail } from "../lib/outbox";
+import { REFUND_REASON_MESSAGES, reconcileStripeRefund } from "../lib/refund";
 import {
   fromStripeMinorAmount,
-  retrieveCheckoutSession,
+  retrieveDispute,
   retrieveRefund,
   verifyStripeWebhook,
 } from "../lib/stripe";
-import type { Env, OrderRow, PaymentStatus } from "../lib/types";
+import type { Env, PaymentStatus } from "../lib/types";
 
 type WorkerContext = Context<{ Bindings: Env }>;
 
-function runLater(c: WorkerContext, promise: Promise<unknown>, event: string, orderId: string) {
-  c.executionCtx.waitUntil(
-    promise.catch((error) => {
-      logEvent(event, {
-        orderId,
-        errorType: error instanceof Error ? error.name : "unknown",
-      });
-    }),
-  );
-}
+const FULL_REFUND_REASON = "A Stripe visszaigazolta a megrendelés teljes visszatérítését.";
 
-function schedulePaidOrderSideEffects(c: WorkerContext, order: OrderRow) {
-  runLater(
-    c,
-    processInvoiceForOrder(c.env, order.id).then((status) => {
-      logEvent(status === "created" || status === "already_created" ? "invoice_created" : "invoice_pending", {
-        orderId: order.id,
-        invoiceStatus: status,
-      });
-    }),
-    "invoice_processing_error",
-    order.id,
-  );
-}
-
-function scheduleRefundEmail(c: WorkerContext, order: OrderRow, reason: string) {
-  runLater(
-    c,
-    getInvoiceByOrderId(c.env, order.id).then((invoice) =>
-      sendRefundEmail(c.env, order, invoice?.invoice_number ?? null, reason),
-    ),
-    "refund_email_error",
-    order.id,
-  );
-}
-
-export async function handleCheckoutCompleted(c: WorkerContext, sessionId: string) {
-  if (!sessionId || !sessionId.startsWith("cs_")) {
-    logEvent("suspicious_payment_event", { reason: "invalid_session_id" });
-    return;
-  }
-  const session = await retrieveCheckoutSession(c.env, sessionId);
-  const orderId = session.metadata.orderId;
-  if (!orderId) {
-    logEvent("suspicious_payment_event", { reason: "missing_order_metadata" });
-    return;
-  }
-
-  let order = await getOrderById(c.env, orderId);
-  if (!order) {
-    logEvent("suspicious_payment_event", { reason: "unknown_order" });
-    return;
-  }
-
-  if (order.payment_status === "paid") {
-    schedulePaidOrderSideEffects(c, order);
-    await beginGeneration(c.env, order.id);
-    return;
-  }
-  if (["cancelled", "expired", "refunded", "partially_refunded"].includes(order.payment_status)) {
-    logEvent("suspicious_payment_event", { orderId, reason: "terminal_order_state" });
-    return;
-  }
-
-  if (
-    session.mode !== "payment" ||
-    (session.client_reference_id && session.client_reference_id !== order.id) ||
-    session.metadata.selectedPackage !== order.selected_package ||
-    (order.stripe_session_id && order.stripe_session_id !== session.id)
-  ) {
-    logEvent("suspicious_payment_event", { orderId, reason: "checkout_identity_mismatch" });
-    return;
-  }
-
-  if (session.payment_status !== "paid") {
-    logEvent("payment_not_settled", { orderId });
-    return;
-  }
-  if (session.currency?.toLowerCase() !== order.currency.toLowerCase()) {
-    await markOrderPaymentStatus(c.env, order.id, "currency_mismatch", { source: "webhook" });
-    logEvent("currency_mismatch", { orderId });
-    return;
-  }
-  const paidAmount = fromStripeMinorAmount(session.amount_total, session.currency);
-  if (paidAmount !== order.server_calculated_price) {
-    await markOrderPaymentStatus(c.env, order.id, "amount_mismatch", { source: "webhook" });
-    logEvent("amount_mismatch", { orderId });
-    return;
-  }
-  const stripeCustomerEmail = session.customer_details?.email ?? session.customer_email ?? null;
-  if (
-    stripeCustomerEmail &&
-    order.billing_email &&
-    stripeCustomerEmail.toLowerCase() !== order.billing_email.toLowerCase()
-  ) {
-    logEvent("suspicious_payment_event", { orderId, reason: "customer_email_mismatch" });
-    return;
-  }
-
-  const changed = await markOrderPaid(c.env, order.id, {
-    stripeSessionId: session.id,
-    stripePaymentIntentId: session.payment_intent,
-    paidAmount,
-    source: "webhook",
+function enqueueRefundNotice(env: Env, orderId: string, reason = FULL_REFUND_REASON) {
+  return enqueueEmail(env, {
+    kind: "refund_notice",
+    dedupeKey: `refund-notice:${orderId}`,
+    orderId,
+    payload: { reason },
   });
-  order = (await getOrderById(c.env, order.id)) ?? order;
-  if (changed) {
-    logEvent("payment_paid", { orderId: order.id, stripeSessionId: session.id });
-  }
+}
 
-  if (order.payment_status !== "paid") return;
-  schedulePaidOrderSideEffects(c, order);
-
-  await beginGeneration(c.env, order.id);
+export async function handleCheckoutCompleted(c: WorkerContext, sessionId: string, eventId: string | null = null) {
+  return completeCheckoutSession(c.env, sessionId, "webhook", eventId);
 }
 
 async function resolveOrderIdForPaymentIntent(
-  c: WorkerContext,
+  env: Env,
   paymentIntent: { id?: string; metadata?: Record<string, string> },
 ) {
   if (paymentIntent.metadata?.orderId) return paymentIntent.metadata.orderId;
   if (!paymentIntent.id) return null;
-  return (await getOrderByPaymentIntentId(c.env, paymentIntent.id))?.id ?? null;
+  return (await getOrderByPaymentIntentId(env, paymentIntent.id))?.id ?? null;
 }
 
 async function handlePaymentFailure(
-  c: WorkerContext,
+  env: Env,
   paymentIntent: { id?: string; metadata?: Record<string, string> },
 ) {
-  const orderId = await resolveOrderIdForPaymentIntent(c, paymentIntent);
+  const orderId = await resolveOrderIdForPaymentIntent(env, paymentIntent);
   if (!orderId) return;
-  const changed = await markOrderPaymentStatus(c.env, orderId, "failed", { source: "webhook" });
+  const changed = await markOrderPaymentStatus(env, orderId, "failed", { source: "webhook" });
   if (!changed) return;
   logEvent("payment_failed", { orderId });
-  if (c.env.RESEND_API_KEY) {
-    const order = await getOrderById(c.env, orderId);
-    if (order) {
-      runLater(c, sendPaymentFailedEmail(c.env, order), "payment_failed_email_error", orderId);
-    }
-  }
+  // A declined card can be retried in the same Checkout Session; the email is
+  // delayed and skipped if the order is paid by then.
+  await enqueueEmail(env, {
+    kind: "payment_failed",
+    dedupeKey: `payment-failed:${orderId}`,
+    orderId,
+    delayMs: 30 * 60_000,
+  });
 }
 
-async function handleExpired(c: WorkerContext, object: {
+async function handleExpired(env: Env, object: {
   id?: string;
   client_reference_id?: string | null;
   metadata?: Record<string, string>;
 }) {
   const orderId = object.metadata?.orderId ?? object.client_reference_id;
   if (!orderId) return;
-  const changed = await markOrderPaymentStatus(c.env, orderId, "expired", { source: "webhook" });
+  const changed = await markOrderPaymentStatus(env, orderId, "expired", { source: "webhook" });
   if (!changed) return;
   logEvent("checkout_expired", { orderId });
-  if (c.env.RESEND_API_KEY) {
-    const order = await getOrderById(c.env, orderId);
-    if (order) {
-      runLater(c, sendCheckoutExpiredEmail(c.env, order), "checkout_expired_email_error", orderId);
-    }
-  }
+  await enqueueEmail(env, { kind: "checkout_expired", dedupeKey: `checkout-expired:${orderId}`, orderId });
 }
 
-async function handleRefund(c: WorkerContext, charge: {
+async function handleRefund(env: Env, charge: {
   id?: string;
   amount?: number;
   amount_refunded?: number;
@@ -197,7 +91,7 @@ async function handleRefund(c: WorkerContext, charge: {
 }) {
   let orderId = charge.metadata?.orderId ?? null;
   if (!orderId && charge.payment_intent) {
-    orderId = (await getOrderByPaymentIntentId(c.env, charge.payment_intent))?.id ?? null;
+    orderId = (await getOrderByPaymentIntentId(env, charge.payment_intent))?.id ?? null;
   }
   if (!orderId || !charge.amount_refunded || charge.amount_refunded <= 0) return;
   const status: Extract<PaymentStatus, "partially_refunded" | "refunded"> =
@@ -208,31 +102,20 @@ async function handleRefund(c: WorkerContext, charge: {
     ? fromStripeMinorAmount(charge.amount_refunded, charge.currency)
     : charge.amount_refunded;
   const refundStripeId = charge.refunds?.data?.find((refund) => refund.id)?.id ?? null;
-  const changed = await markOrderPaymentStatus(c.env, orderId, status, {
+  const changed = await markOrderPaymentStatus(env, orderId, status, {
     source: "webhook",
     refundAmount,
     refundStripeId,
   });
   if (!changed) return;
   logEvent(status, { orderId });
-  logEvent("refund_invoice_manual_required", { orderId, refundType: status });
   if (status === "refunded") {
-    const order = await getOrderById(c.env, orderId);
-    if (order) {
-      scheduleRefundEmail(
-        c,
-        order,
-        "A Stripe visszaigazolta a megrendelés teljes visszatérítését.",
-      );
-    }
+    const order = await getOrderById(env, orderId);
+    await enqueueRefundNotice(env, orderId, REFUND_REASON_MESSAGES[order?.refund_reason ?? ""] ?? FULL_REFUND_REASON);
   }
 }
 
-async function handleRefundLifecycle(
-  c: WorkerContext,
-  object: { id?: string },
-  eventId: string,
-) {
+async function handleRefundLifecycle(env: Env, object: { id?: string }, eventId: string) {
   if (!object.id?.startsWith("re_")) {
     logEvent("suspicious_payment_event", { reason: "invalid_refund_id" });
     return;
@@ -240,22 +123,22 @@ async function handleRefundLifecycle(
 
   // Retrieve the authoritative current object so out-of-order webhook payloads
   // cannot regress a refund that Stripe has already settled.
-  const refund = await retrieveRefund(c.env, object.id);
+  const refund = await retrieveRefund(env, object.id);
   let orderId = refund.metadata?.orderId ?? null;
   if (!orderId && refund.payment_intent) {
-    orderId = (await getOrderByPaymentIntentId(c.env, refund.payment_intent))?.id ?? null;
+    orderId = (await getOrderByPaymentIntentId(env, refund.payment_intent))?.id ?? null;
   }
   if (!orderId) {
     logEvent("suspicious_payment_event", { reason: "unknown_refund_order" });
     return;
   }
-  const order = await getOrderById(c.env, orderId);
+  const order = await getOrderById(env, orderId);
   if (!order) {
     logEvent("suspicious_payment_event", { reason: "unknown_refund_order" });
     return;
   }
 
-  const result = await reconcileStripeRefund(c.env, order, refund, "webhook", eventId);
+  const result = await reconcileStripeRefund(env, order, refund, "webhook", eventId);
   logEvent("refund_lifecycle_recorded", {
     orderId,
     refundStatus: result.status,
@@ -263,73 +146,62 @@ async function handleRefundLifecycle(
   });
 
   if (result.status === "succeeded" && result.paymentStatusChanged && result.paymentStatus === "refunded") {
-    scheduleRefundEmail(c, order, "A Stripe visszaigazolta a megrendelés teljes visszatérítését.");
+    await enqueueRefundNotice(env, orderId, REFUND_REASON_MESSAGES[order.refund_reason ?? ""] ?? FULL_REFUND_REASON);
   } else if (result.status === "failed" || result.status === "canceled" || result.status === "requires_action") {
     logEvent("refund_manual_followup_required", { orderId, refundStatus: result.status });
   }
 }
 
-async function handleDispute(
-  c: WorkerContext,
-  dispute: {
-    id?: string;
-    charge?: string | null;
-    payment_intent?: string | null;
-    amount?: number;
-    currency?: string | null;
-    reason?: string | null;
-    status?: string | null;
-    metadata?: Record<string, string>;
-  },
-  eventId: string,
-) {
-  if (!dispute.id) {
+/**
+ * Inquiries (`warning_*`) and prevented disputes move no money, so access stays
+ * active. Only formal chargebacks change the order's payment state.
+ */
+export function paymentStatusForDispute(status: string): Extract<PaymentStatus, "chargeback_open" | "chargeback_lost" | "chargeback_won"> | null {
+  if (status === "needs_response" || status === "under_review") return "chargeback_open";
+  if (status === "won") return "chargeback_won";
+  if (status === "lost") return "chargeback_lost";
+  return null;
+}
+
+async function handleDispute(env: Env, object: { id?: string }, eventId: string) {
+  if (!object.id) {
     logEvent("suspicious_payment_event", { reason: "missing_dispute_id" });
     return;
   }
+  // Out-of-order deliveries are resolved by reading the current dispute.
+  const dispute = await retrieveDispute(env, object.id);
 
   let orderId = dispute.metadata?.orderId ?? null;
   if (!orderId && dispute.payment_intent) {
-    orderId = (await getOrderByPaymentIntentId(c.env, dispute.payment_intent))?.id ?? null;
+    orderId = (await getOrderByPaymentIntentId(env, dispute.payment_intent))?.id ?? null;
   }
   if (!orderId) {
-    logEvent("suspicious_payment_event", {
-      reason: "unknown_dispute_order",
-      disputeId: dispute.id,
-    });
+    logEvent("suspicious_payment_event", { reason: "unknown_dispute_order", disputeId: dispute.id });
     return;
   }
 
-  const disputeStatus = dispute.status ?? "needs_response";
-  const paymentStatus: Extract<PaymentStatus, "chargeback_open" | "chargeback_lost" | "chargeback_won"> =
-    disputeStatus === "won"
-      ? "chargeback_won"
-      : disputeStatus === "lost"
-        ? "chargeback_lost"
-        : "chargeback_open";
-  const amount = dispute.currency && typeof dispute.amount === "number"
-    ? fromStripeMinorAmount(dispute.amount, dispute.currency)
-    : null;
-
-  await upsertPaymentDispute(c.env, {
+  const paymentStatus = paymentStatusForDispute(dispute.status);
+  await upsertPaymentDispute(env, {
     id: crypto.randomUUID(),
     orderId,
     stripeDisputeId: dispute.id,
     stripeChargeId: dispute.charge ?? null,
     stripePaymentIntentId: dispute.payment_intent ?? null,
-    amount,
+    amount: typeof dispute.amount === "number" && dispute.currency ? fromStripeMinorAmount(dispute.amount, dispute.currency) : null,
     currency: dispute.currency?.toLowerCase() ?? null,
     reason: dispute.reason ?? null,
-    status: disputeStatus,
+    status: dispute.status,
     outcome: paymentStatus === "chargeback_open" ? null : paymentStatus,
     eventId,
   });
 
-  const changed = await markOrderPaymentStatus(c.env, orderId, paymentStatus, { source: "webhook" });
+  const changed = paymentStatus
+    ? await markOrderPaymentStatus(env, orderId, paymentStatus, { source: "webhook" })
+    : false;
   logEvent("chargeback_dispute_recorded", {
     orderId,
     disputeId: dispute.id,
-    disputeStatus,
+    disputeStatus: dispute.status,
     paymentStatus,
     changed,
   });
@@ -384,18 +256,18 @@ export async function stripeWebhookRoute(c: WorkerContext) {
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
-        await handleCheckoutCompleted(c, object.id ?? "");
+        await handleCheckoutCompleted(c, object.id ?? "", event.id);
         break;
       case "checkout.session.async_payment_failed":
       case "payment_intent.payment_failed":
         await handlePaymentFailure(
-          c,
+          c.env,
           event.data.object as { id?: string; metadata?: Record<string, string> },
         );
         break;
       case "checkout.session.expired":
         await handleExpired(
-          c,
+          c.env,
           event.data.object as {
             id?: string;
             client_reference_id?: string | null;
@@ -404,42 +276,17 @@ export async function stripeWebhookRoute(c: WorkerContext) {
         );
         break;
       case "charge.refunded":
-        await handleRefund(
-          c,
-          event.data.object as {
-            id?: string;
-            amount?: number;
-            amount_refunded?: number;
-            currency?: string | null;
-            refunded?: boolean;
-            payment_intent?: string | null;
-            metadata?: Record<string, string>;
-            refunds?: { data?: Array<{ id?: string; amount?: number }> };
-          },
-        );
+        await handleRefund(c.env, event.data.object as Parameters<typeof handleRefund>[1]);
         break;
       case "refund.created":
       case "refund.updated":
       case "refund.failed":
-        await handleRefundLifecycle(c, object, event.id);
+        await handleRefundLifecycle(c.env, object, event.id);
         break;
       case "charge.dispute.created":
       case "charge.dispute.updated":
       case "charge.dispute.closed":
-        await handleDispute(
-          c,
-          event.data.object as {
-            id?: string;
-            charge?: string | null;
-            payment_intent?: string | null;
-            amount?: number;
-            currency?: string | null;
-            reason?: string | null;
-            status?: string | null;
-            metadata?: Record<string, string>;
-          },
-          event.id,
-        );
+        await handleDispute(c.env, object, event.id);
         break;
       default:
         break;

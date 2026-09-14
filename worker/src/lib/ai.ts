@@ -1,6 +1,7 @@
 import {
   commitReservedQuota,
   completeGeneration,
+  deferGeneration,
   failGeneration,
   getLetterEmailVersionKey,
   hasLetterEmailVersionSent,
@@ -23,6 +24,9 @@ const GEMINI_GENERATION_TIMEOUT_MS = 25_000;
 const AI_REVIEW_TIMEOUT_MS = 15_000;
 const AI_REVIEW_MAX_ATTEMPTS = 2;
 const AI_REVIEW_RETRY_BACKOFF_MS = 50;
+
+export const GENERATION_PROVIDER_UNAVAILABLE_MESSAGE =
+  "A levélgeneráló szolgáltatás tartósan nem volt elérhető, ezért a rendelést automatikusan visszatérítjük.";
 
 export const AI_REVIEW_UNAVAILABLE_MESSAGE =
   "A levél automatikus minőségellenőrzése átmenetileg nem érhető el. Kérjük, próbálja újra később.";
@@ -122,7 +126,7 @@ function parseAiReviewJson(raw: string): AiReviewResult {
  */
 export function validateAiOutput(text: string): string {
   if (text.length > MAX_AI_OUTPUT_CHARS) {
-    throw new Error(`AI kimenet túl hosszú: ${text.length} karakter (limit: ${MAX_AI_OUTPUT_CHARS})`);
+    throw new AiProviderError("output_too_long", false);
   }
   // Strip null bytes and non-printable ASCII control chars (0x01-0x08,
   // 0x0B-0x0C, 0x0E-0x1F, 0x7F) but keep \t (0x09), \n (0x0A), \r (0x0D).
@@ -131,6 +135,48 @@ export function validateAiOutput(text: string): string {
 
 const GEMINI_MAX_RETRIES = 2;
 const GEMINI_RETRY_BASE_MS = 2000;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const AI_PROVIDER_HEALTH_ID = "gemini";
+
+/** Distinguishes provider outages (retry later) from requests that can never succeed. */
+export class AiProviderError extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+  ) {
+    super(code);
+    this.name = "AiProviderError";
+  }
+}
+
+export function isRetryableAiFailure(error: unknown) {
+  return (error instanceof AiProviderError || error instanceof AiReviewFailure) && error.retryable;
+}
+
+export async function recordAiProviderFailure(env: Env, code: string) {
+  const now = new Date().toISOString();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO ai_provider_health (id, consecutive_failures, last_failure_at, last_error)
+       VALUES (?, 1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET consecutive_failures = consecutive_failures + 1,
+         last_failure_at = excluded.last_failure_at, last_error = excluded.last_error`,
+    ).bind(AI_PROVIDER_HEALTH_ID, now, code.slice(0, 80)).run();
+  } catch {
+    logEvent("ai_provider_health_write_failed", {});
+  }
+}
+
+export async function recordAiProviderSuccess(env: Env) {
+  try {
+    await env.DB.prepare(
+      `UPDATE ai_provider_health SET consecutive_failures = 0, last_success_at = ?
+       WHERE id = ? AND consecutive_failures > 0`,
+    ).bind(new Date().toISOString(), AI_PROVIDER_HEALTH_ID).run();
+  } catch {
+    logEvent("ai_provider_health_write_failed", {});
+  }
+}
 
 export async function callGemini(env: Env, model: string, input: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -160,25 +206,34 @@ export async function callGemini(env: Env, model: string, input: string) {
         body,
       });
     } catch (fetchError) {
-      lastError = fetchError instanceof Error ? fetchError : new Error("Network error");
+      // A timeout already spent 25s; defer to a later scheduled run instead.
       if (isTimeoutError(fetchError)) {
-        throw lastError;
+        throw new AiProviderError("timeout", true);
       }
+      lastError = new AiProviderError("network_error", true);
       continue;
     }
 
-    if (response.status === 429 && attempt < GEMINI_MAX_RETRIES) {
-      lastError = new Error("Gemini API kvóta átmenetileg kimerült (429).");
+    if (RETRYABLE_HTTP_STATUSES.has(response.status)) {
+      lastError = new AiProviderError(`http_${response.status}`, true);
       continue;
     }
 
     if (!response.ok) {
-      throw new Error(`Gemini API error (${response.status})`);
+      // Invalid key, disabled billing or a rejected request will not heal by retrying.
+      throw new AiProviderError(`http_${response.status}`, false);
     }
 
-    const payload = (await response.json()) as {
+    const payload = (await response.json().catch(() => null)) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
+      promptFeedback?: { blockReason?: string };
+    } | null;
+    if (!payload) {
+      throw new AiProviderError("malformed_response", true);
+    }
+    if (payload.promptFeedback?.blockReason) {
+      throw new AiProviderError("prompt_blocked", false);
+    }
 
     const text = payload.candidates?.[0]?.content?.parts
       ?.map((p) => p.text ?? "")
@@ -186,12 +241,12 @@ export async function callGemini(env: Env, model: string, input: string) {
       .trim();
 
     if (!text) {
-      throw new Error("Gemini empty response.");
+      throw new AiProviderError("empty_response", true);
     }
     return text;
   }
 
-  throw lastError ?? new Error("Gemini API error after retries.");
+  throw lastError ?? new AiProviderError("retries_exhausted", true);
 }
 
 async function reviewWithAiOnce(env: Env, order: OrderRow, letter: string, regenerationFeedback?: string): Promise<AiReviewResult> {
@@ -279,6 +334,21 @@ export async function generateLetterForPaidOrder(
   const pkg = getPackage(order.selected_package);
   const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
 
+  async function handleTransientFailure(error: unknown) {
+    const code = error instanceof Error ? error.message.slice(0, 80) : "unknown";
+    await recordAiProviderFailure(env, code);
+    const outcome = await deferGeneration(env, order, code);
+    if (outcome === "deferred") {
+      logEvent("ai_generation_deferred", { orderId: order.id, reason: code, retry: (order.generation_retry_count ?? 0) + 1 });
+      return;
+    }
+    if (outcome === "stale") {
+      logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason: code });
+      return;
+    }
+    await handleFailure("failed", GENERATION_PROVIDER_UNAVAILABLE_MESSAGE, `retries_exhausted_${code}`);
+  }
+
   async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
     const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id, order.generation_run_id ?? null);
     if (!failureRecorded) {
@@ -302,6 +372,7 @@ export async function generateLetterForPaidOrder(
         model,
         buildUserPrompt(order, reviewIssues, regenerationFeedback, revisionBase),
       );
+      await recordAiProviderSuccess(env);
       const ruleReview = reviewLetterWithRules(letter);
 
       if (ruleReview.warnings.length > 0) {
@@ -324,6 +395,11 @@ export async function generateLetterForPaidOrder(
           attempt,
           reason: reviewErr instanceof AiReviewFailure ? reviewErr.code : "unknown",
         });
+        if (isRetryableAiFailure(reviewErr)) {
+          // Still fail-closed: nothing is published until a later review passes.
+          await handleTransientFailure(reviewErr);
+          return;
+        }
         await handleFailure(
           "failed_review",
           AI_REVIEW_UNAVAILABLE_MESSAGE,
@@ -357,10 +433,19 @@ export async function generateLetterForPaidOrder(
 
     await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");
   } catch (error) {
+    if (isRetryableAiFailure(error)) {
+      await handleTransientFailure(error);
+      return;
+    }
+    if (!(error instanceof AiProviderError)) {
+      // Storage or runtime faults are not the customer's order failing: keep the
+      // claim so lease recovery retries it instead of refunding.
+      throw error;
+    }
     await handleFailure(
       "failed",
       "Generálási hiba.",
-      error instanceof Error ? error.name : "unknown",
+      error.code,
     );
   }
 }

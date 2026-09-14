@@ -181,6 +181,10 @@ export function validateEnv(env: Env): EnvValidationResult {
     missing.push(...validatePaymentMode(env));
 
     if (env.PAYMENT_MODE === "live") {
+      missing.push(...missingKeys(env, ["OPERATOR_EMAIL"]));
+      if (hasValue(env.OPERATOR_EMAIL) && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u.test(String(env.OPERATOR_EMAIL).trim())) {
+        missing.push("OPERATOR_EMAIL_INVALID");
+      }
       if (isAdminApiEnabled(env)) {
         missing.push("ADMIN_API_NOT_ALLOWED_IN_LIVE_MODE");
       }

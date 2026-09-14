@@ -1,8 +1,9 @@
 import type { Context } from "hono";
-import { getOrderByPublicId } from "../lib/db";
+import { getOrderByPublicId, regenerationRequestCap } from "../lib/db";
 import { constantTimeEqual, hashToken } from "../lib/hash";
 import { logEvent } from "../lib/logger";
 import { hasActiveOrderAccess, isOrderContentExpired } from "../lib/orderState";
+import { getPackage } from "../lib/packages";
 import { getClientIp, isRateLimited } from "../lib/rateLimit";
 import { errorJson, okJson } from "../lib/response";
 import type { Env } from "../lib/types";
@@ -41,7 +42,13 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
 
   return okJson(c, {
     paymentStatus: order.payment_status,
-    refundStatus: order.stripe_refund_status ?? (order.refund_requested_at ? "pending" : null),
+    // Manual review must not be presented as an automatic refund still in progress.
+    refundStatus: order.refund_manual_required === 1 && order.stripe_refund_status !== "succeeded"
+      ? "manual_review"
+      : order.stripe_refund_status ?? (order.refund_requested_at ? "pending" : null),
+    generationRetryScheduled: order.ai_status === "generating" && (order.generation_retry_count ?? 0) > 0,
+    regenerationRequestsExhausted: (order.regeneration_request_count ?? 0) >=
+      regenerationRequestCap(getPackage(order.selected_package).capabilities.maxRegenerations),
     regenerationError: canExposeLetter && order.ai_status === "completed" && order.error_message
       ? "A módosítás nem sikerült. A korábbi levél elérhető, és a módosítás újra kérhető." : undefined,
     invoiceStatus: order.invoice_status,

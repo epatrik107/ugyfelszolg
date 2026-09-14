@@ -4,7 +4,7 @@ export async function verifyTurnstileToken(
   env: Env,
   token: string,
   remoteIp?: string,
-  expectedAction?: "checkout" | "contact",
+  expectedAction?: "checkout" | "contact" | "access_link",
 ) {
   const body = new URLSearchParams({
     secret: env.TURNSTILE_SECRET_KEY,

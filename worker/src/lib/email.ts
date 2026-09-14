@@ -19,6 +19,8 @@ export class EmailSendError extends Error {
   constructor(
     readonly status: number | null,
     message: string,
+    /** Network, timeout, rate limit and provider outages can succeed later. */
+    readonly retryable = status === null || status === 429 || status >= 500,
   ) {
     super(message);
   }
@@ -38,15 +40,16 @@ function assertEmail(value: string) {
   }
 }
 
-async function sendEmail(
+export async function sendEmail(
   env: Env,
   to: string,
   subject: string,
   html: string,
   idempotencyKey?: string,
+  replyTo?: string,
 ) {
   if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
-    throw new EmailSendError(null, "Email service is not configured.");
+    throw new EmailSendError(null, "Email service is not configured.", false);
   }
 
   const headers: Record<string, string> = {
@@ -63,16 +66,27 @@ async function sendEmail(
     to: [to],
     subject,
     html,
+    ...(replyTo ? { reply_to: replyTo } : {}),
   });
 
-  // Retry once after 1.5s on transient 5xx errors
+  // Retry once after 1.5s on transient errors; durable retries belong to the outbox.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers,
-      body,
-      signal: AbortSignal.timeout(10_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (error) {
+      if (attempt === 1) {
+        const timeout = error instanceof DOMException && error.name === "TimeoutError";
+        throw new EmailSendError(null, timeout ? "Resend request timed out" : "Resend network error");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      continue;
+    }
 
     if (response.ok) {
       const responseBody = await response.json().catch(() => null) as { id?: unknown } | null;
@@ -81,7 +95,7 @@ async function sendEmail(
       };
     }
 
-    const isTransient = response.status >= 500;
+    const isTransient = response.status === 429 || response.status >= 500;
     if (!isTransient || attempt === 1) {
       // Provider error bodies can contain recipient data or request details.
       // Retain only the status code in logs and persisted retry state.

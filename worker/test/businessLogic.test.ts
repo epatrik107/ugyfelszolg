@@ -440,7 +440,7 @@ describe("AI output validation", () => {
 
   it("rejects output that exceeds the character limit", () => {
     const oversized = "a".repeat(12_001);
-    expect(() => validateAiOutput(oversized)).toThrow(/túl hosszú/);
+    expect(() => validateAiOutput(oversized)).toThrow(/output_too_long/);
   });
 
   it("accepts output exactly at the character limit", () => {

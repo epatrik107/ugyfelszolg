@@ -206,7 +206,7 @@ export function invoiceEmailHtml(data: InvoiceEmailData): string {
     ${invoiceDownloadBlock}
 
     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
-      A generált levél a fizetés visszaigazolásával egyidejűleg elérhető a rendelési oldalon.<br>
+      A levelet a rendelés visszaigazoló emailjében kapott linken, a rendelési oldalon éri el.<br>
       Amennyiben kérdése van, kérjük, vegye fel velünk a kapcsolatot.
     </p>
   `;
@@ -418,4 +418,92 @@ export function letterReadyEmailHtml(data: LetterReadyEmailData): string {
     <a href="${orderHref}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">Megnyitom a rendelési oldalt</a>
   `;
   return baseHtml("Elkészült a levele – Levélsegéd", body, data.sellerName, data.sellerAddress);
+}
+
+function buttonLink(href: string, label: string) {
+  return `<a href="${href}" style="display:inline-block;padding:12px 24px;background:#10233f;color:#ffffff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">${escapeHtml(label)}</a>`;
+}
+
+export interface OrderAccessEmailData {
+  customerName: string;
+  orders: Array<{ orderUrl: string; packageName: string; createdAt: string }>;
+  reason: "confirmation" | "requested";
+  sellerName: string;
+  sellerAddress: string;
+}
+
+/** Carries the bearer capability link; it is rendered at send time and never stored. */
+export function orderAccessEmailHtml(data: OrderAccessEmailData): string {
+  const customerName = escapeHtml(data.customerName);
+  const intro = data.reason === "confirmation"
+    ? "Köszönjük a megrendelést! A fizetését megkaptuk, a levele készül. Az alábbi linken bármikor megnyithatja a rendelését, akkor is, ha közben bezárta a böngészőt."
+    : "Kérésére elküldjük a rendeléseihez tartozó linkeket.";
+  const rows = data.orders.map((order) => `
+    <div style="border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin-bottom:12px;">
+      <p style="margin:0 0 12px;font-size:14px;color:#334155;">${escapeHtml(order.packageName)} – ${escapeHtml(formatDate(order.createdAt))}</p>
+      ${buttonLink(safeHtmlUrl(order.orderUrl), "Rendelés megnyitása")}
+    </div>`).join("");
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#10233f;">${data.reason === "confirmation" ? "Rendelés visszaigazolása" : "Rendelési linkjei"}</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;">Kedves ${customerName},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#334155;line-height:1.6;">${escapeHtml(intro)}</p>
+    ${rows}
+    <p style="margin:24px 0 0;font-size:13px;color:#64748b;line-height:1.6;">
+      A link személyes hozzáférést ad a leveléhez, ezért ne továbbítsa. A rendelés tartalma a létrehozástól számított 90 napig érhető el.
+      Ha a levél nem készülhet el, a teljes összeget automatikusan visszatérítjük.
+    </p>
+  `;
+  return baseHtml(data.reason === "confirmation" ? "Rendelés visszaigazolása" : "Rendelési linkjei", body, data.sellerName, data.sellerAddress);
+}
+
+export interface ContactNotificationEmailData {
+  name: string;
+  email: string;
+  message: string;
+  receivedAt: string;
+  sellerName: string;
+  sellerAddress: string;
+}
+
+export function contactNotificationEmailHtml(data: ContactNotificationEmailData): string {
+  const body = `
+    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#10233f;">Új kapcsolatfelvételi üzenet</h2>
+    <p style="margin:0 0 8px;font-size:14px;color:#334155;"><strong>Név:</strong> ${escapeHtml(data.name)}</p>
+    <p style="margin:0 0 8px;font-size:14px;color:#334155;"><strong>Email:</strong> ${escapeHtml(data.email)}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;"><strong>Érkezett:</strong> ${escapeHtml(data.receivedAt)}</p>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;">
+      <pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.6;color:#1e293b;white-space:pre-wrap;word-break:break-word;">${escapeHtml(data.message)}</pre>
+    </div>
+    <p style="margin:16px 0 0;font-size:13px;color:#64748b;">A „Válasz” gomb közvetlenül a feladónak válaszol.</p>
+  `;
+  return baseHtml("Új kapcsolatfelvételi üzenet", body, data.sellerName, data.sellerAddress);
+}
+
+export interface OperatorDigestIssue {
+  key: string;
+  title: string;
+  action: string;
+  count: number;
+  publicIds: string[];
+}
+
+export function operatorDigestEmailHtml(data: {
+  issues: OperatorDigestIssue[];
+  generatedAt: string;
+  sellerName: string;
+  sellerAddress: string;
+}): string {
+  const rows = data.issues.map((issue) => `
+    <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:14px 18px;margin-bottom:12px;">
+      <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#991b1b;">${escapeHtml(issue.title)} (${issue.count})</p>
+      <p style="margin:0 0 6px;font-size:13px;color:#334155;line-height:1.6;">${escapeHtml(issue.action)}</p>
+      ${issue.publicIds.length ? `<p style="margin:0;font-size:12px;color:#64748b;font-family:ui-monospace,monospace;word-break:break-all;">${issue.publicIds.map(escapeHtml).join("<br>")}</p>` : ""}
+    </div>`).join("");
+  const body = `
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#10233f;">Üzemeltetői beavatkozás szükséges</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#64748b;">Állapot: ${escapeHtml(data.generatedAt)}. Az azonosítók rendelési public ID-k; a műveletek a GitHub „Operator action” workflow-val indíthatók.</p>
+    ${rows}
+    <p style="margin:16px 0 0;font-size:12px;color:#64748b;">Változatlan állapotról naponta egyszer, új problémáról azonnal küldünk értesítést.</p>
+  `;
+  return baseHtml("Üzemeltetői riasztás", body, data.sellerName, data.sellerAddress);
 }

@@ -198,7 +198,7 @@ export async function markOrderPaid(
     paymentStatusLogStatement(env, {
       orderId,
       toStatus: "paid",
-      allowedFrom: ["pending", "checkout_created", "failed"],
+      allowedFrom: ["pending", "checkout_created", "failed", "cancelled", "expired"],
       source: input.source ?? "webhook",
       now,
     }),
@@ -217,7 +217,7 @@ export async function markOrderPaid(
            invoice_error_message = NULL,
            updated_at = ?
        WHERE id = ?
-         AND payment_status IN ('pending', 'checkout_created', 'failed')`,
+         AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')`,
     ).bind(now, input.stripeSessionId, input.stripePaymentIntentId, input.paidAmount, now, orderId),
   ]);
   return result.meta.changes === 1;
@@ -239,23 +239,33 @@ export async function markOrderPaymentStatus(
     expired: ["pending", "checkout_created", "failed"],
     amount_mismatch: ["pending", "checkout_created", "failed"],
     currency_mismatch: ["pending", "checkout_created", "failed"],
-    partially_refunded: ["paid", "partially_refunded"],
-    refunded: ["paid", "partially_refunded"],
+    partially_refunded: ["paid", "partially_refunded", "amount_mismatch", "currency_mismatch"],
+    refunded: ["paid", "partially_refunded", "amount_mismatch", "currency_mismatch"],
     chargeback_open: ["paid", "partially_refunded", "chargeback_won"],
-    chargeback_lost: ["chargeback_open"],
+    // Dispute state is re-read from Stripe, so a missed `open` event must not
+    // prevent recording the final outcome.
+    chargeback_lost: ["chargeback_open", "paid", "partially_refunded"],
     chargeback_won: ["chargeback_open"],
   };
   const fromStatuses = allowedFrom[status];
   const placeholders = fromStatuses.map(() => "?").join(", ");
   const now = new Date().toISOString();
   const refundStatus = status === "partially_refunded" || status === "refunded";
+  // Invoices are issued only after fulfillment. A full refund before that
+  // point needs no invoice; one already issued needs a correction.
   const refundColumns = refundStatus
     ? `, refund_amount = COALESCE(?, refund_amount),
          refund_stripe_id = COALESCE(?, refund_stripe_id),
          refund_invoice_status = CASE
            WHEN invoice_status IN ('created', 'already_created') THEN 'manual_required'
            ELSE refund_invoice_status
+         END${status === "refunded"
+           ? `,
+         invoice_status = CASE
+           WHEN invoice_status IN ('pending', 'retry_required', 'failed') THEN 'not_required'
+           ELSE invoice_status
          END`
+           : ""}`
     : "";
   const updateBindings: unknown[] = [status, now];
   if (refundStatus) {
@@ -279,6 +289,43 @@ export async function markOrderPaymentStatus(
   return result.meta.changes === 1;
 }
 
+/**
+ * Money was captured but does not match the order. Keep the payment identifiers
+ * and request an automatic refund instead of silently keeping the charge.
+ */
+export async function markOrderPaymentMismatch(
+  env: Env,
+  orderId: string,
+  status: "amount_mismatch" | "currency_mismatch",
+  input: { stripeSessionId: string; stripePaymentIntentId: string | null; paidAmount: number | null },
+) {
+  const now = new Date().toISOString();
+  const allowedFrom: PaymentStatus[] = ["pending", "checkout_created", "failed", "cancelled", "expired"];
+  const [, result] = await env.DB.batch([
+    paymentStatusLogStatement(env, { orderId, toStatus: status, allowedFrom, source: "webhook", now }),
+    env.DB.prepare(
+      `UPDATE orders
+       SET payment_status = ?, stripe_session_id = ?, stripe_payment_intent_id = ?,
+           paid_amount = ?, refund_requested_at = COALESCE(refund_requested_at, ?),
+           refund_reason = ?, updated_at = ?
+       WHERE id = ? AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')`,
+    ).bind(status, input.stripeSessionId, input.stripePaymentIntentId, input.paidAmount, now, status, now, orderId),
+  ]);
+  return result.meta.changes === 1;
+}
+
+export async function recordPaymentAnomaly(
+  env: Env,
+  input: { orderId: string | null; stripeObjectId: string; reason: string; eventId?: string | null; resolved?: boolean },
+) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO payment_anomalies (id, order_id, stripe_object_id, reason, event_id, resolved_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), input.orderId, input.stripeObjectId, input.reason, input.eventId ?? null,
+    input.resolved ? now : null, now).run();
+}
+
 export async function beginRegeneration(
   env: Env,
   orderId: string,
@@ -290,10 +337,14 @@ export async function beginRegeneration(
     `UPDATE orders
      SET ai_status = 'generating',
          generation_count = generation_count + 1,
+         regeneration_request_count = regeneration_request_count + 1,
          generation_feedback = ?,
          generation_claimed_at = NULL,
          generation_run_id = NULL,
          generation_attempts = 0,
+         generation_retry_count = 0,
+         generation_next_attempt_at = NULL,
+         generation_last_error = NULL,
          error_message = NULL,
          updated_at = ?
      WHERE id = ?
@@ -301,12 +352,45 @@ export async function beginRegeneration(
        AND ai_status = 'completed'
        AND generation_count > 0
        AND generation_count <= ?
+       AND regeneration_request_count < ?
        AND personal_data_redacted_at IS NULL
        AND created_at >= ?`,
   )
-    .bind(feedback, now, orderId, maxRegenerations, new Date(Date.now() - 90 * 86400000).toISOString())
+    .bind(feedback, now, orderId, maxRegenerations, regenerationRequestCap(maxRegenerations),
+      new Date(Date.now() - 90 * 86400000).toISOString())
     .run();
   return result.meta.changes === 1;
+}
+
+/** Failed modifications restore the allowance, so total requests need their own ceiling. */
+export function regenerationRequestCap(maxRegenerations: number) {
+  return maxRegenerations + 5;
+}
+
+export const GENERATION_RETRY_DELAYS_MINUTES = [1, 2, 5, 10, 15, 30] as const;
+
+/**
+ * Releases a claim after a transient provider failure so a later scheduled run
+ * retries it. Returns "exhausted" once the bounded retry window is used up.
+ */
+export async function deferGeneration(
+  env: Env,
+  order: Pick<OrderRow, "id" | "generation_retry_count" | "generation_run_id">,
+  errorCode: string,
+): Promise<"deferred" | "exhausted" | "stale"> {
+  const retryCount = order.generation_retry_count ?? 0;
+  if (retryCount >= GENERATION_RETRY_DELAYS_MINUTES.length) return "exhausted";
+  const now = new Date();
+  const next = new Date(now.getTime() + GENERATION_RETRY_DELAYS_MINUTES[retryCount] * 60_000).toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE orders
+     SET generation_claimed_at = NULL, generation_run_id = NULL, generation_attempts = 0,
+         generation_retry_count = generation_retry_count + 1,
+         generation_next_attempt_at = ?, generation_last_error = ?, updated_at = ?
+     WHERE id = ? AND ai_status = 'generating' AND generation_run_id IS ?
+       AND payment_status IN ('paid', 'partially_refunded')`,
+  ).bind(next, errorCode.slice(0, 80), now.toISOString(), order.id, order.generation_run_id ?? null).run();
+  return result.meta.changes === 1 ? "deferred" : "stale";
 }
 
 export async function beginGeneration(env: Env, orderId: string) {
@@ -354,6 +438,9 @@ export async function completeGeneration(
            generation_feedback = NULL,
            generation_claimed_at = NULL,
            generation_run_id = NULL,
+           generation_retry_count = 0,
+           generation_next_attempt_at = NULL,
+           generation_last_error = NULL,
            letter_email_sent = 0,
            error_message = NULL
        WHERE id = ?
@@ -373,6 +460,9 @@ export async function completeGeneration(
            generation_feedback = NULL,
            generation_claimed_at = NULL,
            generation_run_id = NULL,
+           generation_retry_count = 0,
+           generation_next_attempt_at = NULL,
+           generation_last_error = NULL,
            letter_email_sent = 0,
            error_message = NULL
        WHERE id = ?
@@ -403,9 +493,14 @@ export async function failGeneration(
          generation_feedback = NULL,
          generation_claimed_at = NULL,
          generation_run_id = NULL,
+         generation_retry_count = 0,
+         generation_next_attempt_at = NULL,
          refund_requested_at = CASE WHEN generated_letter IS NULL AND generation_count <= 1
            AND billing_source = 'checkout' AND stripe_payment_intent_id IS NOT NULL
            THEN COALESCE(refund_requested_at, ?) ELSE refund_requested_at END,
+         refund_reason = CASE WHEN generated_letter IS NULL AND generation_count <= 1
+           AND billing_source = 'checkout' AND stripe_payment_intent_id IS NOT NULL
+           THEN COALESCE(refund_reason, 'generation_failed') ELSE refund_reason END,
          error_message = ?,
          updated_at = ?
      WHERE id = ?
@@ -620,6 +715,7 @@ export async function claimInvoiceProcessing(env: Env, orderId: string) {
      WHERE id = ?
        AND payment_status = 'paid'
        AND billing_source = 'checkout'
+       AND generated_at IS NOT NULL
        AND invoice_retry_count < 5
        AND (
          invoice_status = 'pending'
@@ -847,6 +943,7 @@ export async function getInvoiceRetryCandidates(env: Env, limit = 20) {
     `SELECT * FROM orders
      WHERE payment_status = 'paid'
        AND billing_source = 'checkout'
+       AND generated_at IS NOT NULL
        AND invoice_retry_count < 5
        AND (
          invoice_status = 'pending'
@@ -875,21 +972,20 @@ export async function markRefundInvoiceManualRequired(env: Env, orderId: string)
     .run();
 }
 
+export function insertContactMessageStatement(
+  env: Env,
+  input: { id: string; name: string; email: string; message: string; createdAt: string },
+) {
+  return env.DB.prepare(
+    "INSERT INTO contact_messages (id, name, email, message, created_at) VALUES (?, ?, ?, ?, ?)",
+  ).bind(input.id, input.name, input.email, input.message, input.createdAt);
+}
+
 export async function insertContactMessage(
   env: Env,
   input: { name: string; email: string; message: string },
 ) {
-  await env.DB.prepare(
-    "INSERT INTO contact_messages (id, name, email, message, created_at) VALUES (?, ?, ?, ?, ?)",
-  )
-    .bind(
-      crypto.randomUUID(),
-      input.name,
-      input.email,
-      input.message,
-      new Date().toISOString(),
-    )
-    .run();
+  await insertContactMessageStatement(env, { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() }).run();
 }
 
 export async function upsertSubscription(
@@ -1237,6 +1333,8 @@ export async function cleanupExpiredData(env: Env) {
     env.DB.prepare("DELETE FROM subscription_magic_links WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM subscription_sessions WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM contact_messages WHERE created_at < ?").bind(contactCutoff),
+    env.DB.prepare("DELETE FROM email_outbox WHERE created_at < ? AND status IN ('sent', 'skipped', 'dead')").bind(cutoff),
+    env.DB.prepare("DELETE FROM operator_requests WHERE created_at < ? AND status <> 'pending'").bind(contactCutoff),
     // Completed Stripe events older than 30 days — failed/processing events are
     // kept for manual investigation.
     env.DB.prepare(
@@ -1286,7 +1384,7 @@ export async function cleanupExpiredData(env: Env) {
        WHERE order_id IN (
          SELECT id FROM orders
          WHERE created_at < ?
-           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')
            AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
        )`,
     ).bind(cutoff),
@@ -1295,7 +1393,7 @@ export async function cleanupExpiredData(env: Env) {
        WHERE order_id IN (
          SELECT id FROM orders
          WHERE created_at < ?
-           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')
            AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
        )`,
     ).bind(cutoff),
@@ -1304,7 +1402,7 @@ export async function cleanupExpiredData(env: Env) {
        WHERE order_id IN (
          SELECT id FROM orders
          WHERE created_at < ?
-           AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+           AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')
            AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)
        )`,
     ).bind(cutoff),
@@ -1313,7 +1411,7 @@ export async function cleanupExpiredData(env: Env) {
     env.DB.prepare(
       `DELETE FROM orders
        WHERE created_at < ?
-         AND payment_status NOT IN ('paid', 'partially_refunded', 'refunded')
+         AND payment_status IN ('pending', 'checkout_created', 'failed', 'cancelled', 'expired')
          AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.order_id = orders.id)`,
     ).bind(cutoff),
   ]);

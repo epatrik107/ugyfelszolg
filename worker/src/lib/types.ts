@@ -88,6 +88,10 @@ export interface Env {
   ADMIN_API_TOKEN?: string;
   /** Admin routes stay unavailable unless explicitly enabled outside live mode. */
   ADMIN_API_ENABLED?: string;
+  /** Recipient of operator alerts and contact-form notifications. */
+  OPERATOR_EMAIL?: string;
+  /** Paid generation jobs claimed per scheduled run (1-8, default 4). */
+  GENERATION_BATCH_SIZE?: string;
 }
 
 export interface OrderRow {
@@ -120,6 +124,13 @@ export interface OrderRow {
   refund_claimed_at?: string | null;
   refund_attempt_count?: number;
   refund_manual_required?: number;
+  refund_reason?: string | null;
+  generation_next_attempt_at?: string | null;
+  generation_retry_count?: number;
+  generation_last_error?: string | null;
+  regeneration_request_count?: number;
+  reconcile_checked_at?: string | null;
+  storno_invoice_number?: string | null;
   created_at: string;
   updated_at: string;
   paid_at: string | null;

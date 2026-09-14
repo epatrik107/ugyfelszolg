@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { addSecurityHeaders, bodySizeGuard, corsGuard, requireJsonContentType } from "./lib/security";
 import { cleanupExpiredData } from "./lib/db";
+import { reconcileOpenCheckouts } from "./lib/checkoutCompletion";
 import { processGenerationJobs, processRefundJobs } from "./lib/jobs";
+import { processOperatorRequests, queueOperatorDigest, recordHeartbeat } from "./lib/ops";
+import { processEmailOutbox } from "./lib/outbox";
 import {
   envValidationGuard,
   logEnvValidationFailure,
@@ -15,6 +18,7 @@ import { contactRoute } from "./routes/contact";
 import { cancelCheckoutSessionRoute } from "./routes/cancelCheckoutSession";
 import { createCheckoutSessionRoute } from "./routes/createCheckoutSession";
 import { getOrderResultRoute } from "./routes/getOrderResult";
+import { orderAccessLinkRoute } from "./routes/orderAccessLink";
 import { regenerateOrderRoute } from "./routes/regenerateOrder";
 import { sendLetterRoute } from "./routes/sendLetter";
 import { stripeWebhookRoute } from "./routes/stripeWebhook";
@@ -24,6 +28,8 @@ import {
   adminRetryInvoiceRoute,
 } from "./routes/adminInvoice";
 
+export const SCHEMA_VERSION = 14;
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", corsGuard);
@@ -32,6 +38,7 @@ app.use("/api/*", requireJsonContentType);
 app.use("/api/*", envValidationGuard);
 app.post("/api/create-checkout-session", createCheckoutSessionRoute);
 app.post("/api/stripe/webhook", stripeWebhookRoute);
+app.post("/api/orders/access-link", orderAccessLinkRoute);
 app.post("/api/orders/:publicId/cancel-checkout", cancelCheckoutSessionRoute);
 app.get("/api/orders/:publicId/result", getOrderResultRoute);
 app.post("/api/orders/:publicId/regenerate", regenerateOrderRoute);
@@ -49,9 +56,13 @@ app.get("/api/health", async (c) => {
       c.env.DB.prepare("SELECT generation_run_id, refund_requested_at, refund_manual_required FROM orders LIMIT 0"),
       c.env.DB.prepare("SELECT key, count, expires_at FROM rate_limits LIMIT 0"),
       c.env.DB.prepare("SELECT id FROM invoices LIMIT 0"),
+      c.env.DB.prepare("SELECT generation_next_attempt_at, regeneration_request_count, refund_reason FROM orders LIMIT 0"),
+      c.env.DB.prepare("SELECT dedupe_key FROM email_outbox LIMIT 0"),
+      c.env.DB.prepare("SELECT action FROM operator_requests LIMIT 0"),
+      c.env.DB.prepare("SELECT name FROM ops_heartbeat LIMIT 0"),
     ]);
     const status = validation.ok ? "ok" : "degraded";
-    return c.json({ status, revision: c.env.BUILD_SHA ?? "local", schemaVersion: 13, ts: new Date().toISOString() }, validation.ok ? 200 : 503);
+    return c.json({ status, revision: c.env.BUILD_SHA ?? "local", schemaVersion: SCHEMA_VERSION, ts: new Date().toISOString() }, validation.ok ? 200 : 503);
   } catch {
     return c.json({ status: "degraded", ts: new Date().toISOString() }, 503);
   }
@@ -88,18 +99,35 @@ export default {
         .bind(Math.floor(Date.now() / 1000)).run();
     } catch { logEvent("cron_rate_limit_cleanup_failed", {}); }
     // A provider outage must not prevent the other job classes from running.
+    const failures: string[] = [];
+    async function guarded(name: string, job: () => Promise<unknown>) {
+      try {
+        await job();
+      } catch (error) {
+        failures.push(name);
+        logEvent(`cron_${name}_failed`, { errorType: error instanceof Error ? error.name : "unknown" });
+      }
+    }
     await Promise.all([
       (async () => {
-        try { await processGenerationJobs(env); }
-        catch { logEvent("cron_generation_scan_failed", {}); }
-        try { await processRefundJobs(env); }
-        catch { logEvent("cron_refund_scan_failed", {}); }
+        await guarded("generation_scan", () => processGenerationJobs(env));
+        await guarded("refund_scan", () => processRefundJobs(env));
       })(),
+      guarded("invoice_retry", async () => {
+        for (const retry of await retryDueInvoices(env)) logEvent("invoice_retry_finished", retry);
+      }),
       (async () => {
-        try {
-          for (const retry of await retryDueInvoices(env)) logEvent("invoice_retry_finished", retry);
-        } catch { logEvent("cron_invoice_retry_failed", {}); }
+        await guarded("checkout_reconcile", () => reconcileOpenCheckouts(env));
+        await guarded("operator_requests", () => processOperatorRequests(env));
+        if (scheduledTime.getUTCMinutes() % 5 === 0) {
+          await guarded("operator_digest", () => queueOperatorDigest(env));
+        }
+        // Not blocked by slow AI work, so confirmations go out promptly.
+        await guarded("email_outbox", () => processEmailOutbox(env));
       })(),
     ]);
+    // Deliver what the longer jobs queued (refund notices) in the same run.
+    await guarded("email_outbox_final", () => processEmailOutbox(env));
+    await guarded("heartbeat", () => recordHeartbeat(env, "scheduled", { failures }));
   },
 };

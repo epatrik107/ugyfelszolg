@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AI_REVIEW_UNAVAILABLE_MESSAGE,
+  GENERATION_PROVIDER_UNAVAILABLE_MESSAGE,
   generateLetterForPaidOrder,
 } from "../src/lib/ai";
 import {
   completeGeneration,
+  deferGeneration,
   failGeneration,
   commitReservedQuota,
   markLetterEmailSent,
@@ -15,6 +17,7 @@ import type { Env, OrderRow } from "../src/lib/types";
 vi.mock("../src/lib/db", () => ({
   commitReservedQuota: vi.fn(),
   completeGeneration: vi.fn(),
+  deferGeneration: vi.fn(),
   failGeneration: vi.fn(),
   getLetterEmailVersionKey: vi.fn(async () => "sha256:test-letter"),
   hasLetterEmailVersionSent: vi.fn(() => false),
@@ -166,6 +169,7 @@ describe("secondary AI review gate", () => {
     vi.clearAllMocks();
     vi.mocked(completeGeneration).mockResolvedValue(true);
     vi.mocked(failGeneration).mockResolvedValue(true);
+    vi.mocked(deferGeneration).mockResolvedValue("deferred");
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -188,7 +192,7 @@ describe("secondary AI review gate", () => {
     expect(failGeneration).not.toHaveBeenCalled();
   });
 
-  it("blocks generation after repeated review timeouts", async () => {
+  it("keeps the gate closed and defers, without refunding, after repeated review timeouts", async () => {
     fetchMock(
       geminiResponse(safeLetter),
       new DOMException("timed out", "TimeoutError"),
@@ -198,15 +202,11 @@ describe("secondary AI review gate", () => {
     await generateLetterForPaidOrder(env, order);
 
     expect(completeGeneration).not.toHaveBeenCalled();
-    expect(failGeneration).toHaveBeenCalledWith(
-      env,
-      order.id,
-      "failed_review",
-      AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null, null);
+    expect(failGeneration).not.toHaveBeenCalled();
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "timeout");
   });
 
-  it("blocks generation after retryable review HTTP errors exceed the retry limit", async () => {
+  it("defers after retryable review HTTP errors exceed the in-run retry limit", async () => {
     fetchMock(
       geminiResponse(safeLetter),
       new Response(null, { status: 500 }),
@@ -216,12 +216,30 @@ describe("secondary AI review gate", () => {
     await generateLetterForPaidOrder(env, order);
 
     expect(completeGeneration).not.toHaveBeenCalled();
-    expect(failGeneration).toHaveBeenCalledWith(
-      env,
-      order.id,
-      "failed_review",
-      AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null, null);
+    expect(failGeneration).not.toHaveBeenCalled();
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "http_429");
+  });
+
+  it("fails and requests a refund only after the durable retry window is exhausted", async () => {
+    vi.mocked(deferGeneration).mockResolvedValueOnce("exhausted");
+    fetchMock(
+      geminiResponse(safeLetter),
+      new DOMException("timed out", "TimeoutError"),
+      new DOMException("timed out again", "TimeoutError"),
+    );
+
+    await generateLetterForPaidOrder(env, order);
+
+    expect(failGeneration).toHaveBeenCalledWith(env, order.id, "failed", GENERATION_PROVIDER_UNAVAILABLE_MESSAGE, null, null);
+  });
+
+  it("fails immediately on a non-retryable provider response", async () => {
+    fetchMock(new Response(null, { status: 403 }));
+
+    await generateLetterForPaidOrder(env, order);
+
+    expect(deferGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).toHaveBeenCalledWith(env, order.id, "failed", "Generálási hiba.", null, null);
   });
 
   it("blocks malformed review JSON without retrying", async () => {
@@ -365,13 +383,8 @@ describe("secondary AI review gate", () => {
 
     await generateLetterForPaidOrder(env, order);
 
-    expect(failGeneration).toHaveBeenCalledWith(
-      env,
-      order.id,
-      "failed_review",
-      AI_REVIEW_UNAVAILABLE_MESSAGE,
-      null, null);
-    const persistedError = vi.mocked(failGeneration).mock.calls[0][3];
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "http_503");
+    const persistedError = vi.mocked(deferGeneration).mock.calls[0][2];
     expect(persistedError).not.toContain(providerBody);
     expect(persistedError).not.toContain(env.GEMINI_API_KEY);
     expect(consoleSpy.mock.calls.map((call: unknown[]) => call.join(" ")).join("\n")).not.toContain(
@@ -385,8 +398,7 @@ describe("secondary AI review gate", () => {
   it("releases reserved quota on review gate failure for subscription orders", async () => {
     fetchMock(
       geminiResponse(safeLetter),
-      new DOMException("timed out", "TimeoutError"),
-      new DOMException("timed out again", "TimeoutError"),
+      reviewResponse("{not json"),
     );
 
     await generateLetterForPaidOrder(env, {
@@ -408,8 +420,7 @@ describe("secondary AI review gate", () => {
     vi.mocked(failGeneration).mockResolvedValueOnce(false);
     fetchMock(
       geminiResponse(safeLetter),
-      new DOMException("timed out", "TimeoutError"),
-      new DOMException("timed out again", "TimeoutError"),
+      reviewResponse("{not json"),
     );
 
     await generateLetterForPaidOrder(env, {
@@ -428,7 +439,7 @@ describe("secondary AI review gate", () => {
   });
 
   it("defers automatic refund I/O to the durable scheduler", async () => {
-    fetchMock(geminiResponse(safeLetter), new DOMException("timed out", "TimeoutError"), new DOMException("timed out", "TimeoutError"));
+    fetchMock(geminiResponse(safeLetter), reviewResponse("{not json"));
     await generateLetterForPaidOrder(env, { ...order, stripe_payment_intent_id: "pi_test_1", billing_source: "checkout" });
     expect(failGeneration).toHaveBeenCalledOnce();
     expect(createRefund).not.toHaveBeenCalled();
