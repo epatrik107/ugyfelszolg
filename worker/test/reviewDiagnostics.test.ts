@@ -70,7 +70,7 @@ describe("review diagnostics and paid fulfillment", () => {
     try {
       addOrder("blocked", { ...rentalSource, payment_status: "paid", ai_status: "not_started", generation_count: 0, stripe_payment_intent_id: "pi_synthetic_blocked", paid_amount: 890, invoice_status: "not_required" });
       const replies = [response(validRentalLetter), response(rejected), response(validRentalLetter), response(rejected)];
-      const fetch = vi.fn(async (url: string) => url.includes("api.stripe.com")
+      const fetch = vi.fn(async (url: string) => new URL(url).hostname === "api.stripe.com"
         ? Response.json({ id: "re_synthetic", status: "succeeded", amount: 89000, currency: "huf", payment_intent: "pi_synthetic_blocked" })
         : replies.shift());
       vi.stubGlobal("fetch", fetch);
@@ -79,7 +79,7 @@ describe("review diagnostics and paid fulfillment", () => {
       expect(await processRefundJobs(env)).toBe(1);
       expect(await processRefundJobs(env)).toBe(0);
       expect(await getOrderById(env, "blocked")).toMatchObject({ payment_status: "refunded", invoice_status: "not_required" });
-      expect(fetch.mock.calls.filter(([url]) => url.includes("api.stripe.com"))).toHaveLength(1);
+      expect(fetch.mock.calls.filter(([url]) => new URL(url).hostname === "api.stripe.com")).toHaveLength(1);
       expect(sqlite.prepare("SELECT COUNT(*) AS n FROM generation_reviews WHERE outcome = 'rejected'").get()).toEqual({ n: 2 });
       const issues = await collectOperatorIssues(env);
       expect(JSON.stringify(issues)).toContain("generation_failed");
