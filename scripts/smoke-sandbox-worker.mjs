@@ -86,7 +86,7 @@ try {
   assert.equal(rows[0].refund_requested_at, null); assert.equal(rows[0].invoice_status, "not_required");
   const reviews = await query("SELECT outcome, findings_json, prompt_version FROM generation_reviews WHERE order_id = ? ORDER BY created_at", [id]);
   assert.equal(reviews.filter((row) => row.outcome === "approved").length, 2, "Both scheduled generations must have persisted approval evidence");
-  assert.ok(reviews.every((row) => row.prompt_version === "2026-09-17.1"));
+  assert.ok(reviews.every((row) => row.prompt_version === "2026-09-18.2"));
   console.log("Sandbox smoke passed: authorization, real scheduled rental-letter generation/review, regeneration, persisted review diagnostics, source facts and signer, targeted closing change with unchanged earlier paragraphs, previous letter/history, no automatic email.");
 } finally {
   // The run owns this UUID; no other order or user data is touched.

@@ -12,7 +12,7 @@ import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewRevisionScope } from "./revision";
-import { reviewLetterWithRules } from "./review";
+import { ensurePoliteClosing, reviewLetterWithRules } from "./review";
 import { REVIEW_CODES, REVIEW_FIELDS, type ReviewFinding } from "./reviewContract";
 import { recordReviewAttempt, type ReviewObservation } from "./reviewDiagnostics";
 import type { Env, OrderRow } from "./types";
@@ -184,7 +184,8 @@ export async function callGemini(env: Env, model: string, input: string) {
   const body = JSON.stringify({
     system_instruction: { parts: [{ text: GENERATION_SYSTEM_PROMPT }] },
     contents: [{ role: "user", parts: [{ text: input }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+    // Gemini 3 recommends its default temperature for instruction following.
+    generationConfig: { maxOutputTokens: 2048 },
   });
 
   let lastError: Error | null = null;
@@ -266,7 +267,7 @@ async function reviewWithAiOnce(env: Env, order: OrderRow, letter: string, regen
         system_instruction: { parts: [{ text: REVIEW_SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: buildReviewPrompt(order, letter, regenerationFeedback) }] }],
         generationConfig: {
-          responseMimeType: "application/json", maxOutputTokens: 2048, temperature: 0,
+          responseMimeType: "application/json", maxOutputTokens: 2048,
           responseSchema: {
             type: "OBJECT", properties: {
               ok: { type: "BOOLEAN" },
@@ -345,8 +346,8 @@ export async function generateReviewedLetter(
   let reviewIssues: string[] = [];
   let revisionBase: string | undefined;
   for (let attempt = 0; attempt < MAX_LETTER_ATTEMPTS; attempt += 1) {
-    const letter = validateAiOutput(await callGemini(env, model,
-      buildUserPrompt(order, reviewIssues, regenerationFeedback, revisionBase)));
+    const raw = await callGemini(env, model, buildUserPrompt(order, reviewIssues, regenerationFeedback, revisionBase));
+    const letter = validateAiOutput(ensurePoliteClosing(raw, order.name));
     const ruleReview = reviewLetterWithRules(letter);
     if (ruleReview.warnings.length) logEvent("ai_review_warning", { orderId: order.id, attempt, warnings: ruleReview.warnings });
     let review: AiReviewResult;

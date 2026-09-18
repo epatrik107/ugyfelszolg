@@ -3,7 +3,7 @@ import { cleanupExpiredData, getOrderById } from "../src/lib/db";
 import { processGenerationJobs, processRefundJobs } from "../src/lib/jobs";
 import { collectOperatorIssues } from "../src/lib/ops";
 import { recordReviewAttempt } from "../src/lib/reviewDiagnostics";
-import { reviewLetterWithRules } from "../src/lib/review";
+import { ensurePoliteClosing, reviewLetterWithRules } from "../src/lib/review";
 import { sqliteEnv } from "./helpers/sqlite";
 import { rentalSource, validRentalLetter } from "./fixtures/rental";
 
@@ -14,6 +14,30 @@ const response = (value: unknown) => Response.json({ candidates: [{ content: { p
 describe("review diagnostics and paid fulfillment", () => {
   it("preserves the incident's goals without requiring an invented amount or deadline", () => {
     expect(reviewLetterWithRules(validRentalLetter)).toMatchObject({ ok: true, blockers: [] });
+  });
+
+  it("adds only the missing polite closing before a correct existing signer", () => {
+    const missing = validRentalLetter.replace("Üdvözlettel:\n", "");
+    expect(ensurePoliteClosing(missing, rentalSource.name)).toBe(validRentalLetter.replace("Üdvözlettel:", "Tisztelettel:"));
+    expect(ensurePoliteClosing(validRentalLetter, rentalSource.name)).toBe(validRentalLetter);
+    expect(ensurePoliteClosing(missing.replace("Minta Anna", "Hibás Aláíró"), rentalSource.name)).toContain("Hibás Aláíró");
+    expect(ensurePoliteClosing(missing.replace("Minta Anna", "Hibás Aláíró"), rentalSource.name)).not.toContain("Tisztelettel:");
+  });
+
+  it("reviews the normalized text before publishing rather than spending a repair on the closing", async () => {
+    const { env, sqlite, addOrder } = sqliteEnv();
+    try {
+      addOrder("closing", { ...rentalSource, payment_status: "paid", ai_status: "not_started", generation_count: 0 });
+      const raw = validRentalLetter.replace("Üdvözlettel:\n", "");
+      const replies = [response(raw), response({ ok: true, issues: [] })];
+      const fetch = vi.fn(async (_url: string, _init: RequestInit) => replies.shift());
+      vi.stubGlobal("fetch", fetch);
+      await processGenerationJobs(env);
+      const expected = ensurePoliteClosing(raw, rentalSource.name);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(String(fetch.mock.calls[1][1].body)).contents[0].parts[0].text).toContain(expected);
+      expect(await getOrderById(env, "closing")).toMatchObject({ generated_letter: expected, ai_status: "completed", refund_requested_at: null });
+    } finally { sqlite.close(); }
   });
 
   it("repairs within two candidates and persists only classifications, with no refund or invoice", async () => {
