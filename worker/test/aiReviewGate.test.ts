@@ -27,6 +27,8 @@ vi.mock("../src/lib/db", () => ({
   markRefundInvoiceManualRequired: vi.fn(),
 }));
 
+vi.mock("../src/lib/reviewDiagnostics", () => ({ recordReviewAttempt: vi.fn(async () => true) }));
+
 vi.mock("../src/lib/email", () => ({
   sendGeneratedLetterEmail: vi.fn(),
   sendRefundEmail: vi.fn(),
@@ -146,6 +148,12 @@ function geminiResponse(text: string) {
 }
 
 function reviewResponse(payload: unknown) {
+  // Test shorthand only: real provider responses contain structured findings.
+  if (payload && typeof payload === "object" && Array.isArray((payload as {issues?: unknown}).issues)) {
+    const result = payload as { ok: boolean; issues: unknown[] };
+    payload = { ...result, issues: result.issues.map((issue) => typeof issue === "string"
+      ? { code: "source_conflict", field: "body", instruction: issue } : issue) };
+  }
   return geminiResponse(typeof payload === "string" ? payload : JSON.stringify(payload));
 }
 
@@ -478,6 +486,9 @@ describe("secondary AI review gate", () => {
 
   it.each([
     { ok: true, issues: ["Az összeg eltér a forrástól."] },
+    { ok: false, issues: [] },
+    { ok: false, issues: [{ code: "private@example.com", field: "body", instruction: "Javítás" }] },
+    { ok: false, issues: [{ code: "source_conflict", field: "private@example.com", instruction: "Javítás" }] },
     { ok: false, issues: [" "] },
     { ok: false, issues: Array(9).fill("Hibás adat.") },
     { ok: false, issues: ["x".repeat(301)] },

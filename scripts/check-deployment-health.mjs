@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-export const EXPECTED_SCHEMA_VERSION = 14;
+export const EXPECTED_SCHEMA_VERSION = 15;
 
 const REQUIRED_SECURITY_HEADERS = [
   "content-security-policy",

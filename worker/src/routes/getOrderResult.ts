@@ -53,6 +53,9 @@ export async function getOrderResultRoute(c: Context<{ Bindings: Env }>) {
       ? "A módosítás nem sikerült. A korábbi levél elérhető, és a módosítás újra kérhető." : undefined,
     invoiceStatus: order.invoice_status,
     aiStatus: order.ai_status,
+    failureReason: order.ai_status === "failed_review"
+      ? (order.error_message === "Automatikus minőségellenőrzés sikertelen." ? "content_review" : "review_unavailable")
+      : order.ai_status === "failed" ? "generation_unavailable" : undefined,
     generationCount: order.generation_count,
     generatedLetter: canExposeLetter ? order.generated_letter : undefined,
     letterHistory: (() => {

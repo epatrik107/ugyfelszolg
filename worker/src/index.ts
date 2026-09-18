@@ -28,7 +28,7 @@ import {
   adminRetryInvoiceRoute,
 } from "./routes/adminInvoice";
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -60,6 +60,7 @@ app.get("/api/health", async (c) => {
       c.env.DB.prepare("SELECT dedupe_key FROM email_outbox LIMIT 0"),
       c.env.DB.prepare("SELECT action FROM operator_requests LIMIT 0"),
       c.env.DB.prepare("SELECT name FROM ops_heartbeat LIMIT 0"),
+      c.env.DB.prepare("SELECT findings_json FROM generation_reviews LIMIT 0"),
     ]);
     const status = validation.ok ? "ok" : "degraded";
     return c.json({ status, revision: c.env.BUILD_SHA ?? "local", schemaVersion: SCHEMA_VERSION, ts: new Date().toISOString() }, validation.ok ? 200 : 503);

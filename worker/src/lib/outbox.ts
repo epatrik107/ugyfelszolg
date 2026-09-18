@@ -166,7 +166,9 @@ async function render(env: Env, row: OutboxRow) {
           invoiceNumber: invoice?.invoice_number ?? null,
           amount: order.refund_amount ?? order.paid_amount ?? order.server_calculated_price,
           currency: order.currency,
-          reason: typeof payload.reason === "string" ? payload.reason : "A megrendelés visszatérítésre került.",
+          reason: order.ai_status === "failed_review" && order.error_message === "Automatikus minőségellenőrzés sikertelen."
+            ? "A levél a javítás után sem felelt meg az automatikus minőségellenőrzésnek. A rendelés összegét visszatérítettük."
+            : typeof payload.reason === "string" ? payload.reason : "A megrendelés visszatérítésre került.",
           siteUrl: env.SITE_URL,
           sellerName,
           sellerAddress,
