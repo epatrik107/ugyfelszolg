@@ -185,7 +185,12 @@ export async function callGemini(env: Env, model: string, input: string) {
     system_instruction: { parts: [{ text: GENERATION_SYSTEM_PROMPT }] },
     contents: [{ role: "user", parts: [{ text: input }] }],
     // Gemini 3 recommends its default temperature for instruction following.
-    generationConfig: { maxOutputTokens: 2048 },
+    // The token cap includes internal thinking. Leave room for a complete
+    // premium letter and its additions, while bounding Gemini 3 reasoning.
+    generationConfig: {
+      maxOutputTokens: 4096,
+      ...(model.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+    },
   });
 
   let lastError: Error | null = null;
@@ -227,7 +232,7 @@ export async function callGemini(env: Env, model: string, input: string) {
     }
 
     const payload = (await response.json().catch(() => null)) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
       promptFeedback?: { blockReason?: string };
     } | null;
     if (!payload) {
@@ -237,7 +242,15 @@ export async function callGemini(env: Env, model: string, input: string) {
       throw new AiProviderError("prompt_blocked", false);
     }
 
-    const text = payload.candidates?.[0]?.content?.parts
+    const candidate = payload.candidates?.[0];
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      throw new AiProviderError("output_truncated", true);
+    }
+    if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+      throw new AiProviderError("response_blocked", false);
+    }
+    const text = candidate?.content?.parts
+      ?.filter((part) => !part.thought)
       ?.map((p) => p.text ?? "")
       .join("")
       .trim();
@@ -293,9 +306,12 @@ async function reviewWithAiOnce(env: Env, order: OrderRow, letter: string, regen
   }
 
   const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
   };
-  const raw = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
+  const candidate = payload.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") throw new AiReviewFailure("output_truncated", true);
+  if (candidate?.finishReason && candidate.finishReason !== "STOP") throw new AiReviewFailure("response_blocked", false);
+  const raw = candidate?.content?.parts?.filter((part) => !part.thought).map((p) => p.text ?? "").join("");
   if (!raw) {
     throw new AiReviewFailure("empty_response", false);
   }

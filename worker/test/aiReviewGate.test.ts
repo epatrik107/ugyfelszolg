@@ -186,6 +186,41 @@ describe("secondary AI review gate", () => {
     consoleSpy.mockRestore();
   });
 
+  it("defers truncated generation without reviewing or publishing the partial letter", async () => {
+    const fetch = fetchMock(Response.json({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: safeLetter }] } }] }));
+    await generateLetterForPaidOrder(env, order);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "output_truncated");
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).not.toHaveBeenCalled();
+  });
+
+  it("does not trust even valid-looking JSON in truncated review responses", async () => {
+    const truncated = () => Response.json({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"ok":true,"issues":[]}' }] } }] });
+    fetchMock(geminiResponse(safeLetter), truncated(), truncated());
+    await generateLetterForPaidOrder(env, order);
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "output_truncated");
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).not.toHaveBeenCalled();
+  });
+
+  it("excludes thought summaries from both customer letters and review JSON", async () => {
+    const withThought = (text: string) => Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [
+      { thought: true, text: "Internal analysis that must never reach the customer" }, { text },
+    ] } }] });
+    const fetch = fetchMock(withThought(safeLetter), withThought('{"ok":true,"issues":[]}'));
+    await generateLetterForPaidOrder(env, order);
+    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null, null);
+    expect(fetch.mock.calls[1][1].body).not.toContain("Internal analysis");
+  });
+
+  it("does not publish partial content stopped by the provider safety filter", async () => {
+    fetchMock(Response.json({ candidates: [{ finishReason: "SAFETY", content: { parts: [{ text: safeLetter }] } }] }));
+    await generateLetterForPaidOrder(env, order);
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).toHaveBeenCalledWith(env, order.id, "failed", "Generálási hiba.", null, null);
+  });
+
   it("allows generation after a timeout followed by a successful review retry", async () => {
     const fetch = fetchMock(
       geminiResponse(safeLetter),

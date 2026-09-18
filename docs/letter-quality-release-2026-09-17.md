@@ -14,6 +14,7 @@ Cél: forráshű, udvarias, határozott levelek; az ellenőrzés a lényegi hib�
 4. Additív diagnosztikai tábla: változatonként modell/promptverzió, eredmény és engedélyezett kifogáskód/hely. Nincs teljes levél, nyers kifogásszöveg, ügyféladat vagy token a diagnosztikában. Lejárt rendeléshez tartozó adatok törlése; idegen/lejárt futás nem írhat diagnózist.
 5. A gyorsan visszatérített generálási hibák is megjelennek az operátori riportban; egy rendelés külön, csak olvasásra vizsgálható.
 6. Pontosabb hibaüzenet az ügyfélnek, külön tartalmi és technikai okkal.
+7. Prémium modellnél a 2048 tokenes keret valós próbában `MAX_TOKENS` választ és félbehagyott levelet eredményezett (1680 feldolgozási és 364 kimeneti token). Generáláskor 4096 tokenes keret és Gemini 3 esetén alacsony feldolgozási szint; a csonkolt válasz technikai újrapróbálást kér, nem kerül tartalmi javításra vagy publikálásra. A gondolatösszefoglalókat mindkét válaszfeldolgozó kizárja.
 
 ## Teszt és kiadás
 
@@ -26,9 +27,10 @@ Cél: forráshű, udvarias, határozott levelek; az ellenőrzés a lényegi hib�
 
 ## Eredmények
 
-- Helyi typecheck és build sikeres; 402/402 backend/script teszt, 32/32 asztali/mobil böngészőteszt, 15/15 migráció sikeres.
+- Helyi typecheck és build sikeres; 406/406 backend/script teszt, 32/32 asztali/mobil böngészőteszt, 15/15 migráció sikeres.
 - Az anonim eredeti hiba a régi prompttal két körben elutasítást eredményezett. A javított prompttal a célzott javítás után elfogadott, határidőt nem kitaláló levél készült.
 - A teljes modellteszt első futásában minden rögzített review-eset teljesült, majd a szolgáltató 429-et adott; a tesztfuttatás 12 másodperces ütemezést kapott.
+- A sandbox előtti kapu téves review-kifogást is feltárt: a kihagyható háttérrészlet hiányát fenyegetésként jelölte. A 2026-09-18.3 prompt konkrét hibához köti az elutasítást, és elkülöníti az opcionális bővítési javaslatot a tényleges hibától. A 14 rögzített eset ezt követően teljesült.
 - A végleges modell-, sandbox- és production-eredmények a kiadás után kerülnek ide.
 
-A Gemini 3 hívások a szolgáltató alapértelmezett temperature értékét használják. A [Google Gemini 3 útmutatója](https://ai.google.dev/gemini-api/docs/generate-content/gemini-3) az alacsony értékek helyett ezt ajánlja a lehetséges utasításkövetési/ismétlődési problémák elkerülésére. A stabil elfogadást a közös szabályok, a strukturált kimenet és a regressziós minőségi tesztek biztosítják.
+A Gemini 3 hívások a szolgáltató alapértelmezett temperature értékét használják. A [Google Gemini 3 útmutatója](https://ai.google.dev/gemini-api/docs/generate-content/gemini-3) az alacsony értékek helyett ezt ajánlja a lehetséges utasításkövetési/ismétlődési problémák elkerülésére. A [feldolgozási tokenek dokumentációja](https://ai.google.dev/gemini-api/docs/generate-content/thinking) leírja a közös tokenkeret és a csonkolás kapcsolatát. A közös szabályokat és a strukturált kimenetet regressziós minőségi próbák ellenőrzik; a modell tévedésének lehetőségét ezek sem szüntetik meg.
