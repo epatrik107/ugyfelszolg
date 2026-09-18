@@ -516,7 +516,15 @@ jobs:
           }
           fs.writeFileSync("/tmp/stale-worker-secrets.json", JSON.stringify(staleSecrets));
           NODE
-          npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml
+          # Removing the same obsolete bindings is idempotent. Retry transient
+          # Cloudflare/network errors, but still fail and roll back if persistent.
+          for attempt in 1 2 3; do
+            if npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then exit 1; fi
+            sleep "$((attempt * 5))"
+          done
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -533,7 +541,7 @@ jobs:
           EXPECTED_REVISION: ${{ github.sha }}
       - name: Verify real model quality after deployment
         id: deployed-quality
-        if: ${{ !cancelled() && steps.deployment-health.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deploy-worker.outcome == 'success' && steps.stale-secrets.outcome == 'success' && steps.deployment-health.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 12
         run: node /tmp/evaluate-prompts.mjs
