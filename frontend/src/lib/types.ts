@@ -78,6 +78,7 @@ export interface OrderResult {
     | "completed"
     | "failed"
     | "failed_review";
+  failureReason?: "content_review" | "review_unavailable" | "generation_unavailable";
   generationCount: number;
   generatedLetter?: string;
   letterHistory?: string[];

@@ -270,9 +270,9 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           KV_NAMESPACE_ID: ${{ vars.CLOUDFLARE_KV_NAMESPACE_ID }}
           WORKER_NAME: ${{ vars.WORKER_NAME }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM }}
-          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM || 'gemini-3.5-flash' }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL || 'gemini-3.1-flash-lite' }}
           SITE_URL: ${{ vars.SITE_URL }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
@@ -429,6 +429,16 @@ jobs:
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED || 'false' }}
           DEPLOY_ENV: ${{ inputs.target_environment }}
+      - name: Verify real model quality before deployment
+        timeout-minutes: 12
+        run: |
+          npx esbuild scripts/evaluate-prompts.ts --bundle --platform=node --format=esm --outfile=/tmp/evaluate-prompts.mjs
+          node /tmp/evaluate-prompts.mjs
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM || 'gemini-3.5-flash' }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL || 'gemini-3.1-flash-lite' }}
       - name: Capture currently active Worker version
         id: previous-deployment
         run: |
@@ -506,7 +516,15 @@ jobs:
           }
           fs.writeFileSync("/tmp/stale-worker-secrets.json", JSON.stringify(staleSecrets));
           NODE
-          npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml
+          # Removing the same obsolete bindings is idempotent. Retry transient
+          # Cloudflare/network errors, but still fail and roll back if persistent.
+          for attempt in 1 2 3; do
+            if npx wrangler secret bulk /tmp/stale-worker-secrets.json --config worker/wrangler.toml; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then exit 1; fi
+            sleep "$((attempt * 5))"
+          done
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -521,14 +539,25 @@ jobs:
         env:
           API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
           EXPECTED_REVISION: ${{ github.sha }}
+      - name: Verify real model quality after deployment
+        id: deployed-quality
+        if: ${{ !cancelled() && steps.deploy-worker.outcome == 'success' && steps.stale-secrets.outcome == 'success' && steps.deployment-health.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node /tmp/evaluate-prompts.mjs
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GEMINI_MODEL_PREMIUM: ${{ vars.GEMINI_MODEL_PREMIUM || 'gemini-3.5-flash' }}
+          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL || 'gemini-3.1-flash-lite' }}
       - name: Roll back unhealthy Worker
-        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure') && steps.previous-deployment.outputs.version_id != '' }}
-        run: npx wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}" --yes --message "Automatic rollback after failed health check" --config worker/wrangler.toml
+        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure' || steps.deployed-quality.outcome == 'failure') && steps.previous-deployment.outputs.version_id != '' }}
+        run: npx wrangler rollback "${{ steps.previous-deployment.outputs.version_id }}" --yes --message "Automatic rollback after failed health or model quality check" --config worker/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Fail deployment after rollback
-        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure') }}
+        if: ${{ !cancelled() && (steps.deploy-worker.outcome == 'failure' || steps.stale-secrets.outcome == 'failure' || steps.deployment-health.outcome == 'failure' || steps.deployed-quality.outcome == 'failure') }}
         run: exit 1
       - name: Verify scheduler heartbeat, alert delivery and Stripe webhook configuration
         if: ${{ success() }}
@@ -553,14 +582,3 @@ jobs:
           CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
           TOKEN_HASH_SECRET: ${{ secrets.TOKEN_HASH_SECRET }}
           API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
-
-      - name: Verify prompt grounding with the real sandbox review model
-        if: ${{ !cancelled() && inputs.target_environment == 'sandbox' && steps.deployment-health.outcome == 'success' }}
-        timeout-minutes: 5
-        run: |
-          npx esbuild scripts/evaluate-prompts.ts --bundle --platform=node --format=esm --outfile=/tmp/evaluate-prompts.mjs
-          node /tmp/evaluate-prompts.mjs
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_REVIEW_MODEL: ${{ vars.GEMINI_REVIEW_MODEL }}

@@ -42,6 +42,14 @@ async function order(page: Page, data: object = completed) {
   await page.goto("/sikeres-fizetes?order=ui-test#token=abcdefghijklmnopqrstuvwxyz123456");
 }
 
+test("refunded content rejection explains the next step without inviting an identical repurchase", async ({ page }) => {
+  await order(page, { ...completed, generatedLetter: undefined, paymentStatus: "refunded", aiStatus: "failed_review", failureReason: "content_review", refundStatus: "succeeded", invoiceStatus: "not_required" });
+  await expect(page.getByText("A megrendelés visszatérítve", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Új megrendelés előtt kérjük/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Kapcsolatfelvétel", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Újra megrendelem", exact: true })).toHaveCount(0);
+});
+
 test("inline validation, context cards and back navigation retain values", async ({ page }, testInfo) => {
   await page.goto("/level-keszites");
   await page.getByRole("button", { name: "Tovább", exact: true }).click();

@@ -7,6 +7,17 @@ export interface RuleReviewResult {
   warnings: string[];
 }
 
+const politeClosing = /(Tisztelettel|Üdvözlettel|Köszönettel|köszönöm|Előre is köszön)/i;
+
+/** Add only a conventional closing before an already-correct final signer.
+ * Never invent facts or repair a wrong/missing signer; AI review sees this text. */
+export function ensurePoliteClosing(letter: string, signer: string) {
+  const name = signer.trim();
+  const text = letter.trimEnd();
+  if (politeClosing.test(text) || !name || /[\r\n]/u.test(name) || !text.endsWith(`\n${name}`)) return letter;
+  return `${text.slice(0, -name.length).trimEnd()}\n\nTisztelettel:\n${name}`;
+}
+
 /** Patterns that BLOCK generation — must be absent before we can proceed. */
 const blockerPatterns: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /biztosan pert nyer/i, label: "Biztos peres eredmény állítása." },
@@ -54,7 +65,7 @@ export function reviewLetterWithRules(letter: string): RuleReviewResult {
   if (!/(kér(em|jük|ném|ésem|ésünk|i|lek|dek)?|kéréssel fordulok|szeretném kérni)/i.test(letter)) {
     blockers.push("Nem elég világos a kérés.");
   }
-  if (!/(Tisztelettel|Üdvözlettel|Köszönettel|köszönöm|Előre is köszön)/i.test(letter)) {
+  if (!politeClosing.test(letter)) {
     blockers.push("Hiányzik az udvarias lezárás.");
   }
   if (!/[áéíóöőúüű]/i.test(letter)) {

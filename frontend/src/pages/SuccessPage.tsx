@@ -242,7 +242,9 @@ export function SuccessPage() {
     result?.refundStatus === "pending" || result?.refundStatus === "unknown";
   if (result?.aiStatus === "failed_review") {
     statusMessage =
-      "A levél automatikus minőségellenőrzése nem sikerült.";
+      result?.failureReason === "content_review"
+        ? "A levél a javítás után sem felelt meg az automatikus minőségellenőrzésnek."
+        : "A levél automatikus minőségellenőrzése nem sikerült.";
   }
   if (result?.aiStatus === "failed") {
     statusMessage =
@@ -306,15 +308,16 @@ export function SuccessPage() {
         <div className="space-y-4">
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
             <p className="font-semibold text-amber-900">A megrendelés visszatérítve</p>
+            {result.failureReason === "content_review" && <p className="mt-2 text-sm text-amber-800">A levél a javítás után sem felelt meg a minőségellenőrzésnek. Új megrendelés előtt kérjük, vegye fel velünk a kapcsolatot, hogy segíthessünk az ügy pontosításában.</p>}
             <p className="mt-1 text-sm text-amber-700">
               A fizetett összeg visszatérítésre kerül bankszámlájára — ez általában 5–10 munkanapon belül megtörténik.
               Küldtünk egy visszaigazoló emailt is.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link className="button-primary" to="/level-keszites">
+            {result.failureReason !== "content_review" && <Link className="button-primary" to="/level-keszites">
               Újra megrendelem
-            </Link>
+            </Link>}
             <Link className="button-secondary" to="/kapcsolat">
               Kapcsolatfelvétel
             </Link>

@@ -90,7 +90,7 @@ export const OPERATOR_ISSUE_QUERIES: IssueQuery[] = [
     key: "generation_failed",
     title: "Sikertelen levélgenerálás az elmúlt 24 órában",
     action: "Ha refund még nem indult, requeue_generation újraindítja; egyébként a refund automatikus.",
-    sql: (now) => ({ sql: "SELECT public_id AS ref FROM orders WHERE ai_status IN ('failed', 'failed_review') AND payment_status = 'paid' AND updated_at > ?", params: [iso(now - 24 * 3600_000)] }),
+    sql: (now) => ({ sql: "SELECT public_id AS ref FROM orders WHERE ai_status IN ('failed', 'failed_review') AND payment_status IN ('paid', 'refunded', 'partially_refunded') AND COALESCE(refund_requested_at, updated_at) > ?", params: [iso(now - 24 * 3600_000)] }),
   },
   {
     key: "email_dead",
