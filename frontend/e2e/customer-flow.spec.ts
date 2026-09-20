@@ -172,7 +172,15 @@ test("waiting stays truthful after many polls and offers help", async ({ page })
   await page.route("**/api/orders/ui-test/result", (route) => { calls++; return route.fulfill({ json: { ok: true, data: { ...completed, aiStatus: "generating", generatedLetter: undefined } } }); });
   await page.goto("/sikeres-fizetes?order=ui-test#token=abcdefghijklmnopqrstuvwxyz123456");
   await expect(page.getByRole("heading", { name: "Rendelés állapota" })).toBeVisible();
-  for (let i = 0; i < 13; i++) { const before = calls; await page.clock.runFor(15000); await expect.poll(() => calls).toBeGreaterThan(before); }
+  for (let i = 0; i < 13; i++) {
+    const before = calls;
+    // Fetch completion uses real browser I/O. Its next timer may be scheduled
+    // after runFor returns, so keep advancing until a new poll is observed.
+    await expect.poll(async () => {
+      await page.clock.runFor(15000);
+      return calls;
+    }).toBeGreaterThan(before);
+  }
   await expect(page.getByText("Levél elkészítése és minőségellenőrzése", { exact: true })).toBeVisible();
   await expect(page.getByText(/Még nincs kész eredmény/)).toBeVisible();
   await expect(page.getByText("A levél megnyitható", { exact: true })).toHaveClass(/text-slate-400/);
