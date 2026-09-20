@@ -2,7 +2,6 @@
 // Synthetic data only: no Stripe session, invoice, or email is created.
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
 assert.equal(process.env.DEPLOY_ENV, "sandbox", "Synthetic order tests are sandbox-only");
 const api = new URL(process.env.API_HEALTH_URL);
 assert.ok(api.hostname.includes("-sandbox."), "Sandbox hostname required");
@@ -48,20 +47,20 @@ try {
   await query(`INSERT INTO orders (id, public_id, result_token_hash, email, name, letter_type, recipient,
     problem_description, desired_result, tone, selected_package, server_calculated_price, currency,
     payment_status, ai_status, generation_count, created_at, updated_at, paid_at, invoice_status)
-    VALUES (?, ?, ?, ?, 'Teszt Elek', 'Panaszlevél', 'Teszt Ügyfélszolgálat',
-    '2026. szeptember 2-án RND-2048 azonosítóval, 12 490 Ft értékben rendeltem egy csomagot. A megadott szállítási idő után sem érkezett meg.',
-    'Kérek tájékoztatást a csomag várható érkezéséről.', 'Udvarias', 'basic', 890, 'huf',
+    VALUES (?, ?, ?, ?, 'Minta Anna', 'Fizetési felszólítás', 'Teszt Bérlő',
+    'A bérlő három hónapja nem fizeti a bérleti díjat. Szóban és írásban is kerestem, de nem válaszolt. Nem érem el, és zárcserével kizárt a lakásból. Ez az utolsó felszólításom, mielőtt jogi útra lépek.',
+    'Szeretném, hogy fizessen, utána bontsuk fel a szerződést és távozzon a lakásból.', 'Határozott', 'basic', 890, 'huf',
     'paid', 'not_started', 0, ?, ?, ?, 'not_required')`, [id, id, hash, `${id}@example.invalid`, now, now, now]);
   const unauthorized = await fetch(new URL(`/api/orders/${id}/result`, api));
   assert.equal(unauthorized.status, 401);
   const first = await awaitLetter(1);
-  // Only this run's hard-coded synthetic letter; never credentials or customer data.
-  writeFileSync("/tmp/synthetic-prompt-letter.json", JSON.stringify({ letter: first.generatedLetter }));
   function verifyFacts(letter) {
-    assert.ok(letter.includes("Teszt Elek"), "The supplied signer must be preserved");
-    assert.ok(letter.includes("RND-2048"), "The order reference must be preserved");
-    assert.match(letter, /12[\s\u00a0]*490\s*(?:Ft|forint)/i, "The supplied amount must be preserved");
-    assert.match(letter, /(?:szeptember\s+0?2|09[.\/-]\s*0?2)/i, "The event date must be preserved");
+    assert.ok(letter.includes("Minta Anna"), "The supplied signer must be preserved");
+    assert.match(letter, /(?:három|3)[ -]hónap/i, "The duration must be preserved");
+    assert.match(letter, /bérleti díj|bérletidíj/i, "The request must concern rental arrears");
+    assert.match(letter, /szerződés/i, "The request to end the contract must remain");
+    assert.match(letter, /lakás/i, "The apartment handover must remain");
+    assert.doesNotMatch(letter, /\d[\d .,]*\s*(?:Ft|forint)/i, "No amount was supplied");
   }
   verifyFacts(first.generatedLetter);
   // Only the ending may change. Compare the earlier paragraphs without
@@ -85,7 +84,10 @@ try {
   const rows = await query("SELECT generation_run_id, generation_feedback, refund_requested_at, invoice_status FROM orders WHERE id = ?", [id]);
   assert.equal(rows[0].generation_run_id, null); assert.equal(rows[0].generation_feedback, null);
   assert.equal(rows[0].refund_requested_at, null); assert.equal(rows[0].invoice_status, "not_required");
-  console.log("Sandbox smoke passed: authorization, real scheduled Gemini generation/review, regeneration, source facts and signer, targeted closing change with unchanged earlier paragraphs, previous letter/history, no automatic email.");
+  const reviews = await query("SELECT outcome, findings_json, prompt_version FROM generation_reviews WHERE order_id = ? ORDER BY created_at", [id]);
+  assert.equal(reviews.filter((row) => row.outcome === "approved").length, 2, "Both scheduled generations must have persisted approval evidence");
+  assert.ok(reviews.every((row) => row.prompt_version === "2026-09-18.3"));
+  console.log("Sandbox smoke passed: authorization, real scheduled rental-letter generation/review, regeneration, persisted review diagnostics, source facts and signer, targeted closing change with unchanged earlier paragraphs, previous letter/history, no automatic email.");
 } finally {
   // The run owns this UUID; no other order or user data is touched.
   await query("DELETE FROM order_status_log WHERE order_id = ?", [id]);

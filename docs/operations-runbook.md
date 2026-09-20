@@ -27,7 +27,7 @@ GitHub → Actions → **Operator action** → `production`.
 
 | Művelet | Mikor | Paraméter |
 |---|---|---|
-| `report` | Áttekintés; csak olvas | – |
+| `report` | Áttekintés; public ID esetén rendelési állapot és változatonkénti minőségellenőrzési kódok; csak olvas | opcionális public ID |
 | `resend_access_link` | A vevő nem találja a rendelési linket | public ID |
 | `retry_invoice` | Végleg sikertelen számla, a hiba javítása után | public ID |
 | `retry_invoice_email` | Csak nem-live számlázásnál | public ID |
@@ -85,3 +85,9 @@ npx wrangler d1 execute <cél-adatbázis> --remote --file backup.sql
 ```
 
 Egy adott időpontra a D1 Time Travel is használható; minden deploy előtt bookmark artifact készül.
+
+## Levélminőség diagnosztikája
+
+A `generation_reviews` tábla változatonként az engedélyezett kifogáskódot és érintett részt, a szabályblokkolások számát, modellt és promptverziót őrzi. A review szabad szövege és a levélvázlat nem kerül ide. A `report` műveletnek public ID-t megadva ezek az adatok kiolvashatók. A 90 napos rendelési megőrzés lejártakor a diagnosztika is törlődik. A visszatérített generálási kudarcok is szerepelnek a 24 órás hibajelzésben.
+
+A deploy valódi Gemini-minőségellenőrzést futtat előtte és utána, szintetikus bemenetekkel, a célkörnyezet modellbeállításaival. A próbák ütemezettek a perces kvóták miatt; az alap és prémium modellhez is szükséges működő hozzáférés. A deploy utáni minőségi próba hibája automatikus Worker-rollbacket vált ki. A szintetikus próbák productionban nem hoznak létre fizetést vagy rendelést; a tényleges cron és D1 teljesítési út a sandbox-próbában fut.

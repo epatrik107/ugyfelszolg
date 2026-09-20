@@ -12,7 +12,9 @@ import { logEvent } from "./logger";
 import { getGenerationModel, getReviewModel } from "./geminiModels";
 import { getPackage } from "./packages";
 import { reviewRevisionScope } from "./revision";
-import { reviewLetterWithRules } from "./review";
+import { ensurePoliteClosing, reviewLetterWithRules } from "./review";
+import { REVIEW_CODES, REVIEW_FIELDS, type ReviewFinding } from "./reviewContract";
+import { recordReviewAttempt, type ReviewObservation } from "./reviewDiagnostics";
 import type { Env, OrderRow } from "./types";
 
 import { buildUserPrompt, buildReviewPrompt, GENERATION_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT, PROMPT_VERSION } from "./prompts";
@@ -31,7 +33,8 @@ export const GENERATION_PROVIDER_UNAVAILABLE_MESSAGE =
 export const AI_REVIEW_UNAVAILABLE_MESSAGE =
   "A levél automatikus minőségellenőrzése átmenetileg nem érhető el. Kérjük, próbálja újra később.";
 
-type AiReviewResult = { ok: boolean; issues: string[] };
+type AiReviewResult = { ok: boolean; issues: string[]; findings: ReviewFinding[] };
+export const MAX_LETTER_ATTEMPTS = 2;
 
 class AiReviewFailure extends Error {
   constructor(
@@ -91,27 +94,25 @@ function parseAiReviewJson(raw: string): AiReviewResult {
     throw new AiReviewFailure("malformed_json", false);
   }
 
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as { ok?: unknown }).ok !== "boolean" ||
-    !Array.isArray((parsed as { issues?: unknown }).issues) ||
-    !(parsed as { issues: unknown[] }).issues.every((issue) => typeof issue === "string")
-  ) {
+  if (typeof parsed !== "object" || parsed === null ||
+      typeof (parsed as { ok?: unknown }).ok !== "boolean" ||
+      !Array.isArray((parsed as { issues?: unknown }).issues)) {
     throw new AiReviewFailure("schema_invalid", false);
   }
-
-  const result = parsed as { ok: boolean; issues: string[] };
-  if (result.issues.length > 8 || result.issues.some((issue) => !issue.trim() || issue.length > 300) || (result.ok && result.issues.length > 0)) {
+  const result = parsed as { ok: boolean; issues: unknown[] };
+  if (result.issues.length > 8 || (result.ok ? result.issues.length !== 0 : result.issues.length === 0)) {
     throw new AiReviewFailure("inconsistent_result", false);
   }
-  return {
-    ok: result.ok,
-    issues:
-      result.ok || result.issues.length > 0
-        ? result.issues
-        : ["Az AI minőségellenőrzés blokkolta a levelet."],
-  };
+  const findings: ReviewFinding[] = result.issues.map((item) => {
+    if (!item || typeof item !== "object") throw new AiReviewFailure("schema_invalid", false);
+    const finding = item as ReviewFinding;
+    if (!REVIEW_CODES.includes(finding.code) || !REVIEW_FIELDS.includes(finding.field) ||
+        typeof finding.instruction !== "string" || !finding.instruction.trim() || finding.instruction.length > 300) {
+      throw new AiReviewFailure("schema_invalid", false);
+    }
+    return { code: finding.code, field: finding.field, instruction: finding.instruction };
+  });
+  return { ok: result.ok, findings, issues: findings.map((f) => `[${f.code}/${f.field}] ${f.instruction}`) };
 }
 
 /**
@@ -183,7 +184,13 @@ export async function callGemini(env: Env, model: string, input: string) {
   const body = JSON.stringify({
     system_instruction: { parts: [{ text: GENERATION_SYSTEM_PROMPT }] },
     contents: [{ role: "user", parts: [{ text: input }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    // Gemini 3 recommends its default temperature for instruction following.
+    // The token cap includes internal thinking. Leave room for a complete
+    // premium letter and its additions, while bounding Gemini 3 reasoning.
+    generationConfig: {
+      maxOutputTokens: 4096,
+      ...(model.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+    },
   });
 
   let lastError: Error | null = null;
@@ -225,7 +232,7 @@ export async function callGemini(env: Env, model: string, input: string) {
     }
 
     const payload = (await response.json().catch(() => null)) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
       promptFeedback?: { blockReason?: string };
     } | null;
     if (!payload) {
@@ -235,7 +242,15 @@ export async function callGemini(env: Env, model: string, input: string) {
       throw new AiProviderError("prompt_blocked", false);
     }
 
-    const text = payload.candidates?.[0]?.content?.parts
+    const candidate = payload.candidates?.[0];
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      throw new AiProviderError("output_truncated", true);
+    }
+    if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+      throw new AiProviderError("response_blocked", false);
+    }
+    const text = candidate?.content?.parts
+      ?.filter((part) => !part.thought)
       ?.map((p) => p.text ?? "")
       .join("")
       .trim();
@@ -265,11 +280,17 @@ async function reviewWithAiOnce(env: Env, order: OrderRow, letter: string, regen
         system_instruction: { parts: [{ text: REVIEW_SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: buildReviewPrompt(order, letter, regenerationFeedback) }] }],
         generationConfig: {
-          responseMimeType: "application/json", maxOutputTokens: 1024, temperature: 0,
+          responseMimeType: "application/json", maxOutputTokens: 2048,
           responseSchema: {
             type: "OBJECT", properties: {
               ok: { type: "BOOLEAN" },
-              issues: { type: "ARRAY", items: { type: "STRING" } },
+              issues: { type: "ARRAY", maxItems: 8, items: {
+                type: "OBJECT", properties: {
+                  code: { type: "STRING", enum: [...REVIEW_CODES] },
+                  field: { type: "STRING", enum: [...REVIEW_FIELDS] },
+                  instruction: { type: "STRING" },
+                }, required: ["code", "field", "instruction"],
+              } },
             }, required: ["ok", "issues"],
           },
         },
@@ -285,9 +306,12 @@ async function reviewWithAiOnce(env: Env, order: OrderRow, letter: string, regen
   }
 
   const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
   };
-  const raw = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
+  const candidate = payload.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") throw new AiReviewFailure("output_truncated", true);
+  if (candidate?.finishReason && candidate.finishReason !== "STOP") throw new AiReviewFailure("response_blocked", false);
+  const raw = candidate?.content?.parts?.filter((part) => !part.thought).map((p) => p.text ?? "").join("");
   if (!raw) {
     throw new AiReviewFailure("empty_response", false);
   }
@@ -306,7 +330,10 @@ export async function reviewWithAi(env: Env, order: OrderRow, letter: string, re
     try {
       const review = await reviewWithAiOnce(env, order, letter, regenerationFeedback);
       const scopeIssues = reviewRevisionScope(order.generated_letter, letter, regenerationFeedback);
-      return { ok: review.ok && scopeIssues.length === 0, issues: [...review.issues, ...scopeIssues] };
+      const findings: ReviewFinding[] = [...review.findings, ...scopeIssues.map((instruction) => ({
+        code: "revision_scope" as const, field: "whole" as const, instruction,
+      }))];
+      return { ok: review.ok && scopeIssues.length === 0, issues: [...review.issues, ...scopeIssues], findings };
     } catch (error) {
       const failure =
         error instanceof AiReviewFailure
@@ -326,126 +353,88 @@ export async function reviewWithAi(env: Env, order: OrderRow, letter: string, re
   throw lastFailure ?? new AiReviewFailure("unexpected_error", false);
 }
 
-export async function generateLetterForPaidOrder(
-  env: Env,
-  order: OrderRow,
-  regenerationFeedback?: string,
+/** Shared by paid fulfillment and synthetic release evaluation; no payments or DB writes. */
+export async function generateReviewedLetter(
+  env: Env, order: OrderRow, regenerationFeedback?: string,
+  observe: (observation: ReviewObservation) => Promise<unknown> = async () => {},
 ) {
-  const pkg = getPackage(order.selected_package);
-  const model = getGenerationModel(env, pkg.capabilities.isPremiumModel);
+  const model = getGenerationModel(env, getPackage(order.selected_package).capabilities.isPremiumModel);
+  let reviewIssues: string[] = [];
+  let revisionBase: string | undefined;
+  for (let attempt = 0; attempt < MAX_LETTER_ATTEMPTS; attempt += 1) {
+    const raw = await callGemini(env, model, buildUserPrompt(order, reviewIssues, regenerationFeedback, revisionBase));
+    const letter = validateAiOutput(ensurePoliteClosing(raw, order.name));
+    const ruleReview = reviewLetterWithRules(letter);
+    if (ruleReview.warnings.length) logEvent("ai_review_warning", { orderId: order.id, attempt, warnings: ruleReview.warnings });
+    let review: AiReviewResult;
+    try {
+      review = await reviewWithAi(env, order, letter, regenerationFeedback);
+    } catch (error) {
+      await observe({ attempt, outcome: "unavailable", findings: [], ruleBlockerCount: ruleReview.blockers.length });
+      logEvent("ai_review_gate_failed", { orderId: order.id, attempt, reason: error instanceof AiReviewFailure ? error.code : "unknown" });
+      throw error;
+    }
+    const approved = ruleReview.ok && review.ok;
+    await observe({ attempt, outcome: approved ? "approved" : "rejected", findings: review.findings, ruleBlockerCount: ruleReview.blockers.length });
+    logEvent("ai_review_decision", {
+      orderId: order.id, attempt, approved, promptVersion: PROMPT_VERSION,
+      findings: review.findings.map(({ code, field }) => ({ code, field })), ruleBlockers: ruleReview.blockers,
+    });
+    if (approved) return { letter, attempts: attempt + 1 };
+    reviewIssues = [...ruleReview.blockers, ...review.issues];
+    revisionBase = letter;
+  }
+  return { letter: null, attempts: MAX_LETTER_ATTEMPTS };
+}
 
-  async function handleTransientFailure(error: unknown) {
-    const code = error instanceof Error ? error.message.slice(0, 80) : "unknown";
+export async function generateLetterForPaidOrder(env: Env, order: OrderRow, regenerationFeedback?: string) {
+  async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
+    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id, order.generation_run_id ?? null);
+    logEvent(failureRecorded ? "ai_generation_failed" : "ai_generation_failure_state_unchanged", { orderId: order.id, reason });
+  }
+  async function handleTransientFailure(error: Error) {
+    const code = error.message.slice(0, 80);
     await recordAiProviderFailure(env, code);
     const outcome = await deferGeneration(env, order, code);
     if (outcome === "deferred") {
       logEvent("ai_generation_deferred", { orderId: order.id, reason: code, retry: (order.generation_retry_count ?? 0) + 1 });
-      return;
-    }
-    if (outcome === "stale") {
+    } else if (outcome === "exhausted") {
+      await handleFailure("failed", GENERATION_PROVIDER_UNAVAILABLE_MESSAGE, `retries_exhausted_${code}`);
+    } else {
       logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason: code });
-      return;
     }
-    await handleFailure("failed", GENERATION_PROVIDER_UNAVAILABLE_MESSAGE, `retries_exhausted_${code}`);
   }
-
-  async function handleFailure(status: "failed" | "failed_review", message: string, reason: string) {
-    const failureRecorded = await failGeneration(env, order.id, status, message, order.subscription_id, order.generation_run_id ?? null);
-    if (!failureRecorded) {
-      logEvent("ai_generation_failure_state_unchanged", { orderId: order.id, reason });
-      return;
-    }
-    logEvent("ai_generation_failed", { orderId: order.id, reason });
-
-    // failGeneration atomically records the refund intent; the scheduler retries it.
-
-  }
-
   try {
     logEvent("ai_generation_started", { orderId: order.id, promptVersion: PROMPT_VERSION });
-    let reviewIssues: string[] = [];
-    let revisionBase: string | undefined;
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const letter = await callGemini(
-        env,
-        model,
-        buildUserPrompt(order, reviewIssues, regenerationFeedback, revisionBase),
-      );
-      await recordAiProviderSuccess(env);
-      const ruleReview = reviewLetterWithRules(letter);
-
-      if (ruleReview.warnings.length > 0) {
-        logEvent("ai_review_warning", { orderId: order.id, attempt, warnings: ruleReview.warnings });
-      }
-
-      // AI review is a fail-closed security gate; warnings are advisory.
-      let aiBlockers: string[] = [];
-      try {
-        const aiReview = await reviewWithAi(env, order, letter, regenerationFeedback);
-        if (!aiReview.ok) {
-          aiBlockers = aiReview.issues;
-          logEvent("ai_review_blocker", { orderId: order.id, attempt, issueCount: aiReview.issues.length });
-        }
-        reviewIssues = [...ruleReview.blockers, ...aiBlockers];
-        revisionBase = letter;
-      } catch (reviewErr) {
-        logEvent("ai_review_gate_failed", {
-          orderId: order.id,
-          attempt,
-          reason: reviewErr instanceof AiReviewFailure ? reviewErr.code : "unknown",
-        });
-        if (isRetryableAiFailure(reviewErr)) {
-          // Still fail-closed: nothing is published until a later review passes.
-          await handleTransientFailure(reviewErr);
-          return;
-        }
-        await handleFailure(
-          "failed_review",
-          AI_REVIEW_UNAVAILABLE_MESSAGE,
-          "ai_review_unavailable",
-        );
-        return;
-      }
-
-      if (ruleReview.ok && aiBlockers.length === 0) {
-        const safeLetter = validateAiOutput(letter);
-        const completed = await completeGeneration(env, order.id, safeLetter, order.generated_letter, order.generation_run_id ?? null);
-        if (!completed) {
-          logEvent("ai_generation_completion_state_unchanged", { orderId: order.id });
-          return;
-        }
-        if (order.subscription_id) {
-          await commitReservedQuota(env, order.subscription_id);
-        }
-        await sendGeneratedLetterEmailIfConfigured(env, order, safeLetter);
-        logEvent("ai_generation_completed", { orderId: order.id });
-        return;
-      }
-
-      logEvent("ai_review_failed", {
-        orderId: order.id,
-        attempt,
-        ruleBlockers: ruleReview.blockers,
-        aiBlockerCount: aiBlockers.length,
+    const runId = order.generation_run_id ?? crypto.randomUUID();
+    const result = await generateReviewedLetter(env, order, regenerationFeedback,
+      async (observation) => {
+        await recordReviewAttempt(env, order, runId, observation);
+        // Both provider stages answered: a content rejection is not an outage.
+        if (observation.outcome !== "unavailable") await recordAiProviderSuccess(env);
       });
-    }
-
-    await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");
-  } catch (error) {
-    if (isRetryableAiFailure(error)) {
-      await handleTransientFailure(error);
+    if (!result.letter) {
+      await handleFailure("failed_review", "Automatikus minőségellenőrzés sikertelen.", "review_failed");
       return;
     }
-    if (!(error instanceof AiProviderError)) {
-      // Storage or runtime faults are not the customer's order failing: keep the
-      // claim so lease recovery retries it instead of refunding.
+    const completed = await completeGeneration(env, order.id, result.letter, order.generated_letter, order.generation_run_id ?? null);
+    if (!completed) {
+      logEvent("ai_generation_completion_state_unchanged", { orderId: order.id });
+      return;
+    }
+    if (order.subscription_id) await commitReservedQuota(env, order.subscription_id);
+    await sendGeneratedLetterEmailIfConfigured(env, order, result.letter);
+    logEvent("ai_generation_completed", { orderId: order.id });
+  } catch (error) {
+    if (isRetryableAiFailure(error)) {
+      await handleTransientFailure(error as Error);
+    } else if (error instanceof AiReviewFailure) {
+      await handleFailure("failed_review", AI_REVIEW_UNAVAILABLE_MESSAGE, "ai_review_unavailable");
+    } else if (error instanceof AiProviderError) {
+      await handleFailure("failed", "Generálási hiba.", error.code);
+    } else {
+      // Storage faults retain the lease for durable recovery, never immediate refund.
       throw error;
     }
-    await handleFailure(
-      "failed",
-      "Generálási hiba.",
-      error.code,
-    );
   }
 }

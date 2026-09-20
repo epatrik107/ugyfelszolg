@@ -1330,6 +1330,7 @@ export async function cleanupExpiredData(env: Env) {
   const contactCutoff = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString();
   const redacted = "[redacted_after_retention]";
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM generation_reviews WHERE order_id IN (SELECT id FROM orders WHERE created_at < ? OR personal_data_redacted_at IS NOT NULL)").bind(cutoff),
     env.DB.prepare("DELETE FROM subscription_magic_links WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM subscription_sessions WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM contact_messages WHERE created_at < ?").bind(contactCutoff),

@@ -27,6 +27,8 @@ vi.mock("../src/lib/db", () => ({
   markRefundInvoiceManualRequired: vi.fn(),
 }));
 
+vi.mock("../src/lib/reviewDiagnostics", () => ({ recordReviewAttempt: vi.fn(async () => true) }));
+
 vi.mock("../src/lib/email", () => ({
   sendGeneratedLetterEmail: vi.fn(),
   sendRefundEmail: vi.fn(),
@@ -146,6 +148,12 @@ function geminiResponse(text: string) {
 }
 
 function reviewResponse(payload: unknown) {
+  // Test shorthand only: real provider responses contain structured findings.
+  if (payload && typeof payload === "object" && Array.isArray((payload as {issues?: unknown}).issues)) {
+    const result = payload as { ok: boolean; issues: unknown[] };
+    payload = { ...result, issues: result.issues.map((issue) => typeof issue === "string"
+      ? { code: "source_conflict", field: "body", instruction: issue } : issue) };
+  }
   return geminiResponse(typeof payload === "string" ? payload : JSON.stringify(payload));
 }
 
@@ -176,6 +184,41 @@ describe("secondary AI review gate", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     consoleSpy.mockRestore();
+  });
+
+  it("defers truncated generation without reviewing or publishing the partial letter", async () => {
+    const fetch = fetchMock(Response.json({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: safeLetter }] } }] }));
+    await generateLetterForPaidOrder(env, order);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "output_truncated");
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).not.toHaveBeenCalled();
+  });
+
+  it("does not trust even valid-looking JSON in truncated review responses", async () => {
+    const truncated = () => Response.json({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"ok":true,"issues":[]}' }] } }] });
+    fetchMock(geminiResponse(safeLetter), truncated(), truncated());
+    await generateLetterForPaidOrder(env, order);
+    expect(deferGeneration).toHaveBeenCalledWith(env, order, "output_truncated");
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).not.toHaveBeenCalled();
+  });
+
+  it("excludes thought summaries from both customer letters and review JSON", async () => {
+    const withThought = (text: string) => Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [
+      { thought: true, text: "Internal analysis that must never reach the customer" }, { text },
+    ] } }] });
+    const fetch = fetchMock(withThought(safeLetter), withThought('{"ok":true,"issues":[]}'));
+    await generateLetterForPaidOrder(env, order);
+    expect(completeGeneration).toHaveBeenCalledWith(env, order.id, safeLetter, null, null);
+    expect(fetch.mock.calls[1][1].body).not.toContain("Internal analysis");
+  });
+
+  it("does not publish partial content stopped by the provider safety filter", async () => {
+    fetchMock(Response.json({ candidates: [{ finishReason: "SAFETY", content: { parts: [{ text: safeLetter }] } }] }));
+    await generateLetterForPaidOrder(env, order);
+    expect(completeGeneration).not.toHaveBeenCalled();
+    expect(failGeneration).toHaveBeenCalledWith(env, order.id, "failed", "Generálási hiba.", null, null);
   });
 
   it("allows generation after a timeout followed by a successful review retry", async () => {
@@ -478,6 +521,9 @@ describe("secondary AI review gate", () => {
 
   it.each([
     { ok: true, issues: ["Az összeg eltér a forrástól."] },
+    { ok: false, issues: [] },
+    { ok: false, issues: [{ code: "private@example.com", field: "body", instruction: "Javítás" }] },
+    { ok: false, issues: [{ code: "source_conflict", field: "private@example.com", instruction: "Javítás" }] },
     { ok: false, issues: [" "] },
     { ok: false, issues: Array(9).fill("Hibás adat.") },
     { ok: false, issues: ["x".repeat(301)] },

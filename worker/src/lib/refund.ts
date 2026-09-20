@@ -4,7 +4,7 @@ import type { Env, OrderRow, OrderStatusChangeSource } from "./types";
 import type { StripeRefund } from "./stripe";
 
 export const REFUND_REASON_MESSAGES: Record<string, string> = {
-  generation_failed: "A levélgeneráló szolgáltatás technikai hibája miatt a rendelést nem tudtuk teljesíteni.",
+  generation_failed: "A levél elkészítését nem tudtuk sikeresen befejezni, ezért a rendelés összegét visszatérítettük.",
   amount_mismatch: "A fizetett összeg nem egyezett a rendelés összegével, ezért a fizetést visszatérítettük.",
   currency_mismatch: "A fizetés pénzneme nem egyezett a rendelésével, ezért a fizetést visszatérítettük.",
 };

@@ -67,8 +67,8 @@ describe("deployment health gate", () => {
   });
   it("rejects a healthy old revision or an incompatible schema after deployment", async () => {
     for (const payload of [
-      { status: "ok", revision: "old", schemaVersion: 14 },
-      { status: "ok", revision: "new", schemaVersion: 13 },
+      { status: "ok", revision: "old", schemaVersion: 15 },
+      { status: "ok", revision: "new", schemaVersion: 14 },
     ]) {
       await expect(checkDeploymentHealth({
         healthUrl: "https://api.example.com/api/health", expectedRevision: "new", attempts: 1,
@@ -77,7 +77,7 @@ describe("deployment health gate", () => {
     }
     await expect(checkDeploymentHealth({
       healthUrl: "https://api.example.com/api/health", expectedRevision: "new", attempts: 1,
-      fetchImpl: async () => Response.json({ status: "ok", revision: "new", schemaVersion: 14 }, { headers: secureHeaders }),
+      fetchImpl: async () => Response.json({ status: "ok", revision: "new", schemaVersion: 15 }, { headers: secureHeaders }),
     })).resolves.toEqual({ ok: true, attempt: 1 });
   });
 
@@ -87,7 +87,7 @@ describe("deployment health gate", () => {
       let calls = 0;
       const assertion = expect(checkDeploymentHealth({
         healthUrl: "https://api.example.com/api/health", expectedRevision: "new",
-        fetchImpl: async () => Response.json({ status: "ok", revision: ++calls < 8 ? "old" : "new", schemaVersion: 14 }, { headers: secureHeaders }),
+        fetchImpl: async () => Response.json({ status: "ok", revision: ++calls < 8 ? "old" : "new", schemaVersion: 15 }, { headers: secureHeaders }),
       })).resolves.toEqual({ ok: true, attempt: 8 });
       await vi.runAllTimersAsync();
       await assertion;

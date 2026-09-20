@@ -19,6 +19,18 @@ describe("operator action workflow input", () => {
     for (const action of OPERATOR_ACTIONS) expect(migration).toContain(`'${action}'`);
   });
 
+  it("reads one order and its review classifications without queuing an operator action", async () => {
+    const query = vi.fn(async () => []);
+    expect(await runOperatorAction({ OPERATOR_ACTION: "report", PUBLIC_ID: "public_123" }, query)).toBe(0);
+    expect(query).toHaveBeenCalledTimes(2);
+    for (const [sql, params] of query.mock.calls) {
+      expect(sql.trim()).toMatch(/^SELECT /);
+      expect(sql).not.toContain("public_123");
+      expect(params).toEqual(["public_123"]);
+    }
+    expect(() => validateOperatorInput({ action: "report", publicId: "x' OR 1=1 --" })).toThrow("public ID");
+  });
+
   it("inserts a parameterized, attributed request and reports the Worker result", async () => {
     const calls = [];
     const query = vi.fn(async (sql, params = []) => {

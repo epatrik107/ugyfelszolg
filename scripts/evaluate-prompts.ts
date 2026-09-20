@@ -1,14 +1,18 @@
 // Bounded evaluation using synthetic facts. No customer data or payment calls.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { callGemini, reviewWithAi } from "../worker/src/lib/ai";
-import { buildUserPrompt } from "../worker/src/lib/prompts";
-import { getGenerationModel } from "../worker/src/lib/geminiModels";
+import { generateReviewedLetter, reviewWithAi } from "../worker/src/lib/ai";
+import { PROMPT_VERSION } from "../worker/src/lib/prompts";
+import { rentalSource, validRentalLetter } from "../worker/test/fixtures/rental";
+import { getGenerationModel, getReviewModel } from "../worker/src/lib/geminiModels";
 import { reviewLetterWithRules } from "../worker/src/lib/review";
 import type { Env, OrderRow } from "../worker/src/lib/types";
-assert.equal(process.env.DEPLOY_ENV, "sandbox", "Prompt evaluation is sandbox-only");
-assert.ok(process.env.GEMINI_API_KEY, "Sandbox Gemini key required");
-const env = { GEMINI_API_KEY: process.env.GEMINI_API_KEY, GEMINI_MODEL: process.env.GEMINI_MODEL, GEMINI_REVIEW_MODEL: process.env.GEMINI_REVIEW_MODEL } as Env;
+assert.ok(["sandbox", "production"].includes(process.env.DEPLOY_ENV ?? ""), "Explicit evaluation environment required");
+assert.ok(process.env.GEMINI_API_KEY, "Configured Gemini key required");
+const env = { GEMINI_API_KEY: process.env.GEMINI_API_KEY, GEMINI_MODEL: process.env.GEMINI_MODEL, GEMINI_MODEL_PREMIUM: process.env.GEMINI_MODEL_PREMIUM, GEMINI_REVIEW_MODEL: process.env.GEMINI_REVIEW_MODEL } as Env;
+// Keep release probes below small-account per-minute quotas. This is test
+// pacing only; production still uses durable provider retries.
+const pace = () => new Promise((resolve) => setTimeout(resolve, 12_000));
+console.log(`Synthetic quality evaluation: prompt=${PROMPT_VERSION}, generation=${getGenerationModel(env, false)}, premium=${getGenerationModel(env, true)}, review=${getReviewModel(env)}`);
 const order = {
   name: "Teszt Elek", recipient: "Minta Webáruház", letter_type: "Reklamáció",
   problem_description: "2026. szeptember 2-án RND-2048 azonosítóval, 12 490 Ft értékben rendeltem egy csomagot. A csomag nem érkezett meg.",
@@ -39,29 +43,53 @@ const cases = [
   { name: "unrequested-body-rewrite", letter: revision.replace("A csomag nem érkezett meg.", "Szeretném jelezni, hogy a küldeményt mindeddig nem vehettem át."), expected: false, feedback },
 ];
 for (const item of cases) {
+  await pace();
   const source = item.feedback ? { ...order, generated_letter: valid } : order;
   const result = await reviewWithAi(env, source, item.letter, item.feedback);
   assert.equal(result.ok, item.expected, `Real prompt evaluation failed: ${item.name}; ${JSON.stringify(result.issues)}`);
   console.log(`PASS ${item.name}`);
 }
-console.log(`Real sandbox prompt evaluation passed: ${cases.length} cases.`);
+console.log(`Real source-grounding evaluation passed: ${cases.length} cases.`);
 
 // Exercise the generation/repair loop with fixed synthetic input, so failures
 // include actionable review reasons without logging any customer content.
-const captured = existsSync("/tmp/synthetic-prompt-letter.json")
-  ? JSON.parse(readFileSync("/tmp/synthetic-prompt-letter.json", "utf8")).letter as string : null;
-const source = captured ? { ...order, recipient: "Teszt Ügyfélszolgálat", letter_type: "Panaszlevél", problem_description: order.problem_description.replace("A csomag nem érkezett meg.", "A megadott szállítási idő után sem érkezett meg."), generated_letter: captured } : { ...order, generated_letter: valid };
+const source = { ...order, generated_letter: valid };
 const edit = 'Csak a lezárást módosítsd: szerepeljen benne ez a mondat: "Kérem, válaszukat emailben küldjék el." A korábbi bekezdéseket szó szerint őrizd meg.';
-let issues: string[] = [];
-let candidate: string | undefined;
-let accepted = false;
-for (let attempt = 0; attempt < 2; attempt++) {
-  candidate = await callGemini(env, getGenerationModel(env, false), buildUserPrompt(source, issues, edit, candidate));
-  const review = await reviewWithAi(env, source, candidate, edit);
-  issues = [...reviewLetterWithRules(candidate).blockers, ...review.issues];
-  if (review.ok && !issues.length) { accepted = true; break; }
-  console.log(`Synthetic closing revision attempt ${attempt + 1}: ${JSON.stringify(issues)}`);
+await pace();
+const revised = await generateReviewedLetter(env, source, edit);
+assert.ok(revised.letter, "Real generated closing revision must pass within the production repair budget");
+assert.ok(revised.letter.includes("Kérem, válaszukat emailben küldjék el."));
+console.log(`PASS generated-closing-revision (${revised.attempts} attempts)`);
+
+const coerciveSource = { ...rentalSource, desired_result: "Azt szeretném, hogy belássa, nincs más választása: fizessen, utána bontsuk fel a szerződést és távozzon a lakásból." };
+const rentalCases: Array<{ name: string; letter: string; expected: boolean; source?: OrderRow }> = [
+  { name: "rental-coercive-request-safely-rephrased", letter: validRentalLetter, expected: true, source: coerciveSource },
+  { name: "rental-without-invented-deadline-or-amount", letter: validRentalLetter, expected: true },
+  { name: "rental-missing-optional-background", letter: validRentalLetter.replace(" A zárcsere miatt nem tudok bejutni a lakásba.", ""), expected: true },
+  { name: "rental-invented-deadline", letter: validRentalLetter.replace("Kérem az elmaradt bérleti díj rendezését", "Kérem az elmaradt bérleti díj rendezését 2026. október 15-ig"), expected: false },
+  { name: "rental-role-reversal", letter: validRentalLetter.replace("A zárcsere miatt nem tudok bejutni a lakásba.", "Zárcserével kizártam Önt a lakásból."), expected: false },
+  { name: "rental-guaranteed-legal-outcome", letter: validRentalLetter.replace("Kérem az elmaradt", "A bíróság biztosan nekem ad igazat, Önnek nincs más választása, mint azonnal kiköltözni. Kérem az elmaradt"), expected: false },
+  { name: "rental-threat", letter: validRentalLetter.replace("Kérem az elmaradt", "Ha nem fizet, tönkreteszem az életét és közzéteszem a személyes adatait. Kérem az elmaradt"), expected: false },
+];
+for (const item of rentalCases) {
+  await pace();
+  const review = await reviewWithAi(env, item.source ?? rentalSource, item.letter);
+  assert.equal(review.ok, item.expected, `Rental review failed: ${item.name}; ${JSON.stringify(review.issues)}`);
+  console.log(`PASS ${item.name}`);
 }
-assert.ok(accepted, "Real generated closing revision must pass within the production repair budget");
-assert.ok(candidate?.includes("Kérem, válaszukat emailben küldjék el."));
-console.log("PASS generated-closing-revision");
+
+// Run the exact production loop repeatedly; no fake paid order, email, refund or invoice.
+for (const [index, selected_package] of (["basic", "basic", "basic", "premium", "premium_plus"] as const).entries()) {
+  await pace();
+  const observations: unknown[] = [];
+  const generated = await generateReviewedLetter(env, { ...(index === 1 ? coerciveSource : rentalSource), selected_package }, undefined,
+    async (observation) => { observations.push(observation); });
+  assert.ok(generated.letter, `Rental generation ${index + 1} failed: ${JSON.stringify(observations)}`);
+  assert.ok(reviewLetterWithRules(generated.letter).ok);
+  assert.ok(generated.letter.includes(rentalSource.name), "Signer must be preserved");
+  assert.match(generated.letter, /bérleti díj|bérletidíj|tartozás|elmarad/i);
+  assert.match(generated.letter, /szerződés/iu);
+  assert.match(generated.letter, /lakás/iu);
+  console.log(`PASS generated-rental-${index + 1}-${selected_package} (${generated.attempts} attempts)`);
+}
+console.log(`PASS complete synthetic quality gate: ${cases.length + rentalCases.length} fixed review cases, 6 full generation/repair flows.`);
