@@ -89,7 +89,8 @@ for (const [index, selected_package] of (["basic", "basic", "basic", "premium", 
   assert.ok(generated.letter.includes(rentalSource.name), "Signer must be preserved");
   assert.match(generated.letter, /bérleti díj|bérletidíj|tartozás|elmarad/i);
   assert.match(generated.letter, /szerződés/iu);
-  assert.match(generated.letter, /lakás/iu);
+  // The subject must remain a rental property; equivalent Hungarian wording is valid.
+  assert.match(generated.letter, /lakás|ingatlan|bérlemény/iu);
   console.log(`PASS generated-rental-${index + 1}-${selected_package} (${generated.attempts} attempts)`);
 }
 console.log(`PASS complete synthetic quality gate: ${cases.length + rentalCases.length} fixed review cases, 6 full generation/repair flows.`);
