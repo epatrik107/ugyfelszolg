@@ -1,3 +1,4 @@
+import { businessLegalText } from "../config/business";
 import { Link } from "react-router-dom";
 import { LegalNotice } from "../components/LegalNotice";
 import legalVersions from "../config/legalVersions.json";
@@ -17,7 +18,7 @@ export function TermsPage() {
       <LegalNotice />
       <ContentBlock
         title="1. Szolgáltató adatai"
-        text="Szolgáltató neve: Engelbrecht Zoltán egyéni vállalkozó. Vállalkozás formája: egyéni vállalkozó. Székhelye: 2500 Esztergom, Bánomi út 4. Adószáma: 91250960-1-31. Közösségi adószáma: HU91250960. EV nyilvántartási száma: 60722263. E-mail: Zoltán Engelbrecht <ugyfelszolgalat2026@gmail.com>. Weboldal: levelseged.hu."
+        text={businessLegalText}
       />
       <ContentBlock
         title="2. A szolgáltatás leírása"

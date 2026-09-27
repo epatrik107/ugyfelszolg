@@ -18,14 +18,40 @@ async function verify() {
   assert.ok(asset, "Missing application script");
   const js = await fetch(new URL(asset[1], site));
   assert.equal(js.status, 200); assert.match(js.headers.get("content-type"), /javascript/);
-  const route = await fetch(new URL("level-keszites", site));
-  assert.ok([200, 404].includes(route.status));
-  if (route.status === 404) assert.match(await route.text(), /src="[^\"]*spa-redirect\.js"/);
+  const sitemap = await fetch(new URL("sitemap.xml", site));
+  assert.equal(sitemap.status, 200, "Sitemap is unavailable");
+  const locations = [...(await sitemap.text()).matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
+  assert.ok(locations.length >= 6, "Sitemap is missing core pages");
+  const titles = new Set();
+  for (const location of locations) {
+    assert.equal(new URL(location).origin, site.origin, "Sitemap contains another origin");
+    const page = await fetch(location, { redirect: "manual", signal: AbortSignal.timeout(10000) });
+    assert.equal(page.status, 200, `${location}: must return 200 without redirect`);
+    const source = await page.text();
+    assert.match(source, /<h1\b/, `${location}: missing prerendered H1`);
+    assert.doesNotMatch(source, /name="robots"[^>]*content="noindex/, `${location}: noindex`);
+    const canonical = source.match(/rel="canonical"[^>]*href="([^"]*)"/)?.[1];
+    assert.equal(canonical, location, `${location}: canonical mismatch`);
+    const title = source.match(/<title[^>]*>(.*?)<\/title>/)?.[1];
+    assert.ok(title && !titles.has(title), `${location}: missing or duplicate title`);
+    titles.add(title);
+  }
+  for (const path of ["sikeres-fizetes", "sikertelen-fizetes", "rendeles-link"]) {
+    const page = await fetch(new URL(path, site));
+    assert.equal(page.status, 200, `${path}: utility page status`);
+    assert.match(await page.text(), /name="robots"[^>]*content="noindex/, `${path}: missing noindex`);
+  }
+  const missing = await fetch(new URL(`nemletezo-seo-${Date.now()}`, site));
+  assert.equal(missing.status, 404, "Unknown URLs must return 404");
+  assert.match(await missing.text(), /name="robots"[^>]*content="noindex/);
+  for (const path of ["favicon.ico", "apple-touch-icon.png", "images/logo-512.png", "images/og-levelseged.jpg"]) {
+    assert.equal((await fetch(new URL(path, site))).status, 200, `${path}: asset missing`);
+  }
   if (process.env.EXPECTED_REVISION) {
     const stamp = await fetch(new URL(`build.json?verify=${Date.now()}`, site));
     assert.equal((await stamp.json()).revision, process.env.EXPECTED_REVISION);
   }
-  console.log("Frontend HTTPS, security headers, assets, SPA fallback and revision verified.");
+  console.log("Frontend HTTPS, security headers, prerendered sitemap pages, noindex shells, true 404, assets and revision verified.");
 }
 let error;
 for (let attempt = 0; attempt < 12; attempt++) {

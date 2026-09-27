@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, Check, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { letterTypes, tones, packages } from "../lib/constants";
 import type { LetterFormValues, PackageId } from "../lib/types";
 import { PackageCard } from "./PackageCard";
@@ -25,6 +25,7 @@ type Errors = Record<string, string>;
 export function LetterForm({ busy = false, submitLabel, onSubmit }: {
   busy?: boolean; submitLabel: string; onSubmit: (values: LetterFormValues) => Promise<void>;
 }) {
+  const [searchParams] = useSearchParams();
   const [values, setValues] = useState<LetterFormValues>(() => ({ ...initialLetterValues, billing: { ...initialLetterValues.billing }, checkoutAttemptId: crypto.randomUUID() }));
   const [step, setStep] = useState(0);
   const [caseId, setCaseId] = useState("other");
@@ -34,6 +35,13 @@ export function LetterForm({ busy = false, submitLabel, onSubmit }: {
   const moved = useRef(false);
   const selectedCase = cases.find((item) => item.id === caseId)!;
 
+  useEffect(() => {
+    const selected = cases.find((item) => item.id === searchParams.get("eset"));
+    if (selected) {
+      setCaseId(selected.id);
+      setValues((current) => ({ ...current, letterType: selected.type }));
+    }
+  }, [searchParams]);
   useEffect(() => {
     if (moved.current) headingRef.current?.focus();
     moved.current = true;

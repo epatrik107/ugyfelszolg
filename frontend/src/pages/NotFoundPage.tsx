@@ -11,6 +11,7 @@ export function NotFoundPage() {
       <Link className="button-primary inline-flex" to="/">
         Vissza a főoldalra
       </Link>
+      <p><Link className="underline" to="/level-keszites">Levél készítése</Link></p>
     </section>
   );
 }

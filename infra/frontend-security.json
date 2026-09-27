@@ -21,5 +21,74 @@
   },
   "sslMode": "strict",
   "apexProxy": true,
-  "ruleId": "3e7f66449c764acf9781774ef23665be"
+  "ruleId": "3e7f66449c764acf9781774ef23665be",
+  "seoRules": {
+    "http_response_headers_transform": [
+      {
+        "ref": "levelseged_seo_noindex",
+        "description": "Levélsegéd utility and error page noindex",
+        "enabled": true,
+        "action": "rewrite",
+        "expression": "(http.host eq \"levelseged.hu\" and (http.response.code eq 404 or http.request.uri.path in {\"/sikeres-fizetes\" \"/sikeres-fizetes/\" \"/sikeres-fizetes.html\" \"/sikertelen-fizetes\" \"/sikertelen-fizetes/\" \"/sikertelen-fizetes.html\" \"/rendeles-link\" \"/rendeles-link/\" \"/rendeles-link.html\" \"/404.html\"}))",
+        "action_parameters": {
+          "headers": {
+            "x-robots-tag": {
+              "operation": "set",
+              "value": "noindex"
+            }
+          }
+        }
+      }
+    ],
+    "http_request_dynamic_redirect": [
+      {
+        "ref": "levelseged_seo_index",
+        "description": "Levélsegéd SEO levelseged_seo_index",
+        "enabled": true,
+        "action": "redirect",
+        "expression": "(http.host eq \"levelseged.hu\" and http.request.uri.path eq \"/index.html\")",
+        "action_parameters": {
+          "from_value": {
+            "status_code": 301,
+            "target_url": {
+              "value": "https://levelseged.hu/"
+            },
+            "preserve_query_string": true
+          }
+        }
+      },
+      {
+        "ref": "levelseged_seo_slash",
+        "description": "Levélsegéd SEO levelseged_seo_slash",
+        "enabled": true,
+        "action": "redirect",
+        "expression": "(http.host eq \"levelseged.hu\" and http.request.uri.path in {\"/level-keszites/\" \"/arak/\" \"/kapcsolat/\" \"/aszf/\" \"/adatkezeles/\" \"/sikeres-fizetes/\" \"/sikertelen-fizetes/\" \"/rendeles-link/\"})",
+        "action_parameters": {
+          "from_value": {
+            "status_code": 301,
+            "target_url": {
+              "expression": "concat(\"https://levelseged.hu\", substring(http.request.uri.path, 0, -1))"
+            },
+            "preserve_query_string": true
+          }
+        }
+      },
+      {
+        "ref": "levelseged_seo_html",
+        "description": "Levélsegéd SEO levelseged_seo_html",
+        "enabled": true,
+        "action": "redirect",
+        "expression": "(http.host eq \"levelseged.hu\" and http.request.uri.path in {\"/level-keszites.html\" \"/arak.html\" \"/kapcsolat.html\" \"/aszf.html\" \"/adatkezeles.html\" \"/sikeres-fizetes.html\" \"/sikertelen-fizetes.html\" \"/rendeles-link.html\"})",
+        "action_parameters": {
+          "from_value": {
+            "status_code": 301,
+            "target_url": {
+              "expression": "concat(\"https://levelseged.hu\", substring(http.request.uri.path, 0, -5))"
+            },
+            "preserve_query_string": true
+          }
+        }
+      }
+    ]
+  }
 }

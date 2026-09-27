@@ -1,6 +1,7 @@
 import { FileText, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
+import { useRouteHead } from "../seo/useRouteHead";
 import { LegalNotice } from "./LegalNotice";
 
 const links = [
@@ -11,6 +12,7 @@ const links = [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  useRouteHead();
   const [open, setOpen] = useState(false);
 
   return (
@@ -27,10 +29,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 md:hidden"
             onClick={() => setOpen((value) => !value)}
             aria-label="Menü megnyitása"
+            aria-expanded={open}
+            aria-controls="mobile-navigation"
           >
             {open ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <nav className="hidden items-center gap-6 text-sm md:flex">
+          <nav aria-label="Fő navigáció" className="hidden items-center gap-6 text-sm md:flex">
             {links.map((link) => (
               <NavLink
                 key={link.to}
@@ -45,7 +49,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         {open && (
-          <nav className="grid gap-1 border-t border-slate-200 px-4 py-3 md:hidden">
+          <nav id="mobile-navigation" aria-label="Mobil navigáció" className="grid gap-1 border-t border-slate-200 px-4 py-3 md:hidden">
             {links.map((link) => (
               <NavLink
                 key={link.to}
@@ -72,12 +76,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="font-semibold">Levélsegéd</div>
             <LegalNotice compact />
           </div>
-          <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+          <nav aria-label="Lábléc" className="flex flex-wrap gap-4 text-sm text-slate-600">
+            <Link to="/level-keszites">Levél készítése</Link>
+            <Link to="/arak">Árak</Link>
             <Link to="/aszf">ÁSZF</Link>
             <Link to="/adatkezeles">Adatkezelés</Link>
             <Link to="/kapcsolat">Kapcsolat</Link>
             <Link to="/rendeles-link">Rendelési link</Link>
-          </div>
+          </nav>
         </div>
       </footer>
     </div>
