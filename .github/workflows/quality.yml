@@ -21,6 +21,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Verify SEO regression detection
+        run: node --test scripts/verify-seo.test.mjs
+        working-directory: frontend
       - name: Install browser for customer flow tests
         run: npx playwright install --with-deps chromium
       - name: Test customer flows on desktop and mobile

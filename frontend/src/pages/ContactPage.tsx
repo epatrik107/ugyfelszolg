@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { business } from "../config/business";
 import { useState } from "react";
 import { LegalNotice } from "../components/LegalNotice";
 import { TurnstileField } from "../components/TurnstileField";
@@ -40,6 +42,12 @@ export function ContactPage() {
           Írjon nekünk, ha kérdése van vagy segítségre van szüksége.
         </p>
       </div>
+      <address className="space-y-2 not-italic text-slate-600">
+        <p>{business.legalName}</p>
+        <p>{business.address.postalCode} {business.address.addressLocality}, {business.address.streetAddress}</p>
+        <a className="underline" href={`mailto:${business.email}`}>{business.email}</a>
+      </address>
+      <Link className="inline-block underline" to="/rendeles-link">Elveszett a rendelési link?</Link>
       <LegalNotice />
       <form className="space-y-5" onSubmit={handleSubmit}>
         <label className="grid gap-2 font-medium text-slate-700">

@@ -74,7 +74,7 @@ export function LetterCreationPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-azure-600">
               3–5 perc kitöltés
             </p>
-            <h1 className="mt-2 text-3xl font-semibold">Levélkészítés</h1>
+            <h1 className="mt-2 text-3xl font-semibold">Levél készítése online</h1>
             <p className="mt-3 text-slate-600">
               Adja meg a szükséges részleteket, mi pedig elkészítjük az Önnek
               szóló hivatalos levelet. Három rövid lépés, a végén ellenőrizhető összegzéssel.
@@ -97,6 +97,14 @@ export function LetterCreationPage() {
         </aside>
       </div>
 
+      {!summary && <section className="space-y-3 border-t border-slate-200 pt-6">
+        <h2 className="text-2xl font-semibold">Mi történik fizetés után?</h2>
+        <ol className="list-decimal space-y-2 pl-5 text-slate-600">
+          <li>A sikeres fizetés igazolása után automatikusan megkezdődik a levél elkészítése.</li>
+          <li>A feldolgozás technikai okokból néhány percet is igénybe vehet.</li>
+          <li>A kész levél az eredményoldalon érhető el, ahol átnézheti, szerkesztheti és e-mailben is elküldheti.</li>
+        </ol>
+      </section>}
       {summary && <PaymentSummary
         busy={busy}
         onChangePackage={() => { setSummary(null); setServerError(null); setServerErrorCode(null); window.requestAnimationFrame(() => formContainerRef.current?.querySelector<HTMLElement>("h2[tabindex]")?.focus()); }}

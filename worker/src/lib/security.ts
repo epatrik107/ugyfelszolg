@@ -30,6 +30,7 @@ export function isAllowedOrigin(origin: string | null, env: Env) {
 export function addSecurityHeaders(response: Response) {
   const headers = new Headers(response.headers);
   headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Robots-Tag", "noindex, nofollow");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");

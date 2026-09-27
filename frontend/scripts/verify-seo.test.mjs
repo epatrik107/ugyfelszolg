@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {verifyHtml} from './verify-seo.mjs';
+import {seoRoutes} from '../dist-ssr/entry-server.js';
+const route = seoRoutes.find(r=>r.path==='/arak');
+const html = await readFile(new URL('../dist/arak.html', import.meta.url),'utf8');
+test('rejects missing prerender H1',()=>assert.throws(()=>verifyHtml(html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/,''),route),/H1/));
+test('rejects duplicate titles',()=>{const seen=new Set();verifyHtml(html,route,seen);assert.throws(()=>verifyHtml(html,route,seen),/duplicate title/);});
+test('rejects query in canonical',()=>assert.throws(()=>verifyHtml(html.replace('rel="canonical" href="https://levelseged.hu/arak"','rel="canonical" href="https://levelseged.hu/arak?order=secret"'),route),/canonical/));
+test('rejects accidental noindex',()=>assert.throws(()=>verifyHtml(html.replace('content="index,follow"','content="noindex,follow"'),route),/robots/));
